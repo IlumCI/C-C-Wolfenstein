@@ -2,6 +2,8 @@ package com.ccwolf.core.sim;
 
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.ai.SkirmishAi;
+import com.ccwolf.core.api.CommandBus;
+import com.ccwolf.core.api.WorldView;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.map.TileMap;
 import java.util.ArrayList;
@@ -17,11 +19,13 @@ public final class Skirmish {
     private final GameWorld world;
     private final List<SkirmishAi> ais;
     private final int humanPlayerId;
+    private final CommandBus commandBus;
 
     private Skirmish(GameWorld world, List<SkirmishAi> ais, int humanPlayerId) {
         this.world = world;
         this.ais = ais;
         this.humanPlayerId = humanPlayerId;
+        this.commandBus = new CommandBus(world);
     }
 
     /** One human player against one AI. */
@@ -63,6 +67,16 @@ public final class Skirmish {
 
     public GameWorld world() {
         return world;
+    }
+
+    /** The only channel through which anything outside the simulation may change it. */
+    public CommandBus commands() {
+        return commandBus;
+    }
+
+    /** A read-only window for one player, for whatever is drawing the game. */
+    public WorldView viewFor(int playerId) {
+        return new WorldView(world, playerId);
     }
 
     public List<SkirmishAi> ais() {

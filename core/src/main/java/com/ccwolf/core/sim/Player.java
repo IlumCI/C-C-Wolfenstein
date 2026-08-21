@@ -3,6 +3,8 @@ package com.ccwolf.core.sim;
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Faction;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * One side in the match: its bank, its power situation and its three production lines.
@@ -29,7 +31,12 @@ public final class Player {
     private final ProductionQueue vehicleQueue = new ProductionQueue();
     private final ProductionQueue structureQueue = new ProductionQueue();
 
+    /** Chosen exit structure per producer type; units come out of these when set. */
+    private final Map<BuildingType, Integer> primaryProducers =
+            new HashMap<BuildingType, Integer>();
+
     private int creditsEarned;
+    private int creditsSpentOnRepairs;
     private int unitsBuilt;
     private int unitsLost;
     private int buildingsLost;
@@ -133,6 +140,31 @@ public final class Player {
             return infantryQueue;
         }
         return structureQueue;
+    }
+
+    /**
+     * The structure new units should walk out of for this producer type, or -1 if the player
+     * has not picked one (in which case the simulation uses whichever is standing).
+     */
+    public int primaryProducer(BuildingType producer) {
+        Integer id = primaryProducers.get(producer);
+        return id == null ? -1 : id.intValue();
+    }
+
+    public void setPrimaryProducer(BuildingType producer, int buildingId) {
+        primaryProducers.put(producer, Integer.valueOf(buildingId));
+    }
+
+    public void clearPrimaryProducer(BuildingType producer) {
+        primaryProducers.remove(producer);
+    }
+
+    public int creditsSpentOnRepairs() {
+        return creditsSpentOnRepairs;
+    }
+
+    void noteRepairSpend(int amount) {
+        creditsSpentOnRepairs += amount;
     }
 
     public boolean isDefeated() {

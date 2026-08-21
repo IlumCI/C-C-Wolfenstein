@@ -101,6 +101,8 @@ class CombatTest {
 
     @Test
     void turretsDefendTheirOwnGroundAndReportShots() {
+        // The turret needs a generator behind it now: defences go dark in a power deficit.
+        world.placeBuilding(1, BuildingType.GENERATOR, 26, 26, true);
         Building turret = world.placeBuilding(1, BuildingType.FLAK_TURRET, 20, 20, true);
         Unit intruder = world.spawnUnit(0, UnitType.PARTISAN, 15.5f, 20.5f);
         intruder.setOrder(new MoveOrder(24, 20));

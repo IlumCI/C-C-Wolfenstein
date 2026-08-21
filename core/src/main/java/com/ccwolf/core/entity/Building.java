@@ -20,6 +20,11 @@ public final class Building extends Entity {
     private boolean complete;
     private int weaponCooldown;
 
+    /** False while the owner is in a power deficit; only ever set on defences. */
+    private boolean powered = true;
+    private boolean repairing;
+    private int repairTicks;
+
     /** Where newly produced units walk to, defaults to just below the structure. */
     private int rallyX;
     private int rallyY;
@@ -88,9 +93,59 @@ public final class Building extends Entity {
         return type.displayName();
     }
 
+    /**
+     * The structure's gun, or null. A defence with the power cut cannot fire — which is the
+     * whole reason generators are worth bombing.
+     */
     @Override
     public Weapon weapon() {
-        return complete ? type.weapon() : null;
+        return complete && powered ? type.weapon() : null;
+    }
+
+    public boolean isPowered() {
+        return powered;
+    }
+
+    public void setPowered(boolean powered) {
+        this.powered = powered;
+    }
+
+    /** True while the owner is paying to patch this structure up. */
+    public boolean isRepairing() {
+        return repairing;
+    }
+
+    public void setRepairing(boolean repairing) {
+        this.repairing = repairing;
+        this.repairTicks = 0;
+    }
+
+    public int repairTicks() {
+        return repairTicks;
+    }
+
+    public void setRepairTicks(int ticks) {
+        this.repairTicks = ticks;
+    }
+
+    /** What selling this structure pays back. */
+    public int refundValue() {
+        // Half the sticker price, scaled by how intact it is: a burning wreck is worth less.
+        return Math.max(0, (int) (type.cost() * SELL_REFUND_FRACTION * healthFraction()));
+    }
+
+    /** Fraction of the original cost returned when a structure is sold. */
+    public static final float SELL_REFUND_FRACTION = 0.5f;
+
+    /**
+     * Visual damage tier: 0 intact, 1 scarred, 2 burning. The renderer swaps sprites on this.
+     */
+    public int damageState() {
+        float health = healthFraction();
+        if (health > 0.66f) {
+            return 0;
+        }
+        return health > 0.33f ? 1 : 2;
     }
 
     @Override

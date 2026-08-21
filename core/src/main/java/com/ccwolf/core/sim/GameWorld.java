@@ -48,6 +48,15 @@ public final class GameWorld {
     /** Uranium added to each seam per regrowth pass. */
     private static final int ORE_REGROW_AMOUNT = 3;
 
+    /** Ticks between repair instalments. */
+    private static final int REPAIR_INTERVAL = 4;
+
+    /** Hit points mended per instalment. */
+    private static final int REPAIR_HP_PER_STEP = 12;
+
+    /** Repairing a structure from scrap costs this fraction of building it new. */
+    private static final float REPAIR_COST_FACTOR = 0.5f;
+
     /** How often an idle armed unit looks around for something to shoot. */
     private static final int ACQUIRE_INTERVAL = 8;
 
@@ -396,6 +405,97 @@ public final class GameWorld {
         return true;
     }
 
+    /**
+     * Sells a structure for part of its cost back.
+     *
+     * @return the credits refunded, or -1 if the structure was not the player's to sell
+     */
+    public int sellBuilding(int playerId, int buildingId) {
+        Entity e = entity(buildingId);
+        if (!(e instanceof Building) || e.ownerId() != playerId || !e.isAlive()) {
+            return -1;
+        }
+        Building b = (Building) e;
+        int refund = b.refundValue();
+        player(playerId).refund(refund);
+        events.add(new GameEvent(GameEvent.Type.BUILDING_SOLD, playerId, b.id(), b.x(), b.y(),
+                b.x(), b.y(), refund));
+        // kill() rather than damage: a sale is not a kill, and must not credit an attacker.
+        b.kill();
+        if (b.type().isProducer()) {
+            player(playerId).clearPrimaryProducer(b.type());
+        }
+        return refund;
+    }
+
+    /** Turns the repair crews on or off for one structure. */
+    public boolean setRepairing(int playerId, int buildingId, boolean repairing) {
+        Entity e = entity(buildingId);
+        if (!(e instanceof Building) || e.ownerId() != playerId || !e.isAlive()) {
+            return false;
+        }
+        ((Building) e).setRepairing(repairing);
+        return true;
+    }
+
+    /** Chooses which structure of its kind new units walk out of. */
+    public boolean setPrimaryProducer(int playerId, int buildingId) {
+        Entity e = entity(buildingId);
+        if (!(e instanceof Building) || e.ownerId() != playerId || !e.isOperational()) {
+            return false;
+        }
+        Building b = (Building) e;
+        if (!b.type().isProducer()) {
+            return false;
+        }
+        player(playerId).setPrimaryProducer(b.type(), b.id());
+        return true;
+    }
+
+    /**
+     * Why a unit cannot be queued right now, phrased for the player, or null if it can.
+     *
+     * <p>The HUD used to guess at this and got it wrong for tech prerequisites; there is now
+     * exactly one place that decides, and both the button state and its label come from it.
+     */
+    public String productionBlocker(int playerId, UnitType type) {
+        Player p = player(playerId);
+        if (!type.availableTo(p.faction())) {
+            return "Not available to " + p.faction().displayName();
+        }
+        if (!hasCompletedBuilding(playerId, type.producedBy())) {
+            return "Needs " + type.producedBy().displayName();
+        }
+        if (type.prerequisite() != null && !hasCompletedBuilding(playerId, type.prerequisite())) {
+            return "Needs " + type.prerequisite().displayName();
+        }
+        if (p.queueFor(type.producedBy()).isFull()) {
+            return "Queue full";
+        }
+        if (!p.canAfford(type.cost())) {
+            return "Needs " + type.cost() + " credits";
+        }
+        return null;
+    }
+
+    /** Why a structure cannot be queued right now, or null if it can. */
+    public String productionBlocker(int playerId, BuildingType type) {
+        Player p = player(playerId);
+        if (!hasCompletedBuilding(playerId, BuildingType.COMMAND_POST)) {
+            return "Needs " + BuildingType.COMMAND_POST.displayName();
+        }
+        if (type.prerequisite() != null && !hasCompletedBuilding(playerId, type.prerequisite())) {
+            return "Needs " + type.prerequisite().displayName();
+        }
+        if (p.structureQueue().isFull()) {
+            return "Queue full";
+        }
+        if (!p.canAfford(type.cost())) {
+            return "Needs " + type.cost() + " credits";
+        }
+        return null;
+    }
+
     /** Cancels the newest entry on a line and refunds it. */
     public void cancelLast(int playerId, ProductionQueue queue) {
         ProductionItem item = queue.cancelLast();
@@ -476,6 +576,7 @@ public final class GameWorld {
         updateProduction();
         updateUnits();
         updateBuildings();
+        updateRepairs();
         applySeparation();
         removeDead();
         if (tick % ORE_REGROW_INTERVAL == 0) {
@@ -502,6 +603,21 @@ public final class GameWorld {
         for (int i = 0; i < players.size(); i++) {
             players.get(i).setPower(produced[i], drawn[i]);
         }
+
+        // Defences are the first thing a brownout takes: production merely slows, but a turret
+        // with no juice is a concrete box. This is what makes generators worth bombing.
+        for (int i = 0; i < buildings.size(); i++) {
+            Building b = buildings.get(i);
+            if (b.type().powerDrawn() <= 0 || b.type().weapon() == null) {
+                continue;
+            }
+            boolean shouldBePowered = !players.get(b.ownerId()).isLowPower();
+            if (shouldBePowered != b.isPowered()) {
+                b.setPowered(shouldBePowered);
+                events.add(GameEvent.at(shouldBePowered ? GameEvent.Type.POWER_RESTORED
+                        : GameEvent.Type.POWER_LOST, b.ownerId(), b.id(), b.x(), b.y()));
+            }
+        }
     }
 
     private void updateProduction() {
@@ -523,7 +639,7 @@ public final class GameWorld {
         if (head == null) {
             return;
         }
-        Building factory = findBuilding(p.id(), producer);
+        Building factory = productionExit(p, producer);
         if (factory == null) {
             // The factory was destroyed mid-build: hold the queue rather than silently eat it.
             return;
@@ -546,6 +662,22 @@ public final class GameWorld {
         } else {
             spawned.setOrder(new MoveOrder(factory.rallyX(), factory.rallyY()));
         }
+    }
+
+    /**
+     * Where a finished unit walks out of: the player's chosen primary structure if they set
+     * one and it is still standing, otherwise whichever one is.
+     */
+    private Building productionExit(Player p, BuildingType producer) {
+        int primaryId = p.primaryProducer(producer);
+        if (primaryId >= 0) {
+            Entity e = entity(primaryId);
+            if (e instanceof Building && e.isOperational() && ((Building) e).type() == producer) {
+                return (Building) e;
+            }
+            p.clearPrimaryProducer(producer); // It died; stop pointing at a hole in the ground.
+        }
+        return findBuilding(p.id(), producer);
     }
 
     private void advanceStructureQueue(Player p, float rate) {
@@ -621,6 +753,53 @@ public final class GameWorld {
                 }
             }
         }
+    }
+
+    /**
+     * Charges for and applies structure repairs. Repairs are paid for in small instalments, so
+     * a player who runs out of money mid-repair simply stops mending rather than going into
+     * debt or getting the rest for free.
+     */
+    private void updateRepairs() {
+        for (int i = 0; i < buildings.size(); i++) {
+            Building b = buildings.get(i);
+            if (!b.isRepairing() || !b.isAlive()) {
+                continue;
+            }
+            if (b.hp() >= b.maxHp()) {
+                b.setRepairing(false);
+                continue;
+            }
+            b.setRepairTicks(b.repairTicks() + 1);
+            if (b.repairTicks() < REPAIR_INTERVAL) {
+                continue;
+            }
+            b.setRepairTicks(0);
+
+            int missing = b.maxHp() - b.hp();
+            int amount = Math.min(REPAIR_HP_PER_STEP, missing);
+            int cost = repairCost(b.type(), amount);
+            Player owner = player(b.ownerId());
+            if (!owner.spend(cost)) {
+                b.setRepairing(false);
+                if (owner.id() == 0) {
+                    events.add(GameEvent.at(GameEvent.Type.INSUFFICIENT_FUNDS, owner.id(),
+                            b.id(), b.x(), b.y()));
+                }
+                continue;
+            }
+            owner.noteRepairSpend(cost);
+            b.heal(amount);
+            if (b.hp() >= b.maxHp()) {
+                b.setRepairing(false);
+            }
+        }
+    }
+
+    /** What patching up {@code hitPoints} of a structure costs. Never free. */
+    public static int repairCost(BuildingType type, int hitPoints) {
+        float perHp = type.cost() * REPAIR_COST_FACTOR / Math.max(1, type.maxHp());
+        return Math.max(1, Math.round(perHp * hitPoints));
     }
 
     /**
