@@ -226,12 +226,15 @@ public final class GameWorld {
         return null;
     }
 
-    /** True if a unit is already sitting on this tile. */
+    /**
+     * True if a unit is already sitting on this tile.
+     *
+     * <p>Scans the unit list directly rather than the spatial index: the index is only
+     * rebuilt at the start of a tick, and several units can be spawned between ticks.
+     */
     public boolean isTileCrowded(int tileX, int tileY) {
-        queryScratch.clear();
-        spatialIndex.query(tileX + 0.5f, tileY + 0.5f, 1.5f, queryScratch);
-        for (int i = 0; i < queryScratch.size(); i++) {
-            Unit u = queryScratch.get(i);
+        for (int i = 0; i < units.size(); i++) {
+            Unit u = units.get(i);
             if (u.isAlive() && u.tileX() == tileX && u.tileY() == tileY) {
                 return true;
             }
