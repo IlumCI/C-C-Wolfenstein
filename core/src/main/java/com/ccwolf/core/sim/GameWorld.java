@@ -1,6 +1,7 @@
 package com.ccwolf.core.sim;
 
 import com.ccwolf.core.combat.Weapon;
+import com.ccwolf.core.diag.TickProfiler;
 import com.ccwolf.core.economy.ProductionItem;
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.Building;
@@ -81,6 +82,16 @@ public final class GameWorld {
     private final TileMap map;
     private final OccupancyGrid grid;
     private final Mover mover = new Mover();
+
+    /**
+     * Where the tick goes. Off unless something switches it on, so the normal path pays one
+     * predictable branch per phase rather than a pair of nanoTime calls.
+     */
+    private final TickProfiler profiler = new TickProfiler();
+
+    {
+        mover.setProfiler(profiler);
+    }
     private final Random random;
     private final SpatialIndex spatialIndex;
 
@@ -122,6 +133,10 @@ public final class GameWorld {
 
     public Random random() {
         return random;
+    }
+
+    public TickProfiler profiler() {
+        return profiler;
     }
 
     public int tick() {
@@ -649,29 +664,71 @@ public final class GameWorld {
             return;
         }
         tick++;
+        profiler.beginTick();
 
         // Remember where everything was before it moves, so the renderer can interpolate.
+        profiler.begin(TickProfiler.Phase.SNAPSHOT);
         for (int i = 0; i < units.size(); i++) {
             units.get(i).snapshotPosition();
         }
+        profiler.end(TickProfiler.Phase.SNAPSHOT);
+
+        profiler.begin(TickProfiler.Phase.INDEX);
         spatialIndex.rebuild(units);
+        profiler.end(TickProfiler.Phase.INDEX);
+
+        profiler.begin(TickProfiler.Phase.POWER);
         updatePower();
+        profiler.end(TickProfiler.Phase.POWER);
+
+        profiler.begin(TickProfiler.Phase.PRODUCTION);
         updateProduction();
+        profiler.end(TickProfiler.Phase.PRODUCTION);
+
+        profiler.begin(TickProfiler.Phase.SABOTAGE);
         updateSabotage();
+        profiler.end(TickProfiler.Phase.SABOTAGE);
+
+        profiler.begin(TickProfiler.Phase.STEALTH);
         updateStealth();
+        profiler.end(TickProfiler.Phase.STEALTH);
+
+        profiler.begin(TickProfiler.Phase.UNITS);
         updateUnits();
+        profiler.end(TickProfiler.Phase.UNITS);
+
+        profiler.begin(TickProfiler.Phase.BUILDINGS);
         updateBuildings();
+        profiler.end(TickProfiler.Phase.BUILDINGS);
+
+        profiler.begin(TickProfiler.Phase.REPAIRS);
         updateRepairs();
+        profiler.end(TickProfiler.Phase.REPAIRS);
+
+        profiler.begin(TickProfiler.Phase.SEPARATION);
         applySeparation();
+        profiler.end(TickProfiler.Phase.SEPARATION);
+
+        profiler.begin(TickProfiler.Phase.REMOVE_DEAD);
         removeDead();
+        profiler.end(TickProfiler.Phase.REMOVE_DEAD);
+
+        profiler.begin(TickProfiler.Phase.ORE);
         if (tick % ORE_REGROW_INTERVAL == 0) {
             map.regrowOre(ORE_REGROW_AMOUNT);
         }
+        profiler.end(TickProfiler.Phase.ORE);
+
+        profiler.begin(TickProfiler.Phase.FOG);
         // Also on tick 1: waiting for the first interval leaves the opening frames black.
         if (tick == 1 || tick % FOG_INTERVAL == 0) {
             updateFog();
         }
+        profiler.end(TickProfiler.Phase.FOG);
+
+        profiler.begin(TickProfiler.Phase.VICTORY);
         checkVictory();
+        profiler.end(TickProfiler.Phase.VICTORY);
     }
 
     private void updatePower() {
@@ -942,6 +999,7 @@ public final class GameWorld {
             queryScratch.clear();
             float reach = a.radius() * 2f + 1f;
             spatialIndex.query(a.x(), a.y(), reach, queryScratch);
+            profiler.countSeparationPairs(queryScratch.size());
             float pushX = 0f;
             float pushY = 0f;
             for (int j = 0; j < queryScratch.size(); j++) {

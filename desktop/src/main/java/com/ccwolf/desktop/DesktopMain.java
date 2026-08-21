@@ -86,6 +86,9 @@ public final class DesktopMain {
         BufferedImage buffer = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
         long slowest = 0L;
         long total = 0L;
+        // Discarded: the first frames measure the JIT compiling the renderer, not the renderer.
+        int warmup = Math.min(120, frames / 3);
+        int measured = 0;
 
         for (int i = 0; i < frames; i++) {
             session.update(1f / 60f);
@@ -101,13 +104,17 @@ public final class DesktopMain {
                 g.dispose();
             }
             long elapsed = System.nanoTime() - started;
-            total += elapsed;
-            slowest = Math.max(slowest, elapsed);
+            if (i >= warmup) {
+                total += elapsed;
+                slowest = Math.max(slowest, elapsed);
+                measured++;
+            }
         }
 
-        double meanMs = total / (double) frames / 1_000_000.0;
-        System.out.printf("Rendered %d frames: %.2f ms mean, %.2f ms worst (%.0f fps)%n",
-                frames, meanMs, slowest / 1_000_000.0, 1000.0 / meanMs);
+        double meanMs = total / (double) Math.max(1, measured) / 1_000_000.0;
+        System.out.printf("Rendered %d frames (%d measured, %d warm-up): "
+                        + "%.2f ms mean, %.2f ms worst (%.0f fps)%n",
+                frames, measured, warmup, meanMs, slowest / 1_000_000.0, 1000.0 / meanMs);
         System.out.println("Units alive: " + session.world().units().size()
                 + ", tick " + session.world().tick());
     }

@@ -1,5 +1,6 @@
 package com.ccwolf.core.path;
 
+import com.ccwolf.core.diag.TickProfiler;
 import com.ccwolf.core.entity.Unit;
 
 /**
@@ -20,8 +21,21 @@ public final class Mover {
 
     private final AStar aStar = new AStar();
 
+    /**
+     * Where searches get counted.
+     *
+     * <p>The count matters more than the clock: how many full searches a tick runs is a
+     * function of the seed alone, so it is a number a test can hold to a bound, where a
+     * millisecond reading is not.
+     */
+    private TickProfiler profiler;
+
     public AStar pathfinder() {
         return aStar;
+    }
+
+    public void setProfiler(TickProfiler profiler) {
+        this.profiler = profiler;
     }
 
     /**
@@ -43,6 +57,9 @@ public final class Mover {
             }
             unit.startRepathCooldown(REPATH_COOLDOWN);
             int[] path = aStar.findPath(grid, unit.tileX(), unit.tileY(), destX, destY);
+            if (profiler != null) {
+                profiler.countAstarSearch(aStar.nodesExpanded());
+            }
             if (path == null || path.length == 0) {
                 // Nowhere to go, or already standing on the best tile available.
                 unit.clearPath();
@@ -116,6 +133,9 @@ public final class Mover {
                 unit.noteBlocked();
                 if (unit.blockedTicks() > STUCK_TICKS) {
                     unit.clearPath();
+                    if (profiler != null) {
+                        profiler.countStuckRepath();
+                    }
                 }
             } else {
                 unit.clearBlocked();

@@ -1,6 +1,7 @@
 package com.ccwolf.core.harness;
 
 import com.ccwolf.core.ai.Difficulty;
+import com.ccwolf.core.diag.StateDigest;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.map.MapCatalog;
@@ -31,6 +32,9 @@ public final class SkirmishHarness {
         Difficulty difficulty = Difficulty.VETERAN;
         String mapName = MapCatalog.KREISAU_VALLEY;
         boolean quiet = false;
+        boolean profile = false;
+        boolean digest = false;
+        int benchUnits = 0;
 
         for (int i = 0; i < args.length - 1; i++) {
             String key = args[i];
@@ -43,18 +47,30 @@ public final class SkirmishHarness {
                 difficulty = Difficulty.valueOf(value.toUpperCase(java.util.Locale.ROOT));
             } else if ("--map".equals(key)) {
                 mapName = value;
+            } else if ("--bench".equals(key)) {
+                benchUnits = Integer.parseInt(value);
             }
         }
         for (int i = 0; i < args.length; i++) {
             if ("--quiet".equals(args[i])) {
                 quiet = true;
+            } else if ("--profile".equals(args[i])) {
+                profile = true;
+            } else if ("--digest".equals(args[i])) {
+                digest = true;
             }
+        }
+
+        if (benchUnits > 0) {
+            StressBench.run(mapName, benchUnits, maxTicks == 24000 ? 2000 : maxTicks, seed);
+            return;
         }
 
         TileMap map = MapCatalog.load(mapName);
         Skirmish skirmish = Skirmish.createAiVersusAi(map, difficulty, seed);
         GameWorld world = skirmish.world();
         world.setFogEnabled(false);
+        world.profiler().setEnabled(profile);
 
         System.out.println("Map: " + map.name() + " (" + map.width() + "x" + map.height() + ")");
         System.out.println("Difficulty: " + difficulty + "   seed: " + seed);
@@ -67,6 +83,10 @@ public final class SkirmishHarness {
             world.clearEvents();
             if (!quiet && world.tick() % reportEvery == 0) {
                 printRow(world);
+            }
+            if (digest && world.tick() % reportEvery == 0) {
+                System.out.println("  digest tick=" + world.tick() + " stable="
+                        + StateDigest.format(StateDigest.stable(world)));
             }
         }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000L;
@@ -85,6 +105,15 @@ public final class SkirmishHarness {
         System.out.println("Simulated " + world.tick() + " ticks in " + elapsedMs + " ms ("
                 + (elapsedMs == 0 ? "-" : String.valueOf(world.tick() * 1000L / elapsedMs))
                 + " ticks/sec, real time is " + GameWorld.TICKS_PER_SECOND + ")");
+        if (digest) {
+            System.out.println("Final digest: stable="
+                    + StateDigest.format(StateDigest.stable(world))
+                    + " exact=" + StateDigest.format(StateDigest.exact(world)));
+        }
+        if (profile) {
+            System.out.println();
+            System.out.println(world.profiler().report());
+        }
     }
 
     private static void printHeader() {
