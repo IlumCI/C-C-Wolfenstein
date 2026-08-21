@@ -71,6 +71,9 @@ public final class Hud {
     private int screenHeight;
     private float scale = 1f;
 
+    /** Height of the strip under the credits plate that carries the army's condition. */
+    private static final float STAMINA_BAND_DP = 12f;
+
     public Hud() {
         sprite.setSmoothScaling(false);
         sprite.setAntiAlias(false);
@@ -91,7 +94,10 @@ public final class Hud {
         minimap.setBounds(left + (width - minimapSize) / 2f, y, minimapSize);
         y += minimapSize + pad;
 
-        y += 22f * scale + pad; // resource strip
+        // Resource strip, plus a thin band under it for the army's condition. Adding the band
+        // without widening this pushed it under the tab row, where it drew behind the buttons
+        // with its label sliced in half.
+        y += 22f * scale + STAMINA_BAND_DP * scale + pad;
 
         float tabWidth = (width - pad * 5) / 4f;
         for (int i = 0; i < tabRects.length; i++) {
@@ -211,6 +217,34 @@ public final class Hud {
         }
     }
 
+    /**
+     * How worn the army is, under the credits plate.
+     *
+     * <p>The campaign-scale counterpart to a squad's morale, and the one number that says
+     * whether a long match is still even. Without it the player has no way of knowing that
+     * their army is the tired one.
+     */
+    private void drawStamina(Surface surface, WorldView view, float y) {
+        float pad = 6f * scale;
+        float labelWidth = 34f * scale;
+        float barLeft = left + pad + labelWidth;
+        float barRight = screenWidth - pad;
+        float top = y + 3f * scale;
+        float bottom = top + 5f * scale;
+
+        paint.setTextSize(9f * scale);
+        paint.setColor(Palette.HUD_TEXT_DIM);
+        paint.setAlign(TextAlign.LEFT);
+        surface.drawText("ARMY", left + pad, bottom, paint);
+
+        paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+        surface.fillRect(barLeft, top, barRight, bottom, paint);
+        float stamina = view.stamina();
+        paint.setColor(stamina > 0.6f ? Palette.HEALTH_GOOD
+                : (stamina > 0.3f ? Palette.HEALTH_FAIR : Palette.HEALTH_POOR));
+        surface.fillRect(barLeft, top, barLeft + (barRight - barLeft) * stamina, bottom, paint);
+    }
+
     private void drawMinimapFrame(Surface surface) {
         Rect bounds = minimap.bounds();
         paint.setStrokeWidth(2f * scale);
@@ -225,6 +259,7 @@ public final class Hud {
 
         rect.set(left + pad, y, screenWidth - pad, y + 22f * scale);
         drawPlate(surface, rect, false);
+        drawStamina(surface, view, y + 22f * scale);
 
         paint.setColor(Palette.GOLD);
         paint.setTextSize(15f * scale);
@@ -469,11 +504,25 @@ public final class Hud {
             surface.fillRect(px, pipY, px + pipSize, pipY + pipSize, paint);
         }
 
-        paint.setColor(Palette.HUD_TEXT_DIM);
+        // Morale, because a squad's nerve decides whether it holds and there is no way to
+        // read it off the men themselves.
+        float barLeft = left + 6f * scale;
+        float barRight = left + width - 12f * scale;
+        float barTop = y - 10f * scale;
+        float barBottom = barTop + 3f * scale;
+        paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+        surface.fillRect(barLeft, barTop, barRight, barBottom, paint);
+        paint.setColor(squad.isBroken() ? Palette.HEALTH_POOR
+                : (squad.morale() < 40 ? Palette.HEALTH_FAIR : Palette.HEALTH_GOOD));
+        surface.fillRect(barLeft, barTop,
+                barLeft + (barRight - barLeft) * squad.morale() / 100f, barBottom, paint);
+
+        paint.setColor(squad.isBroken() ? Palette.HEALTH_POOR : Palette.HUD_TEXT_DIM);
         paint.setTextSize(10f * scale);
-        String state = squad.strength() + "/" + squad.initialStrength()
-                + "   " + squad.formation().name();
-        if (squad.shortfall() > 0) {
+        String state = squad.isBroken() ? "BROKEN - falling back"
+                : squad.strength() + "/" + squad.initialStrength()
+                        + "   " + squad.formation().name();
+        if (!squad.isBroken() && squad.shortfall() > 0) {
             state += "   -" + squad.shortfall();
         }
         surface.drawText(ellipsize(surface, state, width - 12f * scale),

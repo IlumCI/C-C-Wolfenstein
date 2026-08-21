@@ -1,5 +1,6 @@
 package com.ccwolf.core.sim;
 
+import com.ccwolf.core.combat.Suppression;
 import com.ccwolf.core.combat.Weapon;
 import com.ccwolf.core.diag.TickProfiler;
 import com.ccwolf.core.economy.ProductionItem;
@@ -16,6 +17,7 @@ import com.ccwolf.core.map.TileMap;
 import com.ccwolf.core.order.HarvestOrder;
 import com.ccwolf.core.order.JoinSquadOrder;
 import com.ccwolf.core.order.MoveOrder;
+import com.ccwolf.core.order.RoutOrder;
 import com.ccwolf.core.order.Order;
 import com.ccwolf.core.order.SquadMemberOrder;
 import com.ccwolf.core.squad.Formation;
@@ -109,6 +111,56 @@ public final class GameWorld {
 
     /** How long a squad will wait for a straggler before marching without him. */
     private static final int MAX_COHESION_WAIT = 40;
+
+    /** Morale and stamina are judged once a second: they are meant to lag events, not track them. */
+    private static final int MORALE_INTERVAL = TICKS_PER_SECOND;
+
+    /**
+     * Morale lost per second at full casualties, scaled by the square of what is missing.
+     *
+     * <p>Set against two things pulling in opposite directions. Too low and a squad is wiped
+     * out long before its nerve gives way, which makes the whole system decorative. Too high
+     * and attacks dissolve before they land: at 34, twenty seeds gave eleven stalemates
+     * against eight at this value, because every assault broke on contact and the AI has no
+     * way yet to concentrate force or exploit a success.
+     *
+     * <p>That dependency is worth naming. The stalemate rate here is limited by how well the
+     * opponent fights, not by the combat model, and the operational AI is where it gets fixed.
+     */
+    private static final float MORALE_LOSS_WEIGHT = 22f;
+
+    /** Morale lost per second with the whole squad pinned. */
+    private static final float MORALE_PINNED_WEIGHT = 5f;
+
+    /** The share of full morale a squad wiped down to nothing could still recover to. */
+    private static final float WORN_MORALE_FLOOR = 0.45f;
+
+    /** Morale regained per second out of contact, before exhaustion is applied. */
+    private static final float MORALE_RECOVERY = 4f;
+
+    /** How long a fresh army's squads run for once broken. */
+    private static final int BREAK_TICKS = 12 * TICKS_PER_SECOND;
+
+    /** What a rallied squad comes back with. Shaken, not restored. */
+    private static final int RALLY_MORALE = 45;
+
+    /** An enemy this close keeps a broken squad running. */
+    private static final float RALLY_SAFE_RADIUS = 10f;
+
+    /** Ticks within which damage or firing still counts as being in contact. */
+    private static final int RECENT_CONTACT_TICKS = 3 * TICKS_PER_SECOND;
+
+    /** Ticks within which losing a man still counts as being in contact. */
+    private static final int RECENT_CASUALTY_TICKS = 8 * TICKS_PER_SECOND;
+
+    /** Fraction of an army that must be in contact before it starts tiring. */
+    private static final float STAMINA_CONTACT_THRESHOLD = 0.2f;
+
+    /** Stamina lost per second with the whole army engaged. */
+    private static final float STAMINA_DRAIN = 2f;
+
+    /** Stamina regained per second out of contact. */
+    private static final int STAMINA_RECOVERY = 1;
 
     /**
      * How fast the anchor walks, as a fraction of what its members can manage.
@@ -264,7 +316,11 @@ public final class GameWorld {
 
     /** Sends a squad somewhere, fighting on the way or not depending on the order. */
     public void orderSquadTo(int playerId, Squad squad, SquadOrder order, int tileX, int tileY) {
-        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+        // A broken squad takes no orders. That is the whole cost of losing one: you do not get
+        // to simply tell a formation that has run to stand and fight, any more than a real
+        // commander would. Getting them back into the line takes time you do not control.
+        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()
+                || squad.isBroken()) {
             return;
         }
         squad.setDestination(order, tileX, tileY);
@@ -272,7 +328,11 @@ public final class GameWorld {
     }
 
     public void orderSquadAttack(int playerId, Squad squad, int targetId) {
-        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+        // A broken squad takes no orders. That is the whole cost of losing one: you do not get
+        // to simply tell a formation that has run to stand and fight, any more than a real
+        // commander would. Getting them back into the line takes time you do not control.
+        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()
+                || squad.isBroken()) {
             return;
         }
         squad.setAttackTarget(targetId);
@@ -280,7 +340,11 @@ public final class GameWorld {
     }
 
     public void orderSquadHold(int playerId, Squad squad) {
-        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+        // A broken squad takes no orders. That is the whole cost of losing one: you do not get
+        // to simply tell a formation that has run to stand and fight, any more than a real
+        // commander would. Getting them back into the line takes time you do not control.
+        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()
+                || squad.isBroken()) {
             return;
         }
         squad.hold();
@@ -358,6 +422,21 @@ public final class GameWorld {
         return queued;
     }
 
+    /** Any structure this player owns, preferring the command post. Where broken men run to. */
+    public Building findAnyBuilding(int ownerId) {
+        Building post = findBuilding(ownerId, BuildingType.COMMAND_POST);
+        if (post != null) {
+            return post;
+        }
+        for (int i = 0; i < buildings.size(); i++) {
+            Building b = buildings.get(i);
+            if (b.ownerId() == ownerId && b.isAlive()) {
+                return b;
+            }
+        }
+        return null;
+    }
+
     public SquadRegistry squads() {
         return squads;
     }
@@ -378,8 +457,13 @@ public final class GameWorld {
             return;
         }
         Squad squad = squads.byId(unit.squadId());
-        if (squad != null && squad.removeMember(unit.id())) {
-            squads.remove(squad);
+        if (squad != null) {
+            if (!unit.isAlive()) {
+                squad.noteCasualty(tick);
+            }
+            if (squad.removeMember(unit.id())) {
+                squads.remove(squad);
+            }
         }
         unit.leaveSquad();
     }
@@ -997,6 +1081,12 @@ public final class GameWorld {
         updateStealth();
         profiler.end(TickProfiler.Phase.STEALTH);
 
+        recoverSuppression();
+        if (tick % MORALE_INTERVAL == 0) {
+            updateMorale();
+            updateStamina();
+        }
+
         profiler.begin(TickProfiler.Phase.SQUADS);
         updateSquads();
         profiler.end(TickProfiler.Phase.SQUADS);
@@ -1234,7 +1324,8 @@ public final class GameWorld {
         List<Squad> all = squads.all();
         for (int i = 0; i < all.size(); i++) {
             Squad squad = all.get(i);
-            if (squad.isWipedOut()) {
+            if (squad.isWipedOut() || squad.isBroken()) {
+                // Running men are not looking for targets and are not being led anywhere.
                 continue;
             }
             updateSquadTarget(squad);
@@ -1413,6 +1504,183 @@ public final class GameWorld {
             }
         }
         return false;
+    }
+
+    /**
+     * Nerve: squads break, run, and come back shaken.
+     *
+     * <p>Runs once a second rather than every tick. Morale is a slow quantity and the whole
+     * point of it is that it lags what is happening — a squad should not break because of one
+     * bad tick, and should not recover the instant the shooting stops.
+     */
+    private void updateMorale() {
+        List<Squad> all = squads.all();
+        for (int i = 0; i < all.size(); i++) {
+            Squad squad = all.get(i);
+            if (squad.isWipedOut()) {
+                continue;
+            }
+            if (squad.isBroken()) {
+                if (tick >= squad.rallyAtTick() && squadIsSafe(squad)) {
+                    squad.rally(RALLY_MORALE);
+                    events.add(GameEvent.at(GameEvent.Type.SQUAD_RALLIED, squad.ownerId(),
+                            squad.id(), squad.anchorX(), squad.anchorY()));
+                    refreshSquadOrders(squad);
+                }
+                continue;
+            }
+
+            squad.changeMorale(moraleChangeFor(squad));
+            if (squad.morale() <= 0) {
+                breakSquad(squad);
+            }
+        }
+    }
+
+    /**
+     * What a second of this squad's situation does to its nerve.
+     *
+     * <p>Losses hurt most, and hurt more the worse the squad already is - the last two men of a
+     * section are far closer to running than the first two were. Being pinned wears it down.
+     * Being out of contact rebuilds it, but slowly, and never past what the army as a whole can
+     * sustain.
+     */
+    private int moraleChangeFor(Squad squad) {
+        int suppressed = 0;
+        int alive = 0;
+        boolean inContact = false;
+        for (int slot = 0; slot < squad.slotCount(); slot++) {
+            int memberId = squad.memberAt(slot);
+            if (memberId < 0) {
+                continue;
+            }
+            Entity member = entity(memberId);
+            if (!(member instanceof Unit)) {
+                continue;
+            }
+            Unit unit = (Unit) member;
+            alive++;
+            if (unit.isProne()) {
+                suppressed++;
+            }
+            if (unit.wasDamagedWithin(tick, RECENT_CONTACT_TICKS)
+                    || tick - unit.lastFiredTick() < RECENT_CONTACT_TICKS) {
+                inContact = true;
+            }
+        }
+        // Losing men counts too, and has to be checked separately: the survivors of a squad
+        // being killed one shot at a time carry no mark of it at all.
+        if (tick - squad.lastCasualtyTick() < RECENT_CASUALTY_TICKS) {
+            inContact = true;
+        }
+        if (alive == 0) {
+            return 0;
+        }
+
+        if (inContact) {
+            // Losses tell hardest, and tell more the worse the squad already is: the last two
+            // men of a section are far closer to running than the first two were.
+            int lossPenalty = Math.round(MORALE_LOSS_WEIGHT * (1f - squad.strengthFraction())
+                    * (1f - squad.strengthFraction()));
+            int pinnedPenalty = Math.round(MORALE_PINNED_WEIGHT * suppressed / (float) alive);
+            if (lossPenalty + pinnedPenalty > 0) {
+                return -(lossPenalty + pinnedPenalty);
+            }
+        }
+
+        // Out of contact it recovers - but only up to what a squad this badly cut about can
+        // manage. Applying the casualty penalty unconditionally was wrong and was a slow
+        // catastrophe: a half-strength squad bled morale even asleep at home, so it broke,
+        // ran, rallied, and broke again forever. By the end of a match thirty-eight squads out
+        // of thirty-nine were routing and no attack ever landed.
+        int ceiling = Math.round(100f * (WORN_MORALE_FLOOR
+                + (1f - WORN_MORALE_FLOOR) * squad.strengthFraction()));
+        if (squad.morale() >= ceiling) {
+            return 0;
+        }
+        float recovery = MORALE_RECOVERY * (1f - player(squad.ownerId()).exhaustion());
+        return Math.max(1, Math.round(recovery));
+    }
+
+    private void breakSquad(Squad squad) {
+        // A tired army stays broken longer.
+        float exhaustion = player(squad.ownerId()).exhaustion();
+        int ticks = Math.round(BREAK_TICKS * (1f + exhaustion));
+        squad.breakAt(tick + ticks);
+        events.add(GameEvent.at(GameEvent.Type.SQUAD_BROKEN, squad.ownerId(), squad.id(),
+                squad.anchorX(), squad.anchorY()));
+
+        for (int slot = 0; slot < squad.slotCount(); slot++) {
+            int memberId = squad.memberAt(slot);
+            if (memberId < 0) {
+                continue;
+            }
+            Entity member = entity(memberId);
+            if (member instanceof Unit) {
+                ((Unit) member).setOrder(
+                        RoutOrder.towardsHome(this, (Unit) member, squad.rallyAtTick()));
+            }
+        }
+    }
+
+    /** True once nobody hostile is close enough to keep a broken squad running. */
+    private boolean squadIsSafe(Squad squad) {
+        return findNearestEnemy(squad.ownerId(), squad.anchorX(), squad.anchorY(),
+                RALLY_SAFE_RADIUS, false) == null;
+    }
+
+    /**
+     * How much fight each army has left.
+     *
+     * <p>Drains with casualties and with how much of the army is in contact; recovers in the
+     * quiet. What it buys is the difference between a long match ending and a long match going
+     * on forever: two evenly matched sides do not stay evenly matched, because the one that has
+     * been fighting harder gets tired first.
+     */
+    private void updateStamina() {
+        for (int p = 0; p < players.size(); p++) {
+            Player player = players.get(p);
+            if (player.isDefeated()) {
+                continue;
+            }
+            int engaged = 0;
+            int mine = 0;
+            for (int i = 0; i < units.size(); i++) {
+                Unit u = units.get(i);
+                if (u.ownerId() != player.id() || !u.isAlive() || u.type().isHarvester()) {
+                    continue;
+                }
+                mine++;
+                // Firing counts as being in contact. Waiting for damage was too narrow a test:
+                // men who are shot usually die rather than lingering as evidence, so an army
+                // could fight all match and never register as engaged - stamina sat at a
+                // hundred from the first tick to the last.
+                if (u.suppression() > 0 || u.wasDamagedWithin(tick, RECENT_CONTACT_TICKS)
+                        || tick - u.lastFiredTick() < RECENT_CONTACT_TICKS) {
+                    engaged++;
+                }
+            }
+            if (mine == 0) {
+                player.changeStamina(STAMINA_RECOVERY);
+                continue;
+            }
+            float contact = engaged / (float) mine;
+            if (contact > STAMINA_CONTACT_THRESHOLD) {
+                player.changeStamina(-Math.max(1, Math.round(STAMINA_DRAIN * contact)));
+            } else {
+                player.changeStamina(STAMINA_RECOVERY);
+            }
+        }
+    }
+
+    /** Everyone sheds a little of what has been shot at them, faster with cover to use. */
+    private void recoverSuppression() {
+        for (int i = 0; i < units.size(); i++) {
+            Unit u = units.get(i);
+            if (u.isAlive() && u.suppression() > 0) {
+                u.recoverSuppression(map.cover(u.tileX(), u.tileY()) > 0);
+            }
+        }
     }
 
     private void updateUnits() {
@@ -1787,8 +2055,9 @@ public final class GameWorld {
             return false;
         }
 
-        int damage = weapon.damageAgainst(target.armor());
+        int damage = resolveDamage(weapon, target);
         boolean killed = target.applyDamage(damage, attacker.id(), tick);
+        suppress(target, Suppression.perShot(weapon.weaponClass()));
         if (weapon.hasBlast()) {
             applyBlast(attacker, target, weapon);
         }
@@ -1808,6 +2077,37 @@ public final class GameWorld {
                     kindOf(target)));
         }
         return true;
+    }
+
+    /**
+     * What a shot actually takes off, once the ground and the target's posture are accounted for.
+     *
+     * <p>The single place damage is decided, which is why cover and being prone can be added
+     * here rather than in every weapon. Vehicles ignore infantry cover: a wall a rifleman
+     * shelters behind is not cover for a tank, it is scenery.
+     */
+    private int resolveDamage(Weapon weapon, Entity target) {
+        int base = weapon.damageAgainst(target.armor());
+        if (target.isBuilding()) {
+            return base;
+        }
+        Unit unit = (Unit) target;
+        float multiplier = 1f;
+        if (!unit.type().isVehicle()) {
+            multiplier *= Suppression.damageInCover(weapon.weaponClass(),
+                    map.cover(unit.tileX(), unit.tileY()), TileMap.MAX_COVER);
+            if (unit.isProne()) {
+                multiplier *= Suppression.damageWhenProne();
+            }
+        }
+        return Math.max(1, Math.round(base * multiplier));
+    }
+
+    /** Rattles a target. Structures and vehicles do not flinch; the men inside are not modelled. */
+    private void suppress(Entity target, int amount) {
+        if (target != null && !target.isBuilding() && !((Unit) target).type().isVehicle()) {
+            ((Unit) target).addSuppression(amount);
+        }
     }
 
     /**
@@ -1852,8 +2152,10 @@ public final class GameWorld {
             return;
         }
         float falloff = 1f - 0.75f * Math.max(0f, distance) / radius;
-        int damage = Math.max(1,
-                Math.round(weapon.damageAgainst(victim.armor()) * falloff));
+        int damage = Math.max(1, Math.round(resolveDamage(weapon, victim) * falloff));
+        // The beaten zone is wider than the killing zone: men near a blast keep their heads
+        // down whether or not anything reached them.
+        suppress(victim, Math.round(Suppression.perShot(weapon.weaponClass()) * falloff));
         boolean killed = victim.applyDamage(damage, attacker.id(), tick);
         events.add(GameEvent.at(GameEvent.Type.UNDER_ATTACK, victim.ownerId(), victim.id(),
                 victim.x(), victim.y()));

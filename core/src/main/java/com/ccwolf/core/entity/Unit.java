@@ -1,6 +1,7 @@
 package com.ccwolf.core.entity;
 
 import com.ccwolf.core.combat.ArmorClass;
+import com.ccwolf.core.combat.Suppression;
 import com.ccwolf.core.combat.Weapon;
 import com.ccwolf.core.order.Order;
 import java.util.ArrayDeque;
@@ -55,6 +56,14 @@ public final class Unit extends Entity {
 
     /** Position in the squad's formation. Kept when a neighbour dies, so the line thins. */
     private int squadSlot = -1;
+
+    /**
+     * How badly this man is being shot at, 0 to {@link Suppression#MAX}.
+     *
+     * <p>Climbs with incoming fire and bleeds off every tick, faster with something to get
+     * behind. Past one threshold he goes to ground; past another he stops advancing at all.
+     */
+    private int suppression;
 
     private float separationPushX;
     private float separationPushY;
@@ -238,9 +247,26 @@ public final class Unit extends Entity {
         return weaponCooldown <= 0;
     }
 
+    /**
+     * How fast this man can move right now, as a fraction of his type's speed.
+     *
+     * <p>Read by the mover, which is the one place speed is turned into distance — so anything
+     * that should slow a unit down belongs here rather than scattered through the orders.
+     */
+    public float moveSpeedFactor() {
+        return Suppression.speedFactor(suppression);
+    }
+
+    /** Makes the weapon ready again. For tests that need to fire on demand. */
+    public void clearWeaponCooldown() {
+        weaponCooldown = 0;
+    }
+
     public void startWeaponCooldown() {
         Weapon w = weapon();
-        weaponCooldown = w == null ? 0 : w.cooldownTicks();
+        // A man with his face in the dirt shoots, but not briskly.
+        weaponCooldown = w == null ? 0
+                : Math.round(w.cooldownTicks() * Suppression.cooldownFactor(suppression));
     }
 
     /** Called when the unit fires, so concealment knows to break. */
@@ -360,6 +386,30 @@ public final class Unit extends Entity {
     public void leaveSquad() {
         this.squadId = -1;
         this.squadSlot = -1;
+    }
+
+    public int suppression() {
+        return suppression;
+    }
+
+    public void addSuppression(int amount) {
+        suppression = Math.min(Suppression.MAX, suppression + Math.max(0, amount));
+    }
+
+    /** Sheds suppression for one tick. Cover is what makes it bleed off quickly. */
+    public void recoverSuppression(boolean inCover) {
+        suppression = Math.max(0,
+                suppression - (inCover ? Suppression.RECOVERY_IN_COVER : Suppression.RECOVERY));
+    }
+
+    /** Gone to ground: slower, harder to hit, slower to shoot back. */
+    public boolean isProne() {
+        return suppression >= Suppression.PRONE;
+    }
+
+    /** Cannot advance at all. Still shoots, which is what makes suppressing fire worth using. */
+    public boolean isPinned() {
+        return suppression >= Suppression.PINNED;
     }
 
     public void addSeparationPush(float dx, float dy) {

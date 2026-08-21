@@ -155,6 +155,11 @@ public final class WorldView {
         selectedSquadIds.addAll(squadIds);
     }
 
+    /** How much fight this player's army has left, 0 when spent and 1 when fresh. */
+    public float stamina() {
+        return world.player(playerId).stamina() / 100f;
+    }
+
     public boolean isDiscovered(Entity e) {
         if (e == null) {
             return false;

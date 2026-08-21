@@ -78,9 +78,30 @@ public final class Squad {
     /** The one target the whole squad is working on, or -1. */
     private int engagedTargetId = -1;
 
-    /** Filled in by the combat model in a later step; carried here so it lives with the squad. */
+    /**
+     * The squad's nerve, 0 to 100.
+     *
+     * <p>Held by the squad rather than by the men, because breaking is something a body of
+     * troops does together. One frightened rifleman is a detail; a section that has stopped
+     * believing it can hold is a hole in the line.
+     */
     private int morale = 100;
-    private int suppression;
+
+    /** True while the squad is running. Set by the simulation, cleared when it rallies. */
+    private boolean broken;
+
+    /** Tick at which a broken squad may pull itself together. */
+    private int rallyAtTick;
+
+    /**
+     * When this squad last lost somebody.
+     *
+     * <p>Needed because losing men is the plainest form of being in contact, and the survivors
+     * may show no sign of it: a sniper that kills with one shot leaves nobody wounded and
+     * nobody who has fired back, so a squad being picked apart from cover it cannot see looked
+     * to the morale rules exactly like a squad at rest.
+     */
+    private int lastCasualtyTick = -1000;
 
     public Squad(int id, int ownerId, UnitType type, int[] memberIds, float anchorX,
             float anchorY) {
@@ -145,6 +166,14 @@ public final class Squad {
      *
      * @return true if that emptied the squad
      */
+    public int lastCasualtyTick() {
+        return lastCasualtyTick;
+    }
+
+    public void noteCasualty(int tick) {
+        this.lastCasualtyTick = tick;
+    }
+
     public boolean removeMember(int unitId) {
         for (int slot = 0; slot < memberIds.length; slot++) {
             if (memberIds[slot] == unitId) {
@@ -372,12 +401,33 @@ public final class Squad {
         this.morale = Math.max(0, Math.min(100, value));
     }
 
-    public int suppression() {
-        return suppression;
+    public void changeMorale(int delta) {
+        setMorale(morale + delta);
     }
 
-    public void setSuppression(int value) {
-        this.suppression = Math.max(0, value);
+    public boolean isBroken() {
+        return broken;
+    }
+
+    public int rallyAtTick() {
+        return rallyAtTick;
+    }
+
+    /** The squad's nerve has gone. It runs until at least {@code rallyAtTick}. */
+    public void breakAt(int rallyAtTick) {
+        this.broken = true;
+        this.rallyAtTick = rallyAtTick;
+        this.morale = 0;
+        // A broken squad has no orders of its own; running is the order.
+        this.order = SquadOrder.HOLD;
+        clearPath();
+        this.engagedTargetId = -1;
+    }
+
+    /** Back in hand, but shaken: it rallies well short of full confidence. */
+    public void rally(int startingMorale) {
+        this.broken = false;
+        this.morale = Math.max(0, Math.min(100, startingMorale));
     }
 
     /**

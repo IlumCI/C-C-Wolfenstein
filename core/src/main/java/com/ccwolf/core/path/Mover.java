@@ -139,7 +139,13 @@ public final class Mover {
         }
 
         float terrainCost = Math.max(0.1f, grid.moveCost(wx, wy));
-        float speed = unit.type().speed() / terrainCost;
+        // Suppression is applied here rather than in the orders, because this is the one place
+        // a unit's speed becomes distance travelled. A pinned man's factor is zero.
+        float speed = unit.type().speed() * unit.moveSpeedFactor() / terrainCost;
+        if (speed <= 0f) {
+            unit.setVelocity(0f, 0f);
+            return false;
+        }
         float step = speed * dt;
 
         if (step >= dist) {
@@ -258,7 +264,11 @@ public final class Mover {
         }
 
         float terrainCost = Math.max(0.1f, grid.moveCost(unit.tileX(), unit.tileY()));
-        float speed = unit.type().speed() / terrainCost;
+        float speed = unit.type().speed() * unit.moveSpeedFactor() / terrainCost;
+        if (speed <= 0f) {
+            unit.setVelocity(0f, 0f);
+            return false;
+        }
         // Ease off close in, so a member settling into its slot does not jitter across it.
         if (dist < SLOT_EASE_DISTANCE) {
             speed *= Math.max(0.25f, dist / SLOT_EASE_DISTANCE);

@@ -19,6 +19,18 @@ public final class TileMap {
     private final int height;
     private final Terrain[] tiles;
     private final int[] ore;
+
+    /**
+     * How much protection each tile offers infantry standing in it, 0 to {@link #MAX_COVER}.
+     *
+     * <p>A third parallel array alongside terrain and ore, for the same reason those are flat
+     * arrays: there is no Tile object to hang a field on, and nothing outside this class
+     * indexes into them.
+     *
+     * <p>Seeded from terrain and then mutable, because it is not only a property of the ground.
+     * Men dig in and raise it; shellfire flattens it back down.
+     */
+    private final byte[] cover;
     private final String name;
     private final List<int[]> spawnPoints;
 
@@ -29,10 +41,12 @@ public final class TileMap {
         this.tiles = tiles;
         this.ore = new int[tiles.length];
         this.spawnPoints = Collections.unmodifiableList(new ArrayList<int[]>(spawnPoints));
+        this.cover = new byte[tiles.length];
         for (int i = 0; i < tiles.length; i++) {
             if (tiles[i] == Terrain.ORE) {
                 ore[i] = ORE_PER_TILE;
             }
+            cover[i] = (byte) tiles[i].baseCover();
         }
     }
 
@@ -75,6 +89,36 @@ public final class TileMap {
     }
 
     /** Uranium remaining in this tile, 0 if it was never ore or has been mined out. */
+    /** The most protection a tile can offer: a proper trench. */
+    public static final int MAX_COVER = 4;
+
+    /**
+     * Protection for anything standing on a tile, 0 to {@link #MAX_COVER}.
+     *
+     * <p>Off the map reads as no cover, matching how {@code terrain} reports a wall — a query
+     * about somewhere that does not exist should answer harmlessly rather than throw.
+     */
+    public int cover(int x, int y) {
+        return contains(x, y) ? cover[y * width + x] : 0;
+    }
+
+    public void setCover(int x, int y, int value) {
+        if (contains(x, y)) {
+            cover[y * width + x] = (byte) Math.max(0, Math.min(MAX_COVER, value));
+        }
+    }
+
+    /** Raises or lowers a tile's cover, clamped. Digging in adds; shellfire takes away. */
+    public void addCover(int x, int y, int delta) {
+        if (contains(x, y)) {
+            setCover(x, y, cover(x, y) + delta);
+        }
+    }
+
+    private boolean contains(int x, int y) {
+        return x >= 0 && y >= 0 && x < width && y < height;
+    }
+
     public int ore(int x, int y) {
         return inBounds(x, y) ? ore[y * width + x] : 0;
     }

@@ -37,6 +37,20 @@ public final class Player {
 
     private int creditsEarned;
     private int creditsSpentOnRepairs;
+    /**
+     * How much fight this army has left in it, 0 to 100, starting fresh.
+     *
+     * <p>The campaign-scale counterpart to a squad's morale. Squad morale decides a firefight;
+     * this decides a forty-minute match. It drains with casualties and with how much of the
+     * army is in contact, and recovers in the lulls — so a side that has been fighting hard for
+     * twenty minutes breaks sooner and rallies slower than one that has been husbanding itself,
+     * even if both have the same number of men standing.
+     *
+     * <p>This is what stops a long game being an endless even grind: eventually one side is
+     * tired and the other is not.
+     */
+    private int stamina = 100;
+
     private int unitsBuilt;
     private int unitsLost;
     private int buildingsLost;
@@ -177,6 +191,19 @@ public final class Player {
 
     public int creditsEarned() {
         return creditsEarned;
+    }
+
+    public int stamina() {
+        return stamina;
+    }
+
+    public void changeStamina(int delta) {
+        stamina = Math.max(0, Math.min(100, stamina + delta));
+    }
+
+    /** How worn down this army is, 0 when fresh and 1 when spent. */
+    public float exhaustion() {
+        return 1f - stamina / 100f;
     }
 
     public int unitsBuilt() {

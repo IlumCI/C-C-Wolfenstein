@@ -135,11 +135,15 @@ public class SquadHudTest {
         session.camera().centerOn(member.x(), member.y());
         session.update(0.05f);
 
+        // Shaken but not broken, so the morale bar has something to say.
+        squad.setMorale(38);
+
         Frame frame = new Frame(WIDTH, HEIGHT);
         frame.surface().clear(0xFF0B0C0A);
         renderer.draw(frame.surface(), session);
         hud.draw(frame.surface(), session, 0L);
         frame.save("squad-selected.png");
+        Frame.write(frame.zoom(960, 180, 320, 120, 3), "army-stamina-zoom.png");
         Frame.write(frame.zoom(960, 520, 320, 200, 3), "squad-card-zoom.png");
 
         assertEquals(6, squad.strength());

@@ -52,6 +52,24 @@ public enum Terrain {
     }
 
     /** Whether this terrain blocks line of sight as well as movement. */
+    /**
+     * Protection this ground offers before anybody digs.
+     *
+     * <p>Rubble is the only terrain worth anything: broken masonry is what infantry get behind.
+     * The javadoc on RUBBLE promised this long before anything read it.
+     */
+    public int baseCover() {
+        switch (this) {
+            case RUBBLE:
+                return 2;
+            case ORE:
+                // Waist-high crystal: something, but not much.
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
     public boolean blocksSight() {
         return this == WALL;
     }

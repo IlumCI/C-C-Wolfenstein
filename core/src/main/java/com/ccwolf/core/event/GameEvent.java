@@ -27,6 +27,8 @@ public final class GameEvent {
         /** The last member of a squad was killed. */
 
         SQUAD_WIPED,
+        /** A broken squad has pulled itself together. */
+        SQUAD_RALLIED,
         BUILDING_STARTED,
         BUILDING_COMPLETED,
         BUILDING_SOLD,
