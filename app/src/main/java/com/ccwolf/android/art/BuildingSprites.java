@@ -4,15 +4,15 @@ import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Faction;
 
 /**
- * Pixel-art recipes for structures.
+ * Pixel-art recipes for structures, authored at 32 pixels to the tile — so a Command Post is a
+ * 96x96 sprite with room for stepped concrete mass, a guard tower, an entrance and a roof full
+ * of vents and cable runs.
  *
- * <p>Everything is drawn as a roof seen from above with the south wall face showing beneath
- * it, plus a sliver of the east face. That one convention is what makes a structure read as a
- * building with height rather than a coloured rectangle lying on the grass — the first pass
- * here drew flat roof slabs and they looked like lawns.
- *
- * <p>Both sides build the same things out of what they have: the Regime pours concrete and
- * hangs banners, the Resistance nails together timber, corrugated iron and sandbags.
+ * <p>Each structure is built from its own architecture rather than a shared box: they share a
+ * lighting convention (north-west highlight, south wall face, south-east shadow) and nothing
+ * else. The two sides build the same things out of what they have — the Regime pours concrete
+ * and hangs banners, the Resistance nails together timber, corrugated iron and sandbags — so a
+ * base reads as theirs or yours from across the valley.
  */
 public final class BuildingSprites {
 
@@ -21,11 +21,7 @@ public final class BuildingSprites {
     /** 0 intact, 1 scarred, 2 burning. */
     public static final int DAMAGE_STATES = 3;
 
-    private static final int SHADOW = 0x55000000;
-    private static final int OUTLINE = 0xFF101109;
-
-    /** How much of the sprite's height is given over to the south wall face. */
-    private static final int WALL_FACE = 7;
+    private static final int OUTLINE = 0xFF0C0D09;
 
     private BuildingSprites() {
     }
@@ -36,8 +32,7 @@ public final class BuildingSprites {
         PixelCanvas c = new PixelCanvas(w, h);
         boolean regime = faction == Faction.REGIME;
 
-        // Ground shadow, thrown south-east, before anything is built on top of it.
-        c.ellipse(w / 2 + 2, h - 4, w / 2 - 2, 5, SHADOW);
+        groundPad(c, w, h, regime);
 
         switch (type) {
             case COMMAND_POST:
@@ -66,10 +61,8 @@ public final class BuildingSprites {
         return c;
     }
 
-    /**
-     * Regime construction is poured concrete under black roofing — brutalist mass with one
-     * red accent. Resistance construction is timber and scavenged iron.
-     */
+    // --- shared materials and conventions --------------------------------------------------
+
     private static int[] walls(boolean regime) {
         return regime ? WolfPalette.CONCRETE : WolfPalette.LEATHER;
     }
@@ -78,331 +71,542 @@ public final class BuildingSprites {
         return regime ? WolfPalette.NIGHT : WolfPalette.OLIVE;
     }
 
-    /**
-     * A red band along a roof edge. Every Regime structure gets one: at a glance across the
-     * valley, red-on-black is the enemy and olive-on-brown is you.
-     */
-    private static void redStripe(PixelCanvas c, int x, int y, int w) {
-        c.hLine(x, x + w - 1, y, WolfPalette.shade(WolfPalette.BLOOD, 1));
-        c.hLine(x, x + w - 1, y + 1, WolfPalette.shade(WolfPalette.BLOOD, 2));
+    /** Hardstanding under the structure: gravel for the Regime, churned mud for the others. */
+    private static void groundPad(PixelCanvas c, int w, int h, boolean regime) {
+        c.groundShadow(w / 2 + 3, h - 5, w / 2 - 2, 6);
+        int[] ground = regime ? WolfPalette.CONCRETE : WolfPalette.DIRT;
+        c.ellipse(w / 2, h - 8, w / 2 - 3, h / 4, WolfPalette.shade(ground, 3));
+        c.speckle(4, h / 2, w - 8, h / 2 - 2, WolfPalette.shade(ground, 2), 41, 7);
+        c.speckle(4, h / 2, w - 8, h / 2 - 2, WolfPalette.shade(ground, 4), 17, 11);
     }
 
     /**
-     * The core shape: a roof with a wall face under it.
-     *
-     * @param x left edge
-     * @param y top edge
-     * @param w width
-     * @param h total height including the wall face
-     * @return the y coordinate where the wall face starts, for placing doors and windows
+     * A wall face seen from the south: the material, its courses, and a shadow line where it
+     * meets the ground. This is what gives every structure height.
      */
-    private static int block(PixelCanvas c, int x, int y, int w, int h, boolean regime,
-                             boolean pitched) {
+    private static void wallFace(PixelCanvas c, int x, int y, int w, int h, boolean regime) {
         int[] wall = walls(regime);
-        int[] roof = roofs(regime);
-        int roofH = h - WALL_FACE;
-        int wallTop = y + roofH;
-
-        // Roof.
-        if (pitched) {
-            // Two planes meeting at a ridge, the north one catching the light.
-            int half = roofH / 2;
-            c.rect(x, y, w, half, WolfPalette.shade(roof, 1));
-            c.rect(x, y + half, w, roofH - half, WolfPalette.shade(roof, 3));
-            c.hLine(x, x + w - 1, y + half, WolfPalette.shade(roof, 0));
-            c.hLine(x, x + w - 1, y + half - 1, WolfPalette.shade(roof, 0));
-        } else {
-            c.rampVertical(x, y, w, roofH, roof, 1, 3);
-        }
-        // Roof edging: light along the north and west, dark where it meets the wall.
-        c.hLine(x, x + w - 1, y, WolfPalette.shade(roof, 0));
-        c.vLine(x, y, wallTop - 1, WolfPalette.shade(roof, 0));
-        c.vLine(x + w - 1, y, wallTop - 1, WolfPalette.shade(roof, 4));
-        c.hLine(x, x + w - 1, wallTop - 1, WolfPalette.shade(roof, 4));
-
-        // South wall face, in the building material.
-        c.rampVertical(x, wallTop, w, WALL_FACE, wall, 1, 2);
-        c.hLine(x, x + w - 1, wallTop, WolfPalette.shade(wall, 0));
+        c.rampVertical(x, y, w, h, wall, 1, 3);
+        c.hLine(x, x + w - 1, y, WolfPalette.shade(wall, 0));
         c.hLine(x, x + w - 1, y + h - 1, WolfPalette.shade(wall, 4));
 
         if (regime) {
-            // Block courses across the wall face.
-            for (int bx = x + 1; bx < x + w - 1; bx += 7) {
-                c.vLine(bx, wallTop + 1, y + h - 2, WolfPalette.shade(wall, 3));
+            // Shuttering marks: concrete poured in lifts, with tie holes.
+            for (int by = y + 4; by < y + h - 2; by += 6) {
+                c.hLine(x + 1, x + w - 2, by, WolfPalette.shade(wall, 3));
             }
-            c.hLine(x, x + w - 1, wallTop + 3, WolfPalette.shade(wall, 3));
+            for (int bx = x + 5; bx < x + w - 3; bx += 11) {
+                c.px(bx, y + 3, WolfPalette.shade(wall, 4));
+                c.px(bx, y + 9, WolfPalette.shade(wall, 4));
+            }
         } else {
-            // Plank ends and a nailed batten.
-            for (int bx = x + 2; bx < x + w - 1; bx += 3) {
-                c.vLine(bx, wallTop + 1, y + h - 2, WolfPalette.shade(wall, 3));
+            // Vertical planking with a nailed batten and the odd knot.
+            for (int bx = x + 2; bx < x + w - 1; bx += 4) {
+                c.vLine(bx, y + 1, y + h - 2, WolfPalette.shade(wall, 3));
+                c.vLine(bx + 1, y + 1, y + h - 2, WolfPalette.shade(wall, 1));
             }
-            c.hLine(x + 1, x + w - 2, wallTop + 2, WolfPalette.shade(wall, 1));
+            c.hLine(x + 1, x + w - 2, y + 3, WolfPalette.shade(wall, 0));
+            c.speckle(x + 1, y + 1, w - 2, h - 2, WolfPalette.shade(wall, 4), 23, 29);
         }
-
-        // East face sliver, so the building has a second visible side.
-        c.rect(x + w - 3, y + 2, 3, roofH - 2, WolfPalette.shade(wall, 3));
-        c.vLine(x + w - 3, y + 2, wallTop - 1, WolfPalette.shade(wall, 2));
-
-        return wallTop;
     }
 
-    /** A door punched into a wall face, with a step and a lintel. */
-    private static void door(PixelCanvas c, int cx, int wallTop, int height, boolean regime) {
-        int w = 7;
-        int x = cx - w / 2;
-        c.rect(x, wallTop + 1, w, height, 0xFF14140F);
-        c.hLine(x - 1, x + w, wallTop, WolfPalette.shade(walls(regime), 0));
-        c.vLine(x - 1, wallTop + 1, wallTop + height, WolfPalette.shade(walls(regime), 4));
-        c.vLine(x + w, wallTop + 1, wallTop + height, WolfPalette.shade(walls(regime), 4));
-        c.hLine(x - 1, x + w, wallTop + height + 1, WolfPalette.shade(WolfPalette.DIRT, 2));
+    /** A flat roof with a parapet lip, lit from the north-west. */
+    private static void flatRoof(PixelCanvas c, int x, int y, int w, int h, boolean regime) {
+        int[] roof = roofs(regime);
+        c.rampVertical(x, y, w, h, roof, 1, 2);
+        c.hLine(x, x + w - 1, y, WolfPalette.shade(roof, 0));
+        c.vLine(x, y, y + h - 1, WolfPalette.shade(roof, 0));
+        c.hLine(x, x + w - 1, y + h - 1, WolfPalette.shade(roof, 4));
+        c.vLine(x + w - 1, y, y + h - 1, WolfPalette.shade(roof, 4));
+        c.speckle(x + 1, y + 1, w - 2, h - 2, WolfPalette.shade(roof, 3), 13, 9);
     }
 
-    /** Lit window slits along a wall face. */
-    private static void windows(PixelCanvas c, int x, int wallTop, int count, int spacing) {
+    /** A doorway with a lintel, a dark interior and a worn step. */
+    private static void doorway(PixelCanvas c, int cx, int y, int width, int height,
+                                boolean regime) {
+        int x = cx - width / 2;
+        c.rect(x, y, width, height, 0xFF101008);
+        c.hLine(x - 1, x + width, y - 1, WolfPalette.shade(walls(regime), 0));
+        c.vLine(x - 1, y, y + height - 1, WolfPalette.shade(walls(regime), 4));
+        c.vLine(x + width, y, y + height - 1, WolfPalette.shade(walls(regime), 4));
+        // A lamp over the door and a step below it.
+        c.px(cx, y - 2, WolfPalette.shade(WolfPalette.FIRE, 1));
+        c.hLine(x - 2, x + width + 1, y + height, WolfPalette.shade(WolfPalette.CONCRETE, 2));
+        c.hLine(x - 2, x + width + 1, y + height + 1, WolfPalette.shade(WolfPalette.CONCRETE, 4));
+    }
+
+    /** Lit slit windows along a wall face. */
+    private static void slits(PixelCanvas c, int x, int y, int count, int spacing) {
         for (int i = 0; i < count; i++) {
             int wx = x + i * spacing;
-            c.rect(wx, wallTop + 2, 3, 2, 0xFF14140F);
-            c.px(wx + 1, wallTop + 2, WolfPalette.shade(WolfPalette.FIRE, 2));
+            c.rect(wx, y, 4, 3, 0xFF101008);
+            c.hLine(wx, wx + 3, y - 1, WolfPalette.shade(WolfPalette.CONCRETE, 1));
+            c.px(wx + 1, y + 1, WolfPalette.shade(WolfPalette.FIRE, 2));
         }
     }
 
+    /** Sandbag revetment: each bag drawn, stacked in two courses. */
     private static void sandbags(PixelCanvas c, int x, int y, int w) {
         int[] bag = WolfPalette.BONE;
-        for (int bx = x; bx < x + w - 3; bx += 5) {
-            c.ellipse(bx + 2, y + 2, 3, 2, WolfPalette.shade(bag, 3));
-            c.hLine(bx, bx + 4, y, WolfPalette.shade(bag, 2));
-            c.hLine(bx, bx + 4, y + 3, WolfPalette.shade(bag, 4));
+        for (int row = 0; row < 2; row++) {
+            int offset = (row % 2) * 3;
+            for (int bx = x + offset; bx < x + w - 5; bx += 7) {
+                int by = y + row * 4;
+                c.ellipse(bx + 3, by + 2, 4, 2, WolfPalette.shade(bag, 3));
+                c.hLine(bx, bx + 6, by, WolfPalette.shade(bag, 2));
+                c.hLine(bx, bx + 6, by + 3, WolfPalette.shade(bag, 4));
+            }
         }
     }
 
-    /** Regime banner: blood red, brass-topped pole, original skull mark. No Nazi insignia. */
+    /** Regime banner: blood red, brass-topped pole, an original skull mark. */
     private static void banner(PixelCanvas c, int x, int y, int height) {
-        c.vLine(x, y - 3, y + height, WolfPalette.shade(WolfPalette.BRASS, 2));
-        c.px(x, y - 4, WolfPalette.shade(WolfPalette.BRASS, 0));
-        c.rect(x + 1, y, 7, height, WolfPalette.shade(WolfPalette.BLOOD, 1));
-        c.vLine(x + 1, y, y + height, WolfPalette.shade(WolfPalette.BLOOD, 0));
-        c.vLine(x + 7, y, y + height, WolfPalette.shade(WolfPalette.BLOOD, 3));
-        c.hLine(x + 1, x + 7, y + height, WolfPalette.shade(WolfPalette.BLOOD, 3));
+        c.vLine(x, y - 5, y + height, WolfPalette.shade(WolfPalette.BRASS, 2));
+        c.px(x, y - 6, WolfPalette.shade(WolfPalette.BRASS, 0));
+        c.px(x, y - 5, WolfPalette.shade(WolfPalette.BRASS, 0));
 
-        int cx = x + 4;
-        int cy = y + height / 2;
-        c.ellipse(cx, cy - 1, 2, 2, WolfPalette.shade(WolfPalette.BONE, 0));
-        c.px(cx - 1, cy - 1, WolfPalette.shade(WolfPalette.BLOOD, 4));
-        c.px(cx + 1, cy - 1, WolfPalette.shade(WolfPalette.BLOOD, 4));
-        c.hLine(cx - 1, cx + 1, cy + 2, WolfPalette.shade(WolfPalette.BONE, 1));
+        int w = 10;
+        c.rect(x + 1, y, w, height, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.vLine(x + 1, y, y + height, WolfPalette.shade(WolfPalette.BLOOD, 0));
+        c.vLine(x + w, y, y + height, WolfPalette.shade(WolfPalette.BLOOD, 3));
+        // Ragged hem.
+        c.hLine(x + 1, x + w, y + height, WolfPalette.shade(WolfPalette.BLOOD, 3));
+        c.px(x + 3, y + height + 1, WolfPalette.shade(WolfPalette.BLOOD, 2));
+        c.px(x + 7, y + height + 1, WolfPalette.shade(WolfPalette.BLOOD, 2));
+
+        // Skull mark: cranium, two sockets, a jaw.
+        int cx = x + 5;
+        int cy = y + height / 2 - 1;
+        c.ellipse(cx, cy, 3, 3, WolfPalette.shade(WolfPalette.BONE, 0));
+        c.px(cx - 1, cy, WolfPalette.shade(WolfPalette.BLOOD, 4));
+        c.px(cx + 1, cy, WolfPalette.shade(WolfPalette.BLOOD, 4));
+        c.hLine(cx - 2, cx + 2, cy + 3, WolfPalette.shade(WolfPalette.BONE, 1));
+        c.px(cx, cy + 4, WolfPalette.shade(WolfPalette.BONE, 2));
     }
 
-    // --- the six structures ---------------------------------------------------------------
+    /** A red band. Every Regime structure gets one; it is how you read a base at a glance. */
+    private static void redBand(PixelCanvas c, int x, int y, int w) {
+        c.hLine(x, x + w - 1, y, WolfPalette.shade(WolfPalette.BLOOD, 0));
+        c.hLine(x, x + w - 1, y + 1, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.hLine(x, x + w - 1, y + 2, WolfPalette.shade(WolfPalette.BLOOD, 3));
+    }
 
+    /**
+     * Dresses a bare roof so it does not read as a coloured field.
+     *
+     * <p>Regime roofs get expansion joints, ducting and cable trays; Resistance roofs get
+     * camouflage netting, lashed tarpaulins and a water tank. Placement is seeded from the
+     * rectangle, so a given structure always looks the same.
+     */
+    private static void roofDetail(PixelCanvas c, int x, int y, int w, int h, boolean regime,
+                                   int seed) {
+        int[] roof = roofs(regime);
+        int[] metal = WolfPalette.GUNMETAL;
+
+        if (regime) {
+            // Expansion joints across the slab.
+            for (int jy = y + 7; jy < y + h - 3; jy += 11) {
+                c.hLine(x + 2, x + w - 3, jy, WolfPalette.shade(roof, 4));
+                c.hLine(x + 2, x + w - 3, jy + 1, WolfPalette.shade(roof, 0));
+            }
+            for (int jx = x + 9; jx < x + w - 5; jx += 17) {
+                c.vLine(jx, y + 2, y + h - 3, WolfPalette.shade(roof, 4));
+            }
+            // Ducting run with elbows.
+            int dy = y + h / 2;
+            c.rect(x + 4, dy, w - 12, 3, WolfPalette.shade(metal, 3));
+            c.hLine(x + 4, x + w - 9, dy, WolfPalette.shade(metal, 1));
+            c.rect(x + w - 10, dy - 4, 4, 8, WolfPalette.shade(metal, 2));
+        } else {
+            // Camouflage netting: irregular olive speckle in two tones over part of the roof.
+            int netW = Math.max(8, w / 2);
+            c.speckle(x + 3, y + 3, netW, h - 6, WolfPalette.shade(WolfPalette.OLIVE, 0),
+                    seed, 3);
+            c.speckle(x + 3, y + 3, netW, h - 6, WolfPalette.shade(WolfPalette.OLIVE, 4),
+                    seed + 5, 4);
+            // A lashed tarpaulin with a rope across it.
+            c.panel(x + w - 22, y + 5, 16, 12, WolfPalette.LEATHER, 2);
+            c.hLine(x + w - 22, x + w - 7, y + 10, WolfPalette.shade(WolfPalette.BONE, 3));
+            c.vLine(x + w - 15, y + 5, y + 16, WolfPalette.shade(WolfPalette.BONE, 3));
+            // Water tank on legs.
+            c.ellipse(x + w - 12, y + h - 9, 6, 5, WolfPalette.shade(metal, 2));
+            c.ellipse(x + w - 12, y + h - 10, 4, 3, WolfPalette.shade(metal, 1));
+            c.px(x + w - 16, y + h - 5, WolfPalette.shade(metal, 4));
+            c.px(x + w - 8, y + h - 5, WolfPalette.shade(metal, 4));
+        }
+
+        // Cable tray running to the edge, both sides build these.
+        for (int cx2 = x + 4; cx2 < x + w - 4; cx2 += 3) {
+            c.px(cx2, y + h - 5, WolfPalette.shade(metal, 1));
+            c.px(cx2 + 1, y + h - 5, WolfPalette.shade(metal, 4));
+        }
+    }
+
+    /** Roof furniture: a vent block with louvres. */
+    private static void vent(PixelCanvas c, int x, int y, int w, int h, boolean regime) {
+        int[] metal = WolfPalette.GUNMETAL;
+        c.panel(x, y, w, h, metal, 2);
+        for (int i = 1; i < h - 1; i += 2) {
+            c.hLine(x + 1, x + w - 2, y + i, WolfPalette.shade(metal, 4));
+        }
+    }
+
+    // --- Command Post ----------------------------------------------------------------------
+
+    /**
+     * A three-tile blockhouse: a stepped main mass, a guard tower with a searchlight at the
+     * north-west, an entrance with steps and bollards, and a roof of vents and cable runs.
+     */
     private static void commandPost(PixelCanvas c, boolean regime, int w, int h) {
         int[] roof = roofs(regime);
+        int wallH = 12;
+        int bodyTop = 18;
+        int wallTop = h - wallH - 6;
 
-        // Main hall across the full footprint, with a squat watch tower standing on the roof
-        // at the north-west corner rather than cutting into the roofline.
-        int wallTop = block(c, 3, 12, w - 6, h - 15, regime, false);
+        // Main mass.
+        flatRoof(c, 6, bodyTop, w - 12, wallTop - bodyTop, regime);
+        wallFace(c, 6, wallTop, w - 12, wallH, regime);
 
-        int towerX = 8;
-        int towerY = 3;
+        // Stepped upper block, set back from the roof edge.
+        flatRoof(c, 18, 8, w - 44, 22, regime);
+        wallFace(c, 18, 30, w - 44, 6, regime);
+        c.hLine(18, w - 27, 8, WolfPalette.shade(roof, 0));
+
+        // Guard tower at the north-west corner, taller than everything else.
+        int towerX = 4;
         int towerW = 20;
-        int towerH = 15;
-        c.rect(towerX + 2, towerY + 3, towerW, towerH, 0x44000000);
-        c.rampVertical(towerX, towerY, towerW, towerH - 5, roof, 1, 2);
-        c.rampVertical(towerX, towerY + towerH - 5, towerW, 5, walls(regime), 1, 2);
-        c.bevel(towerX, towerY, towerW, towerH, WolfPalette.shade(roof, 0),
-                WolfPalette.shade(walls(regime), 4));
-        // Observation slits around the tower.
-        for (int i = 0; i < 3; i++) {
-            c.rect(towerX + 3 + i * 6, towerY + towerH - 4, 3, 2, 0xFF14140F);
-        }
+        c.rect(towerX + 3, 4, towerW, 30, 0x55000000);
+        flatRoof(c, towerX, 2, towerW, 18, regime);
+        wallFace(c, towerX, 20, towerW, 14, regime);
+        slits(c, towerX + 3, 24, 2, 8);
+        // Searchlight on the tower roof, pointing out over the map.
+        c.ellipse(towerX + 10, 8, 5, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
+        c.ellipse(towerX + 12, 8, 3, 3, WolfPalette.shade(WolfPalette.BONE, 1));
+        c.px(towerX + 13, 8, WolfPalette.shade(WolfPalette.BONE, 0));
 
-        // Rooftop hatch and a vent block on the main roof.
-        c.rect(w - 20, 18, 8, 6, WolfPalette.shade(roof, 3));
-        c.hLine(w - 20, w - 13, 18, WolfPalette.shade(roof, 0));
-        c.rect(w - 34, 20, 5, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
+        // Dress the main roof, then add the heavier furniture on top of it.
+        roofDetail(c, 6, 36, w - 12, wallTop - 38, regime, 11);
+        vent(c, w - 30, 40, 12, 9, regime);
+        vent(c, 14, wallTop - 16, 10, 8, regime);
+        c.panel(w / 2 - 6, 40, 12, 9, WolfPalette.GUNMETAL, 3);
+        c.hLine(w / 2 - 5, w / 2 + 4, 41, WolfPalette.shade(WolfPalette.GUNMETAL, 0));
 
-        door(c, w / 2, wallTop, 5, regime);
-        windows(c, 8, wallTop, 2, 9);
-        windows(c, w - 20, wallTop, 2, 9);
+        // Entrance: a recessed doorway with bollards either side.
+        doorway(c, w / 2, wallTop + 3, 12, wallH - 4, regime);
+        c.rect(w / 2 - 14, h - 10, 4, 6, WolfPalette.shade(WolfPalette.CONCRETE, 2));
+        c.rect(w / 2 + 10, h - 10, 4, 6, WolfPalette.shade(WolfPalette.CONCRETE, 2));
+        slits(c, 14, wallTop + 4, 2, 10);
+        slits(c, w - 34, wallTop + 4, 2, 10);
 
         if (regime) {
-            redStripe(c, 3, 12, w - 6);
-            banner(c, 33, 6, 15);
-            banner(c, w - 13, 6, 15);
+            redBand(c, 6, wallTop - 4, w - 12);
+            banner(c, 40, 36, 26);
+            banner(c, w - 26, 36, 26);
         } else {
-            sandbags(c, 4, h - 5, w - 8);
-            // Radio mast lashed to the tower.
-            c.vLine(w - 26, 6, 20, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
-            c.hLine(w - 29, w - 23, 7, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-            c.hLine(w - 28, w - 24, 10, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
+            sandbags(c, 6, h - 12, w - 12);
+            // Radio mast lashed to the tower, guyed with wire.
+            c.vLine(towerX + 17, 0, 18, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+            c.hLine(towerX + 14, towerX + 20, 3, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
+            c.hLine(towerX + 15, towerX + 19, 7, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
+            c.line(towerX + 17, 4, towerX + 26, 20, WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+            // Camouflage netting over part of the roof.
+            c.speckle(20, 12, 30, 16, WolfPalette.shade(WolfPalette.OLIVE, 0), 7, 4);
         }
     }
 
+    // --- Generator ---------------------------------------------------------------------------
+
+    /** A turbine hall: two stacks, a coil housing, transformers and cable spools. */
     private static void generator(PixelCanvas c, boolean regime, int w, int h) {
-        int wallTop = block(c, 4, 12, w - 8, h - 15, regime, false);
+        int wallH = 12;
+        int wallTop = h - wallH - 5;
 
-        // Two stacks rising above the roofline, sooty at the lips.
+        flatRoof(c, 5, 16, w - 10, wallTop - 16, regime);
+        wallFace(c, 5, wallTop, w - 10, wallH, regime);
+
+        // Two stacks rising past the roofline, sooty, with soot smears down their sides.
+        int[] metal = WolfPalette.GUNMETAL;
         for (int i = 0; i < 2; i++) {
-            int sx = 8 + i * 14;
-            c.rect(sx, 2, 7, 14, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-            c.bevel(sx, 2, 7, 14, WolfPalette.shade(WolfPalette.GUNMETAL, 1),
-                    WolfPalette.shade(WolfPalette.GUNMETAL, 4));
-            c.rect(sx, 2, 7, 2, WolfPalette.shade(WolfPalette.SMOKE, 3));
-            c.px(sx + 3, 1, WolfPalette.shade(WolfPalette.SMOKE, 1));
+            int sx = 10 + i * 18;
+            c.rect(sx + 2, 6, 9, 18, 0x55000000);
+            c.panel(sx, 2, 9, 22, metal, 2);
+            c.rect(sx, 2, 9, 3, WolfPalette.shade(WolfPalette.SMOKE, 3));
+            c.hLine(sx, sx + 8, 2, WolfPalette.shade(WolfPalette.SMOKE, 1));
+            c.speckle(sx, 5, 9, 18, WolfPalette.shade(WolfPalette.SMOKE, 4), 9 + i, 6);
+            c.px(sx + 4, 0, WolfPalette.shade(WolfPalette.SMOKE, 1));
         }
 
-        // The coil on the roof: where the engineering gives way to the occult.
-        int cx = w / 2 + 4;
-        int cy = 22;
-        c.ellipse(cx, cy, 7, 6, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
-        c.ellipse(cx, cy, 5, 4, WolfPalette.shade(WolfPalette.OCCULT, 3));
-        c.ellipse(cx, cy - 1, 3, 2, WolfPalette.shade(WolfPalette.OCCULT, 1));
-        c.px(cx, cy - 1, WolfPalette.shade(WolfPalette.OCCULT, 0));
-        c.line(cx - 9, cy + 5, cx - 5, cy + 2, WolfPalette.shade(WolfPalette.BRASS, 2));
-        c.line(cx + 9, cy + 5, cx + 5, cy + 2, WolfPalette.shade(WolfPalette.BRASS, 2));
+        roofDetail(c, 5, 16, w - 10, wallTop - 16, regime, 23);
 
-        door(c, w / 2, wallTop, 4, regime);
-        windows(c, 6, wallTop, 1, 6);
-        if (regime) {
-            redStripe(c, 4, 12, w - 8);
+        // The coil: brass windings around a glowing core, the occult tech showing through.
+        int coilX = w - 20;
+        int coilY = 26;
+        c.ellipse(coilX, coilY, 10, 9, WolfPalette.shade(metal, 3));
+        c.ellipse(coilX, coilY, 8, 7, WolfPalette.shade(metal, 2));
+        for (int r = 6; r > 1; r -= 2) {
+            c.ellipse(coilX, coilY, r, r - 1, WolfPalette.shade(WolfPalette.BRASS, 2));
+            c.ellipse(coilX, coilY, r - 1, r - 2, WolfPalette.shade(WolfPalette.OCCULT, 2));
         }
-    }
+        c.ellipse(coilX, coilY - 1, 2, 2, WolfPalette.shade(WolfPalette.OCCULT, 0));
+        // Arcs jumping to the terminals.
+        c.line(coilX - 10, coilY + 8, coilX - 5, coilY + 3,
+                WolfPalette.shade(WolfPalette.OCCULT, 1));
+        c.line(coilX + 10, coilY + 8, coilX + 5, coilY + 3,
+                WolfPalette.shade(WolfPalette.OCCULT, 1));
 
-    private static void refinery(PixelCanvas c, boolean regime, int w, int h) {
-        // Shed on the right half.
-        int shedX = w / 2 - 6;
-        int wallTop = block(c, shedX, 8, w - shedX - 3, h - 11, regime, false);
+        // Transformer boxes and a cable spool on the hardstanding.
+        c.panel(8, wallTop + 2, 10, 8, metal, 2);
+        c.rivets(9, wallTop + 3, 8, 6, 3, WolfPalette.shade(metal, 0),
+                WolfPalette.shade(metal, 4));
+        c.ellipse(w - 12, h - 12, 6, 5, WolfPalette.shade(WolfPalette.LEATHER, 2));
+        c.ellipse(w - 12, h - 12, 4, 3, WolfPalette.shade(WolfPalette.LEATHER, 4));
+        c.ellipse(w - 12, h - 12, 2, 1, WolfPalette.shade(metal, 3));
 
-        // Silo on the left: a banded drum with the load glowing out of the top hatch.
-        int siloX = 17;
-        int siloY = h / 2 - 1;
-        c.ellipse(siloX, siloY + 2, 14, 13, WolfPalette.shade(WolfPalette.GUNMETAL, 4));
-        c.ellipse(siloX, siloY, 14, 13, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
-        c.ellipse(siloX - 1, siloY - 1, 12, 11, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-        c.ellipse(siloX - 2, siloY - 2, 8, 7, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
-        c.ellipse(siloX, siloY - 1, 6, 5, WolfPalette.shade(WolfPalette.OCCULT, 3));
-        c.ellipse(siloX, siloY - 2, 4, 3, WolfPalette.shade(WolfPalette.OCCULT, 1));
-        c.ellipse(siloX, siloY - 2, 2, 1, WolfPalette.shade(WolfPalette.OCCULT, 0));
-        c.speckle(siloX - 7, siloY - 7, 14, 12, WolfPalette.shade(WolfPalette.OCCULT, 2), 5, 6);
-        // Hoops.
-        c.hLine(siloX - 13, siloX + 13, siloY - 8, WolfPalette.shade(WolfPalette.GUNMETAL, 4));
-        c.hLine(siloX - 13, siloX + 13, siloY + 8, WolfPalette.shade(WolfPalette.GUNMETAL, 4));
-
-        // Pipework running from the silo into the shed.
-        c.rect(siloX + 12, siloY - 3, 12, 5, WolfPalette.shade(WolfPalette.BRASS, 2));
-        c.hLine(siloX + 12, siloX + 23, siloY - 3, WolfPalette.shade(WolfPalette.BRASS, 0));
-        c.hLine(siloX + 12, siloX + 23, siloY + 1, WolfPalette.shade(WolfPalette.BRASS, 3));
-
-        // Hazard-striped unloading apron along the bottom of the shed.
-        for (int x = shedX + 2; x < w - 5; x += 8) {
-            c.rect(x, h - 4, 4, 3, WolfPalette.shade(WolfPalette.BRASS, 1));
-            c.rect(x + 4, h - 4, 4, 3, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
-        }
-
-        door(c, shedX + 12, wallTop, 4, regime);
-        if (regime) {
-            redStripe(c, shedX, 8, w - shedX - 3);
-        }
-        if (!regime) {
-            sandbags(c, shedX + 20, 4, w - shedX - 24);
-        }
-    }
-
-    private static void barracks(PixelCanvas c, boolean regime, int w, int h) {
-        int wallTop = block(c, 3, 6, w - 6, h - 9, regime, true);
-        int[] roof = roofs(regime);
-
-        // Roof ribs, stopping short of the ridge so the ridge still reads.
-        for (int x = 6; x < w - 5; x += 5) {
-            c.vLine(x, 7, wallTop - 6, WolfPalette.shade(roof, 4));
-            c.vLine(x + 1, 7, wallTop - 6, WolfPalette.shade(roof, 2));
-        }
-
-        // Chimney at the north end.
-        c.rect(w - 14, 2, 6, 8, WolfPalette.shade(walls(regime), 2));
-        c.rect(w - 14, 2, 6, 2, WolfPalette.shade(WolfPalette.SMOKE, 3));
-
-        door(c, w / 2 - 6, wallTop, 5, regime);
-        windows(c, 6, wallTop, 2, 8);
-        windows(c, w - 16, wallTop, 1, 8);
-
-        // Ammunition crates stacked against the wall.
-        c.rect(w - 13, h - 7, 9, 6, WolfPalette.shade(WolfPalette.LEATHER, 2));
-        c.bevel(w - 13, h - 7, 9, 6, WolfPalette.shade(WolfPalette.LEATHER, 1),
-                WolfPalette.shade(WolfPalette.LEATHER, 4));
-        c.hLine(w - 12, w - 6, h - 4, WolfPalette.shade(WolfPalette.LEATHER, 3));
+        doorway(c, w / 2 + 4, wallTop + 3, 9, wallH - 4, regime);
 
         if (regime) {
-            redStripe(c, 3, 6, w - 6);
-            banner(c, 6, 8, 14);
+            redBand(c, 5, 16, w - 10);
         } else {
-            sandbags(c, 4, h - 5, 16);
+            sandbags(c, 6, h - 10, 24);
         }
     }
 
-    private static void warWorks(PixelCanvas c, boolean regime, int w, int h) {
-        int wallTop = block(c, 3, 8, w - 6, h - 11, regime, false);
-        int[] roof = roofs(regime);
+    // --- Refinery ----------------------------------------------------------------------------
 
-        // Corrugated roof and a row of skylights down the middle.
-        for (int x = 5; x < w - 4; x += 3) {
-            c.vLine(x, 9, wallTop - 2, WolfPalette.shade(roof, 3));
+    /** A silo, a processing shed, pipework between them, and a striped unloading bay. */
+    private static void refinery(PixelCanvas c, boolean regime, int w, int h) {
+        int[] metal = WolfPalette.GUNMETAL;
+        int wallH = 12;
+        int wallTop = h - wallH - 6;
+        int shedX = w / 2 - 4;
+
+        flatRoof(c, shedX, 12, w - shedX - 6, wallTop - 12, regime);
+        wallFace(c, shedX, wallTop, w - shedX - 6, wallH, regime);
+
+        // Silo: a banded drum with a hatch that glows with what is inside.
+        int siloX = 26;
+        int siloY = h / 2 - 2;
+        c.ellipse(siloX + 3, siloY + 4, 20, 18, 0x55000000);
+        c.ellipse(siloX, siloY, 20, 18, WolfPalette.shade(metal, 4));
+        c.ellipse(siloX, siloY, 18, 16, WolfPalette.shade(metal, 3));
+        c.ellipse(siloX - 2, siloY - 2, 15, 13, WolfPalette.shade(metal, 2));
+        c.ellipse(siloX - 3, siloY - 3, 10, 8, WolfPalette.shade(metal, 1));
+        // Banding hoops and vertical seams.
+        c.hLine(siloX - 19, siloX + 19, siloY - 9, WolfPalette.shade(metal, 4));
+        c.hLine(siloX - 19, siloX + 19, siloY + 9, WolfPalette.shade(metal, 4));
+        // Two seams only. Five evenly spaced ones made the drum read as a tyre.
+        c.vLine(siloX - 9, siloY - 15, siloY + 15, WolfPalette.shade(metal, 4));
+        c.vLine(siloX + 9, siloY - 15, siloY + 15, WolfPalette.shade(metal, 4));
+        // Hatch, open, ore glowing out of it.
+        c.ellipse(siloX, siloY - 2, 8, 7, WolfPalette.shade(metal, 4));
+        c.ellipse(siloX, siloY - 2, 7, 6, WolfPalette.shade(WolfPalette.OCCULT, 3));
+        c.ellipse(siloX, siloY - 3, 5, 4, WolfPalette.shade(WolfPalette.OCCULT, 2));
+        c.ellipse(siloX, siloY - 3, 3, 2, WolfPalette.shade(WolfPalette.OCCULT, 0));
+        c.speckle(siloX - 7, siloY - 8, 14, 12, WolfPalette.shade(WolfPalette.OCCULT, 1), 5, 5);
+        // Access ladder up the near side.
+        for (int y = siloY + 2; y < siloY + 16; y += 3) {
+            c.hLine(siloX - 3, siloX + 3, y, WolfPalette.shade(metal, 1));
         }
-        for (int x = 10; x < w - 12; x += 12) {
-            c.rect(x, 16, 8, 5, WolfPalette.shade(WolfPalette.STEEL, 1));
-            c.rectOutline(x, 16, 8, 5, WolfPalette.shade(roof, 4));
+        c.vLine(siloX - 3, siloY + 2, siloY + 16, WolfPalette.shade(metal, 2));
+        c.vLine(siloX + 3, siloY + 2, siloY + 16, WolfPalette.shade(metal, 2));
+
+        // Pipework from the silo into the shed, with flanges.
+        c.panel(siloX + 17, siloY - 5, 16, 7, WolfPalette.BRASS, 2);
+        c.rect(siloX + 20, siloY - 6, 3, 9, WolfPalette.shade(WolfPalette.BRASS, 1));
+        c.rect(siloX + 27, siloY - 6, 3, 9, WolfPalette.shade(WolfPalette.BRASS, 1));
+
+        roofDetail(c, shedX, 12, w - shedX - 6, wallTop - 12, regime, 31);
+
+        // Roof furniture: a condenser and a vent.
+        vent(c, w - 22, 18, 12, 9, regime);
+        c.panel(shedX + 6, 20, 10, 8, WolfPalette.GUNMETAL, 3);
+
+        // Unloading bay along the bottom of the shed: hazard stripes and tyre marks.
+        c.hazard(shedX, h - 8, w - shedX - 6, 6, WolfPalette.shade(WolfPalette.BRASS, 1),
+                WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+        c.speckle(shedX, h - 8, w - shedX - 6, 6, WolfPalette.shade(WolfPalette.SMOKE, 4),
+                19, 4);
+
+        doorway(c, shedX + 18, wallTop + 3, 12, wallH - 4, regime);
+
+        if (regime) {
+            redBand(c, shedX, 12, w - shedX - 6);
+        } else {
+            sandbags(c, shedX + 4, 6, 30);
         }
+    }
+
+    // --- Barracks ----------------------------------------------------------------------------
+
+    /** A hut with a pitched, ribbed roof, a chimney, bunk windows and stacked crates. */
+    private static void barracks(PixelCanvas c, boolean regime, int w, int h) {
+        int[] roof = roofs(regime);
+        int wallH = 12;
+        int wallTop = h - wallH - 5;
+        int roofTop = 8;
+        int ridge = (roofTop + wallTop) / 2;
+
+        // Pitched roof: north slope lit, south slope shaded, with a ridge cap.
+        c.rect(4, roofTop, w - 8, ridge - roofTop, WolfPalette.shade(roof, 1));
+        c.rect(4, ridge, w - 8, wallTop - ridge, WolfPalette.shade(roof, 3));
+        c.hLine(4, w - 5, roofTop, WolfPalette.shade(roof, 0));
+        c.hLine(3, w - 4, ridge - 1, WolfPalette.shade(roof, 0));
+        c.hLine(3, w - 4, ridge, WolfPalette.shade(roof, 4));
+        c.hLine(4, w - 5, wallTop - 1, WolfPalette.shade(roof, 4));
+
+        // Corrugation: one shaded line per sheet, not a light-dark pair. Ribbing both sides
+        // of every seam turned the whole roof into a palisade fence.
+        for (int x = 7; x < w - 6; x += 5) {
+            c.vLine(x, roofTop + 1, ridge - 1, WolfPalette.shade(roof, 2));
+            c.vLine(x, ridge + 1, wallTop - 2, WolfPalette.shade(roof, 4));
+        }
+        // Ridge cap drawn last so the corrugation cannot cut through it.
+        c.hLine(3, w - 4, ridge - 1, WolfPalette.shade(roof, 0));
+        c.hLine(3, w - 4, ridge, WolfPalette.shade(roof, 4));
+        if (!regime) {
+            c.panel(w - 26, roofTop + 3, 14, 10, WolfPalette.GUNMETAL, 3);
+            c.rivets(w - 25, roofTop + 4, 12, 8, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 1),
+                    WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+        }
+
+        wallFace(c, 4, wallTop, w - 8, wallH, regime);
+
+        // Chimney with a soot lip, at the north end.
+        c.rect(w - 20, 2, 8, 12, WolfPalette.shade(walls(regime), 2));
+        c.bevel(w - 20, 2, 8, 12, WolfPalette.shade(walls(regime), 0),
+                WolfPalette.shade(walls(regime), 4));
+        c.rect(w - 20, 2, 8, 2, WolfPalette.shade(WolfPalette.SMOKE, 2));
+        c.px(w - 17, 0, WolfPalette.shade(WolfPalette.SMOKE, 1));
+
+        doorway(c, w / 2 - 6, wallTop + 3, 10, wallH - 4, regime);
+        slits(c, 8, wallTop + 4, 2, 9);
+        slits(c, w - 22, wallTop + 4, 1, 9);
+
+        // Crates and a barrel by the door.
+        c.panel(w - 20, h - 12, 12, 9, WolfPalette.LEATHER, 2);
+        c.hLine(w - 19, w - 10, h - 8, WolfPalette.shade(WolfPalette.LEATHER, 4));
+        c.vLine(w - 14, h - 11, h - 4, WolfPalette.shade(WolfPalette.LEATHER, 4));
+        c.ellipse(w - 26, h - 8, 4, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
+        c.ellipse(w - 26, h - 9, 3, 2, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+
+        if (regime) {
+            redBand(c, 4, roofTop, w - 8);
+            banner(c, 10, 12, 20);
+        } else {
+            sandbags(c, 5, h - 10, 26);
+            // Washing line strung along the eaves.
+            c.hLine(8, w - 24, wallTop - 3, WolfPalette.shade(WolfPalette.BONE, 4));
+            c.rect(14, wallTop - 3, 4, 4, WolfPalette.shade(WolfPalette.BONE, 2));
+            c.rect(24, wallTop - 3, 3, 5, WolfPalette.shade(WolfPalette.OLIVE, 1));
+        }
+    }
+
+    // --- War Works ---------------------------------------------------------------------------
+
+    /** A big shed: gantry crane, skylights, a roller shutter and an oil-stained apron. */
+    private static void warWorks(PixelCanvas c, boolean regime, int w, int h) {
+        int[] roof = roofs(regime);
+        int[] metal = WolfPalette.GUNMETAL;
+        int wallH = 13;
+        int wallTop = h - wallH - 5;
+
+        flatRoof(c, 4, 14, w - 8, wallTop - 14, regime);
+        wallFace(c, 4, wallTop, w - 8, wallH, regime);
+
+        // Corrugated roof sheeting.
+        for (int x = 7; x < w - 6; x += 4) {
+            c.vLine(x, 15, wallTop - 2, WolfPalette.shade(roof, 3));
+        }
+        // Skylights down the centre line, glazed and grubby.
+        for (int x = 14; x < w - 22; x += 20) {
+            c.panel(x, 26, 14, 9, WolfPalette.STEEL, 2);
+            c.rect(x + 1, 27, 12, 7, WolfPalette.shade(WolfPalette.STEEL, 3));
+            c.vLine(x + 7, 27, 33, WolfPalette.shade(metal, 3));
+            c.speckle(x + 1, 27, 12, 7, WolfPalette.shade(WolfPalette.SMOKE, 3), x, 5);
+        }
+
+        // Gantry crane spanning the roof, with a hoist block hanging from it.
+        c.panel(8, 4, w - 16, 6, metal, 2);
+        for (int x = 12; x < w - 12; x += 8) {
+            c.line(x, 5, x + 4, 9, WolfPalette.shade(metal, 4));
+            c.line(x + 4, 5, x, 9, WolfPalette.shade(metal, 4));
+        }
+        c.panel(w / 2 - 5, 10, 10, 6, WolfPalette.BRASS, 2);
+        c.vLine(w / 2, 16, 24, WolfPalette.shade(metal, 3));
+        c.rect(w / 2 - 3, 24, 6, 4, WolfPalette.shade(metal, 2));
 
         // Roller shutter, wide enough to drive a tank through.
         int doorW = w / 3;
         int doorX = w / 2 - doorW / 2;
-        c.rect(doorX, wallTop, doorW, WALL_FACE - 1, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
-        for (int y = wallTop + 1; y < wallTop + WALL_FACE - 1; y += 2) {
-            c.hLine(doorX + 1, doorX + doorW - 2, y, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+        c.rect(doorX, wallTop + 1, doorW, wallH - 2, WolfPalette.shade(metal, 3));
+        for (int y = wallTop + 2; y < wallTop + wallH - 2; y += 2) {
+            c.hLine(doorX + 1, doorX + doorW - 2, y, WolfPalette.shade(metal, 1));
         }
-        c.rectOutline(doorX, wallTop, doorW, WALL_FACE - 1, WolfPalette.shade(walls(regime), 0));
+        c.rectOutline(doorX, wallTop + 1, doorW, wallH - 2, WolfPalette.shade(walls(regime), 0));
+        c.hLine(doorX, doorX + doorW - 1, wallTop + 1, WolfPalette.shade(metal, 0));
 
-        // Oil-stained apron in front of the doors.
-        c.speckle(doorX - 3, h - 3, doorW + 6, 3, WolfPalette.shade(WolfPalette.SMOKE, 4), 11, 2);
+        // Oil-stained apron, and a stack of track links beside the door.
+        c.speckle(doorX - 4, h - 6, doorW + 8, 5, WolfPalette.shade(WolfPalette.SMOKE, 4), 11, 2);
+        c.panel(8, h - 13, 14, 9, metal, 3);
+        for (int i = 0; i < 3; i++) {
+            c.hLine(9, 20, h - 12 + i * 3, WolfPalette.shade(metal, 1));
+        }
 
         if (regime) {
-            redStripe(c, 3, 8, w - 6);
+            redBand(c, 4, 14, w - 8);
+        } else {
+            sandbags(c, w - 34, h - 11, 28);
         }
-
-        // Gantry crane along the roofline.
-        c.rect(6, 3, w - 12, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-        c.hLine(6, w - 7, 3, WolfPalette.shade(WolfPalette.GUNMETAL, 0));
-        c.hLine(6, w - 7, 6, WolfPalette.shade(WolfPalette.GUNMETAL, 4));
-        c.rect(w / 2 - 3, 7, 6, 4, WolfPalette.shade(WolfPalette.BRASS, 2));
-        c.vLine(w / 2, 11, 15, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
     }
 
+    // --- Flak Turret --------------------------------------------------------------------------
+
+    /** An emplacement: a ring, a gun mount, ammunition boxes and spent cases. */
     private static void flakTurret(PixelCanvas c, boolean regime, int w, int h) {
+        int[] metal = WolfPalette.GUNMETAL;
         int cx = w / 2;
-        int cy = h / 2;
+        int cy = h / 2 + 1;
 
         if (regime) {
-            // Poured concrete emplacement.
-            c.ellipse(cx, cy + 2, 11, 10, WolfPalette.shade(WolfPalette.STONE, 4));
-            c.ellipse(cx, cy, 11, 10, WolfPalette.shade(WolfPalette.STONE, 2));
-            c.ellipse(cx - 1, cy - 1, 9, 8, WolfPalette.shade(WolfPalette.STONE, 1));
-            c.ellipse(cx, cy, 7, 6, WolfPalette.shade(WolfPalette.STONE, 3));
+            // Poured concrete ring with shuttering marks.
+            c.ellipse(cx, cy + 2, 15, 13, WolfPalette.shade(WolfPalette.CONCRETE, 4));
+            c.ellipse(cx, cy, 15, 13, WolfPalette.shade(WolfPalette.CONCRETE, 2));
+            c.ellipse(cx - 1, cy - 1, 13, 11, WolfPalette.shade(WolfPalette.CONCRETE, 1));
+            c.ellipse(cx, cy, 10, 9, WolfPalette.shade(WolfPalette.CONCRETE, 3));
+            for (int a = 0; a < 8; a++) {
+                double t = a * Math.PI / 4;
+                c.px((int) (cx + Math.cos(t) * 13), (int) (cy + Math.sin(t) * 11),
+                        WolfPalette.shade(WolfPalette.CONCRETE, 4));
+            }
         } else {
-            // A ring of sandbags, each one drawn.
-            c.ellipse(cx, cy + 2, 11, 10, 0x44000000);
-            for (int a = 0; a < 9; a++) {
-                double t = a * Math.PI * 2 / 9;
-                int bx = (int) (cx + Math.cos(t) * 9);
-                int by = (int) (cy + Math.sin(t) * 8);
-                c.ellipse(bx, by, 3, 3, WolfPalette.shade(WolfPalette.BONE, 3));
-                c.ellipse(bx, by - 1, 2, 1, WolfPalette.shade(WolfPalette.BONE, 2));
-                c.hLine(bx - 2, bx + 2, by + 2, WolfPalette.shade(WolfPalette.BONE, 4));
+            // A ring of individually stacked sandbags.
+            c.ellipse(cx, cy + 2, 15, 13, 0x44000000);
+            for (int a = 0; a < 11; a++) {
+                double t = a * Math.PI * 2 / 11;
+                int bx = (int) (cx + Math.cos(t) * 12);
+                int by = (int) (cy + Math.sin(t) * 10);
+                c.ellipse(bx, by, 4, 3, WolfPalette.shade(WolfPalette.BONE, 3));
+                c.ellipse(bx, by - 1, 3, 2, WolfPalette.shade(WolfPalette.BONE, 2));
+                c.hLine(bx - 3, bx + 3, by + 2, WolfPalette.shade(WolfPalette.BONE, 4));
             }
         }
 
-        // Gun mount: the barrel itself is drawn separately so it can traverse.
-        c.ellipse(cx, cy, 6, 5, WolfPalette.shade(WolfPalette.GUNMETAL, 3));
-        c.ellipse(cx - 1, cy - 1, 5, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-        c.ellipse(cx - 1, cy - 1, 3, 2, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+        // Gun mount: a turntable with a shield ring. The barrel is drawn separately so it can
+        // traverse onto whatever the turret is shooting at.
+        c.ellipse(cx, cy, 8, 7, WolfPalette.shade(metal, 3));
+        c.ellipse(cx - 1, cy - 1, 7, 6, WolfPalette.shade(metal, 2));
+        c.ellipse(cx - 1, cy - 1, 4, 3, WolfPalette.shade(metal, 1));
+        c.rivets(cx - 6, cy - 5, 12, 10, 5, WolfPalette.shade(metal, 0),
+                WolfPalette.shade(metal, 4));
+
+        // Ammunition boxes and spent cases on the parapet.
+        c.panel(4, h - 12, 9, 7, WolfPalette.LEATHER, 2);
+        c.hLine(5, 11, h - 9, WolfPalette.shade(WolfPalette.LEATHER, 4));
+        c.speckle(cx - 6, h - 8, 12, 5, WolfPalette.shade(WolfPalette.BRASS, 1), 29, 6);
+
+        if (regime) {
+            redBand(c, cx - 8, 2, 16);
+        }
     }
 
     /** The traversing barrel, drawn on top of the emplacement at run time. */
@@ -413,19 +617,23 @@ public final class BuildingSprites {
         int cy = size / 2;
         int[] metal = WolfPalette.GUNMETAL;
 
-        c.rect(cx, cy - 2, 12, 2, WolfPalette.shade(metal, 1));
-        c.rect(cx, cy, 12, 2, WolfPalette.shade(metal, 3));
-        c.rect(cx + 9, cy - 3, 3, 5, WolfPalette.shade(metal, 2));
-        c.ellipse(cx - 1, cy, 5, 4, WolfPalette.shade(metal, 2));
-        c.ellipse(cx - 2, cy - 1, 3, 3, WolfPalette.shade(metal, 1));
+        // Twin barrels with a shield behind them.
+        c.rect(cx, cy - 4, 15, 2, WolfPalette.shade(metal, 1));
+        c.rect(cx, cy - 2, 15, 2, WolfPalette.shade(metal, 3));
+        c.rect(cx, cy + 1, 15, 2, WolfPalette.shade(metal, 1));
+        c.rect(cx, cy + 3, 15, 2, WolfPalette.shade(metal, 3));
+        c.rect(cx + 13, cy - 5, 3, 11, WolfPalette.shade(metal, 2));
+        c.panel(cx - 5, cy - 6, 7, 13, metal, 2);
+        c.rivets(cx - 4, cy - 5, 5, 11, 4, WolfPalette.shade(metal, 0),
+                WolfPalette.shade(metal, 4));
         c.outline(OUTLINE);
 
         return facing == 0 ? c : c.rotatedSmooth((float) (facing * Math.PI / 4.0), 3);
     }
 
     /**
-     * Battle damage, painted over a finished structure: soot and cracks at the first tier,
-     * holes through to a dark interior and fire at the second.
+     * Battle damage painted over a finished structure: soot and forked cracks at the first
+     * tier, holes through to a dark interior with fire and smoke at the second.
      */
     private static void applyDamage(PixelCanvas c, int state, int seed) {
         if (state <= 0) {
@@ -434,32 +642,35 @@ public final class BuildingSprites {
         int w = c.width();
         int h = c.height();
 
-        c.speckle(2, 2, w - 4, h - 4, WolfPalette.shade(WolfPalette.SMOKE, 4), seed * 7 + 3,
-                state == 1 ? 16 : 7);
+        c.speckle(3, 3, w - 6, h - 6, WolfPalette.shade(WolfPalette.SMOKE, 4), seed * 7 + 3,
+                state == 1 ? 18 : 8);
 
-        int cracks = state == 1 ? 3 : 5;
+        int cracks = state == 1 ? 4 : 7;
         for (int i = 0; i < cracks; i++) {
-            int x = 5 + ((seed * 13 + i * 29) % Math.max(1, w - 10));
-            int y = 4 + ((seed * 7 + i * 17) % Math.max(1, h / 2));
-            // A crack forks: two short runs from the same origin reads as broken masonry,
-            // one straight line reads as a scratch.
-            c.line(x, y, x + 2, y + 5, WolfPalette.shade(WolfPalette.SMOKE, 4));
-            c.line(x + 2, y + 5, x - 1 + (i % 3), y + 9, WolfPalette.shade(WolfPalette.SMOKE, 4));
+            int x = 6 + ((seed * 13 + i * 29) % Math.max(1, w - 12));
+            int y = 5 + ((seed * 7 + i * 17) % Math.max(1, h / 2));
+            // A crack forks; a single straight line reads as a scratch.
+            c.line(x, y, x + 3, y + 7, WolfPalette.shade(WolfPalette.SMOKE, 4));
+            c.line(x + 3, y + 7, x - 1 + (i % 4), y + 13, WolfPalette.shade(WolfPalette.SMOKE, 4));
+            c.px(x + 3, y + 7, WolfPalette.shade(WolfPalette.SMOKE, 3));
         }
 
         if (state < 2) {
             return;
         }
 
-        for (int i = 0; i < 3; i++) {
-            int x = 7 + ((seed * 23 + i * 37) % Math.max(1, w - 14));
-            int y = 7 + ((seed * 11 + i * 19) % Math.max(1, h - 16));
-            c.ellipse(x, y, 4, 3, 0xFF0C0C0A);
-            c.ellipse(x, y + 1, 2, 1, WolfPalette.shade(WolfPalette.FIRE, 3));
-            c.px(x - 1, y - 3, WolfPalette.shade(WolfPalette.FIRE, 2));
-            c.px(x + 1, y - 4, WolfPalette.shade(WolfPalette.FIRE, 1));
-            c.px(x, y - 6, WolfPalette.shade(WolfPalette.SMOKE, 1));
+        for (int i = 0; i < 4; i++) {
+            int x = 9 + ((seed * 23 + i * 37) % Math.max(1, w - 18));
+            int y = 9 + ((seed * 11 + i * 19) % Math.max(1, h - 20));
+            c.ellipse(x, y, 5, 4, 0xFF0A0A08);
+            c.ellipse(x, y + 1, 3, 2, WolfPalette.shade(WolfPalette.FIRE, 3));
+            c.ellipse(x, y + 1, 2, 1, WolfPalette.shade(WolfPalette.FIRE, 2));
+            // Flame licking up out of the hole, and smoke above it.
+            c.px(x - 1, y - 4, WolfPalette.shade(WolfPalette.FIRE, 1));
+            c.px(x + 1, y - 5, WolfPalette.shade(WolfPalette.FIRE, 0));
+            c.px(x, y - 8, WolfPalette.shade(WolfPalette.SMOKE, 1));
+            c.px(x + 2, y - 10, WolfPalette.shade(WolfPalette.SMOKE, 0));
         }
-        c.tint(0xFF1E1810, 0.22f);
+        c.tint(0xFF1C1610, 0.24f);
     }
 }

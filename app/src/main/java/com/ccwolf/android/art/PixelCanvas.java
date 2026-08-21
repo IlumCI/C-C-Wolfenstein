@@ -368,6 +368,47 @@ public final class PixelCanvas {
         return out;
     }
 
+    /**
+     * A lit panel: mid-tone fill, highlight along the top and left, shadow along the bottom
+     * and right. The workhorse for armour plate, hull sides, crates and shutters.
+     */
+    public PixelCanvas panel(int x, int y, int w, int h, int[] ramp, int base) {
+        rect(x, y, w, h, WolfPalette.shade(ramp, base));
+        hLine(x, x + w - 1, y, WolfPalette.shade(ramp, base - 1));
+        vLine(x, y, y + h - 1, WolfPalette.shade(ramp, base - 1));
+        hLine(x, x + w - 1, y + h - 1, WolfPalette.shade(ramp, base + 2));
+        vLine(x + w - 1, y, y + h - 1, WolfPalette.shade(ramp, base + 2));
+        return this;
+    }
+
+    /** Rivet heads across a plate: a bright pixel with a dark one under it. */
+    public PixelCanvas rivets(int x, int y, int w, int h, int spacing, int light, int dark) {
+        for (int yy = y; yy < y + h; yy += spacing) {
+            for (int xx = x; xx < x + w; xx += spacing) {
+                px(xx, yy, light);
+                px(xx, yy + 1, dark);
+            }
+        }
+        return this;
+    }
+
+    /** Diagonal hazard stripes, for loading bays and warning panels. */
+    public PixelCanvas hazard(int x, int y, int w, int h, int colorA, int colorB) {
+        for (int yy = 0; yy < h; yy++) {
+            for (int xx = 0; xx < w; xx++) {
+                px(x + xx, y + yy, (((xx + yy) / 3) & 1) == 0 ? colorA : colorB);
+            }
+        }
+        return this;
+    }
+
+    /** A soft ground shadow: an ellipse that fades at its edge rather than stopping dead. */
+    public PixelCanvas groundShadow(int cx, int cy, int rx, int ry) {
+        ellipse(cx, cy, rx, ry, 0x55000000);
+        ellipse(cx, cy, rx - 1, Math.max(1, ry - 1), 0x77000000);
+        return this;
+    }
+
     /** Multiplies every opaque pixel towards a colour — scorching, team tinting, fading. */
     public PixelCanvas tint(int color, float amount) {
         for (int i = 0; i < pixels.length; i++) {
