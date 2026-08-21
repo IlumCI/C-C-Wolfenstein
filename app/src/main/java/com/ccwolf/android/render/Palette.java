@@ -48,6 +48,10 @@ public final class Palette {
     public static final int PLACE_OK = Color.argb(110, 120, 230, 120);
     public static final int PLACE_BAD = Color.argb(110, 230, 90, 80);
 
+    /** Sabotage arcs: a cold electric white-blue with a hotter core. */
+    public static final int ARC = Color.rgb(150, 214, 255);
+    public static final int ARC_CORE = Color.rgb(238, 250, 255);
+
     /** Unexplored fog: solid. Explored-but-unseen: a heavy veil over remembered terrain. */
     public static final int FOG_UNEXPLORED = Color.rgb(14, 16, 13);
     public static final int FOG_EXPLORED = Color.argb(140, 12, 13, 11);

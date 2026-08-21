@@ -3,6 +3,8 @@ package com.ccwolf.android.render;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import com.ccwolf.android.GameSession;
 import com.ccwolf.android.art.SpriteAtlas;
@@ -47,6 +49,15 @@ public final class WorldRenderer {
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Rect dst = new Rect();
+
+    /**
+     * The cold cast over anything a Saboteur has switched off. Applied as a colour filter
+     * rather than a rectangle so it follows the artwork — a wash drawn over the footprint
+     * leaves a building's chimneys their normal colour and puts a visible square around a
+     * unit's feet.
+     */
+    private final PorterDuffColorFilter deadTint =
+            new PorterDuffColorFilter(0x663C78B4, PorterDuff.Mode.SRC_ATOP);
 
     /** Reused each frame so a drawing pass allocates nothing. */
     private final List<Entity> drawOrder = new ArrayList<Entity>(256);
@@ -187,7 +198,14 @@ public final class WorldRenderer {
 
         Faction faction = view.world().player(b.ownerId()).faction();
         dst.set(left, top, right, bottom);
+        boolean dead = view.isDisabled(b);
+        if (dead) {
+            sprite.setColorFilter(deadTint);
+        }
         canvas.drawBitmap(atlas.building(b.type(), faction, b.damageState()), null, dst, sprite);
+        if (dead) {
+            sprite.setColorFilter(null);
+        }
 
         // A defence with the power cut gets a cold wash and a dead lamp; without this there is
         // no way to tell a blacked-out turret from a live one.
@@ -204,6 +222,9 @@ public final class WorldRenderer {
             canvas.drawBitmap(atlas.flakBarrel(turretFacing(session, b)), null, dst, sprite);
         }
 
+        if (dead) {
+            drawDisabledArcs(canvas, view.tick(), b.id(), left, top, right, bottom, px);
+        }
         if (b.isRepairing()) {
             drawRepairMark(canvas, session, left, top, right);
         }
@@ -258,8 +279,26 @@ public final class WorldRenderer {
         int centreX = Math.round(cx);
         int centreY = Math.round(cy);
         dst.set(centreX - half, centreY - half, centreX + half, centreY + half);
-        canvas.drawBitmap(bitmap, null, dst, sprite);
 
+        // Your own concealed units are ghosted, so you can tell at a glance which of your
+        // scouts the enemy currently cannot see. Enemy stealth units never reach this far:
+        // isDiscovered already filtered them out.
+        boolean hidden = view.isHiddenAlly(u);
+        boolean dead = view.isDisabled(u);
+        if (hidden) {
+            sprite.setAlpha(125);
+        }
+        if (dead) {
+            sprite.setColorFilter(deadTint);
+        }
+        canvas.drawBitmap(bitmap, null, dst, sprite);
+        sprite.setAlpha(255);
+        sprite.setColorFilter(null);
+
+        if (dead) {
+            drawDisabledArcs(canvas, view.tick(), u.id(), centreX - half, centreY - half,
+                    centreX + half, centreY + half, px);
+        }
         if (isSelected(session, u)) {
             float r = px * 0.5f;
             drawBrackets(canvas, Math.round(cx - r), Math.round(cy - r), Math.round(cx + r),
@@ -290,6 +329,72 @@ public final class WorldRenderer {
     public static int facingIndex(float radians) {
         int index = (int) Math.round(radians / (Math.PI / 4.0));
         return ((index % 8) + 8) % 8;
+    }
+
+    /**
+     * Sparks crawling over something a Saboteur has switched off.
+     *
+     * <p>Drawn as stepped square pixels rather than smooth strokes so the arcs sit in the same
+     * art style as everything else. The jitter is derived from the tick and the entity id, so
+     * it crackles frame to frame without needing per-entity state, and two disabled things side
+     * by side do not flicker in lockstep.
+     */
+    private void drawDisabledArcs(Canvas canvas, int tick, int id, int left, int top, int right,
+            int bottom, float px) {
+        int width = right - left;
+        int height = bottom - top;
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+        // One pixel of the sprite grid, so the arcs scale with the zoom.
+        int dot = Math.max(1, Math.round(px / UnitSprites.TILE));
+        int seed = id * 7919 + (tick / 2) * 104729;
+
+        for (int arc = 0; arc < 5; arc++) {
+            int state = scramble(seed + arc * 31337);
+            int x = left + (int) ((state >>> 8 & 0xFF) / 255f * width);
+            int y = bottom - (int) ((state >>> 16 & 0xFF) / 255f * (height * 0.6f));
+            int steps = 6 + (state >>> 3 & 5);
+            int prevX = x;
+            int prevY = y;
+
+            for (int step = 0; step < steps; step++) {
+                state = scramble(state);
+                // Arcs wander sideways and climb: sparks read as rising off the hull.
+                x += ((state >>> 5 & 3) - 1) * dot * 2;
+                y -= dot * 3;
+                if (x < left - dot * 2 || x > right + dot * 2 || y < top - height * 0.4f) {
+                    break;
+                }
+                // Join the steps, otherwise the sparks read as unrelated dots rather than a
+                // discharge crawling over the thing.
+                flat.setColor(Palette.ARC);
+                thick(canvas, prevX, prevY, x, y, dot * 2);
+                flat.setColor(Palette.ARC_CORE);
+                canvas.drawRect(x, y, x + dot, y + dot, flat);
+                prevX = x;
+                prevY = y;
+            }
+        }
+    }
+
+    /** A chunky pixel line between two points, drawn as stepped squares. */
+    private void thick(Canvas canvas, int x0, int y0, int x1, int y1, int size) {
+        int steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) / Math.max(1, size / 2) + 1;
+        for (int i = 0; i <= steps; i++) {
+            float t = i / (float) steps;
+            float x = x0 + (x1 - x0) * t;
+            float y = y0 + (y1 - y0) * t;
+            canvas.drawRect(x, y, x + size, y + size, flat);
+        }
+    }
+
+    /** Cheap integer hash; only ever used to jitter effects, never the simulation. */
+    private static int scramble(int value) {
+        value ^= value >>> 16;
+        value *= 0x7FEB352D;
+        value ^= value >>> 15;
+        return value & 0x7FFFFFFF;
     }
 
     // --- effects --------------------------------------------------------------------------
