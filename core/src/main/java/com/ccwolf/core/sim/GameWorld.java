@@ -16,6 +16,10 @@ import com.ccwolf.core.map.TileMap;
 import com.ccwolf.core.order.HarvestOrder;
 import com.ccwolf.core.order.MoveOrder;
 import com.ccwolf.core.order.Order;
+import com.ccwolf.core.order.SquadMemberOrder;
+import com.ccwolf.core.squad.Formation;
+import com.ccwolf.core.squad.Squad;
+import com.ccwolf.core.squad.SquadRegistry;
 import com.ccwolf.core.path.AStar;
 import com.ccwolf.core.path.Mover;
 import com.ccwolf.core.path.OccupancyGrid;
@@ -98,6 +102,9 @@ public final class GameWorld {
     private final OccupancyGrid grid;
     private final Mover mover = new Mover();
 
+    /** Squads, and the roster of who is in them. */
+    private final SquadRegistry squads = new SquadRegistry();
+
     /**
      * Where the tick goes. Off unless something switches it on, so the normal path pays one
      * predictable branch per phase rather than a pair of nanoTime calls.
@@ -140,6 +147,114 @@ public final class GameWorld {
 
     public OccupancyGrid grid() {
         return grid;
+    }
+
+    /**
+     * Forms the given units into a squad, and puts them under its orders.
+     *
+     * <p>Squad ids come from the same counter as entity ids, so a squad id can never be
+     * mistaken for a unit id — the command layer deals in both and they cross the same seam.
+     *
+     * @return the new squad, or null if fewer than two eligible units were offered
+     */
+    public Squad formSquad(int ownerId, List<Unit> members) {
+        if (members == null || members.size() < 2) {
+            return null;
+        }
+        int[] ids = new int[Math.min(members.size(), Formation.MAX_SLOTS)];
+        int count = 0;
+        UnitType type = null;
+        float sumX = 0f;
+        float sumY = 0f;
+        for (int i = 0; i < members.size() && count < ids.length; i++) {
+            Unit unit = members.get(i);
+            if (unit == null || !unit.isAlive() || unit.ownerId() != ownerId) {
+                continue;
+            }
+            // One type per squad. Mixed squads would multiply the formation, morale and
+            // production work for a gain that has not been asked for yet.
+            if (type == null) {
+                type = unit.type();
+            } else if (unit.type() != type) {
+                continue;
+            }
+            detachFromSquad(unit);
+            ids[count++] = unit.id();
+            sumX += unit.x();
+            sumY += unit.y();
+        }
+        if (count < 2) {
+            return null;
+        }
+        if (count < ids.length) {
+            int[] trimmed = new int[count];
+            System.arraycopy(ids, 0, trimmed, 0, count);
+            ids = trimmed;
+        }
+
+        Squad squad = new Squad(nextEntityId++, ownerId, type, ids, sumX / count, sumY / count);
+        squads.add(squad);
+        for (int slot = 0; slot < ids.length; slot++) {
+            Unit unit = (Unit) entity(ids[slot]);
+            unit.joinSquad(squad.id(), slot);
+            unit.setOrder(new SquadMemberOrder(squad.id()));
+        }
+        return squad;
+    }
+
+    /**
+     * Breaks members out of a squad.
+     *
+     * <p>Two or more become a squad of their own; a single unit becomes an individual. Either
+     * way they stop taking orders from the one they left.
+     *
+     * @return the new squad, or null if the split produced individuals
+     */
+    public Squad splitSquad(Squad squad, List<Unit> leaving) {
+        if (squad == null || leaving == null || leaving.isEmpty()) {
+            return null;
+        }
+        List<Unit> taken = new ArrayList<Unit>(leaving.size());
+        for (int i = 0; i < leaving.size(); i++) {
+            Unit unit = leaving.get(i);
+            if (unit != null && unit.isAlive() && squad.contains(unit.id())) {
+                taken.add(unit);
+            }
+        }
+        if (taken.isEmpty()) {
+            return null;
+        }
+        for (int i = 0; i < taken.size(); i++) {
+            detachFromSquad(taken.get(i));
+            taken.get(i).clearOrders();
+        }
+        return taken.size() >= 2 ? formSquad(squad.ownerId(), taken) : null;
+    }
+
+    public SquadRegistry squads() {
+        return squads;
+    }
+
+    /** The squad a unit belongs to, or null if it fights alone. */
+    public Squad squadOf(Unit unit) {
+        return unit == null || !unit.isInSquad() ? null : squads.byId(unit.squadId());
+    }
+
+    /**
+     * Takes a unit out of its squad.
+     *
+     * <p>The one place membership is broken, so everything that has to happen when it does
+     * happens here: any caller anywhere gets the whole job done.
+     */
+    public void detachFromSquad(Unit unit) {
+        if (unit == null || !unit.isInSquad()) {
+            return;
+        }
+        Squad squad = squads.byId(unit.squadId());
+        if (squad != null && squad.removeMember(unit.id())) {
+            squads.remove(squad);
+        }
+        unit.leaveSquad();
     }
 
     public Mover mover() {
@@ -357,9 +472,20 @@ public final class GameWorld {
     // --- orders ---------------------------------------------------------------------------
 
     /** Replaces a unit's orders, ignoring units that are not the issuing player's. */
+    /**
+     * Gives one unit an order of its own.
+     *
+     * <p>Doing that to a squad member takes it out of the squad. That is the whole break-up
+     * mechanic, and it lives here rather than in the command layer so that every existing path
+     * — the HUD's tap-to-order, the AI, a test — gets it without knowing about squads at all.
+     * A squad moves its members with {@code SquadMemberOrder}, which is exempt.
+     */
     public void issueOrder(int playerId, Unit unit, Order order) {
         if (unit == null || unit.ownerId() != playerId || !unit.isAlive()) {
             return;
+        }
+        if (!(order instanceof SquadMemberOrder)) {
+            detachFromSquad(unit);
         }
         unit.setOrder(order);
     }
@@ -367,6 +493,9 @@ public final class GameWorld {
     public void queueOrder(int playerId, Unit unit, Order order) {
         if (unit == null || unit.ownerId() != playerId || !unit.isAlive()) {
             return;
+        }
+        if (!(order instanceof SquadMemberOrder)) {
+            detachFromSquad(unit);
         }
         unit.queueOrder(order);
     }
@@ -518,6 +647,12 @@ public final class GameWorld {
             return;
         }
         int previousOwner = entity.ownerId();
+        // Detach before the owner changes, while the squad still recognises it as one of theirs.
+        // A hijacked unit cannot stay in its old owner's formation, and this is the code path
+        // most easily forgotten - it is also where the population counts would have to move.
+        if (!entity.isBuilding()) {
+            detachFromSquad((Unit) entity);
+        }
         entity.setOwnerId(newOwnerId);
 
         if (entity.isBuilding()) {
@@ -1127,6 +1262,7 @@ public final class GameWorld {
         for (int i = units.size() - 1; i >= 0; i--) {
             Unit u = units.get(i);
             if (!u.isAlive()) {
+                detachFromSquad(u);
                 units.remove(i);
                 entitiesById.remove(Integer.valueOf(u.id()));
                 player(u.ownerId()).noteUnitLost();

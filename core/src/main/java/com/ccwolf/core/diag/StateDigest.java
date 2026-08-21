@@ -28,11 +28,19 @@ import java.util.List;
  *
  * <h2>The rule this depends on</h2>
  *
- * <p>Nothing fed by a transcendental function may reach the digest. {@code Math.atan2} is
- * specified only to within two units in the last place, so two correct JVMs may disagree about
- * it. There is exactly one call to it in the simulation — {@code Unit.faceToward} setting
- * {@code facing} — and {@code facing} is read by nothing but the renderer. Keep it that way: if
- * facing ever starts influencing the simulation, it has to move to {@code StrictMath} first.
+ * <p>Nothing fed by a loosely specified function may reach the digest. {@code Math.atan2},
+ * {@code Math.sin} and {@code Math.cos} are specified only to within one or two units in the
+ * last place, so two correct JVMs may disagree about them.
+ *
+ * <p>Two places in the simulation touch them, and they are handled differently on purpose:
+ *
+ * <ul>
+ *   <li>{@code Unit.faceToward} sets {@code facing} from {@code Math.atan2}. That is fine
+ *       because {@code facing} is read by nothing but the renderer. If it ever starts
+ *       influencing the simulation it has to move to {@code StrictMath} first.</li>
+ *   <li>{@code Squad.slotPosition} rotates formation offsets, and that decides where units
+ *       actually stand — so it uses {@code StrictMath}, which is specified exactly.</li>
+ * </ul>
  */
 public final class StateDigest {
 

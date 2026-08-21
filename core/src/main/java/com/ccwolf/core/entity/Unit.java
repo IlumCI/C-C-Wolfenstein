@@ -44,6 +44,18 @@ public final class Unit extends Entity {
      * between them. It lives on the unit rather than in a parallel array so that a pair of
      * overlapping units can be resolved in one visit, pushing both apart at once.
      */
+    /**
+     * The squad this unit belongs to, or -1.
+     *
+     * <p>Membership is held here and the roster is held on the squad. Keeping the units
+     * themselves in a second list would be two things to keep in step, and one of them would
+     * rot the first time something died in an order nobody expected.
+     */
+    private int squadId = -1;
+
+    /** Position in the squad's formation. Kept when a neighbour dies, so the line thins. */
+    private int squadSlot = -1;
+
     private float separationPushX;
     private float separationPushY;
 
@@ -326,6 +338,28 @@ public final class Unit extends Entity {
 
     public void setLastWaypointDistance(float d) {
         this.lastWaypointDistance = d;
+    }
+
+    public int squadId() {
+        return squadId;
+    }
+
+    public int squadSlot() {
+        return squadSlot;
+    }
+
+    public boolean isInSquad() {
+        return squadId >= 0;
+    }
+
+    public void joinSquad(int squadId, int slot) {
+        this.squadId = squadId;
+        this.squadSlot = slot;
+    }
+
+    public void leaveSquad() {
+        this.squadId = -1;
+        this.squadSlot = -1;
     }
 
     public void addSeparationPush(float dx, float dy) {

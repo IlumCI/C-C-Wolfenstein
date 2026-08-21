@@ -196,6 +196,38 @@ public enum UnitType {
      * Whether this unit lies up rather than standing about: stealthy units are invisible to
      * the enemy while they hold still and are not shooting.
      */
+    /**
+     * How many of this type are trained and fight as one body.
+     *
+     * <p>One switch decides the whole feature. Vehicles and harvesters are individuals because
+     * they are; Saboteurs and Infiltrators are individuals because their whole job is to slip
+     * away from everybody else, and putting them in a formation would defeat the point.
+     */
+    public int squadSize() {
+        switch (this) {
+            case PARTISAN:
+            case SOLDAT:
+                return 8;
+            case ROCKETEER:
+            case GRENADIER:
+            case STURMPIONIER:
+                return 4;
+            case MARKSMAN:
+            case SCHARFSCHUTZE:
+                return 2;
+            case UBERSOLDAT:
+                return 2;
+            default:
+                // Vehicles, harvesters, Saboteurs and Infiltrators fight alone.
+                return 1;
+        }
+    }
+
+    /** True for types that are trained and commanded as a squad rather than one at a time. */
+    public boolean formsSquads() {
+        return squadSize() > 1;
+    }
+
     public boolean isStealthy() {
         return this == MARKSMAN || this == INFILTRATOR || this == SCHARFSCHUTZE;
     }
