@@ -1,42 +1,80 @@
 package com.ccwolf.android.render;
 
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.RectF;
+import android.graphics.Rect;
 import com.ccwolf.android.GameSession;
+import com.ccwolf.android.art.SpriteAtlas;
+import com.ccwolf.android.art.UnitSprites;
+import com.ccwolf.core.api.WorldView;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.fog.FogGrid;
+import com.ccwolf.core.map.Terrain;
 import com.ccwolf.core.map.TileMap;
-import com.ccwolf.core.sim.GameWorld;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
- * Draws the battlefield: terrain, structures, units, effects, fog and the selection overlays.
+ * Draws the battlefield from the baked sprite atlas.
  *
- * <p>Only the tiles inside the camera's viewport are visited, so the cost of a frame depends
- * on the zoom level rather than on the size of the map.
+ * <p>Three things here matter as much as the sprites themselves:
+ *
+ * <ul>
+ *   <li><b>Interpolation.</b> The simulation ticks twenty times a second. Drawing entities at
+ *       their raw tick positions on a 60 Hz screen looks like a slideshow, so everything is
+ *       drawn blended between the last tick and the current one.</li>
+ *   <li><b>Depth sorting.</b> Everything is drawn back to front by its southern edge, so a
+ *       soldier standing in front of a bunker is drawn in front of it.</li>
+ *   <li><b>Nearest-neighbour scaling.</b> Filtering is off everywhere; smoothed pixel art
+ *       stops being pixel art.</li>
+ * </ul>
  */
 public final class WorldRenderer {
 
-    private final Sprites sprites = new Sprites();
-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint flat = new Paint();
-    private final RectF rect = new RectF();
+    /** Ticks each infantry walk frame is held for. */
+    private static final int WALK_FRAME_TICKS = 4;
 
-    /** Set while the player is dragging a selection box, in screen pixels. */
+    private final SpriteAtlas atlas = SpriteAtlas.get();
+    private final Paint sprite = new Paint();
+    private final Paint flat = new Paint();
+    private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Rect dst = new Rect();
+
+    /** Reused each frame so a drawing pass allocates nothing. */
+    private final List<Entity> drawOrder = new ArrayList<Entity>(256);
+
     private boolean dragging;
     private float dragX0;
     private float dragY0;
     private float dragX1;
     private float dragY1;
 
+    private final Comparator<Entity> byDepth = new Comparator<Entity>() {
+        @Override
+        public int compare(Entity a, Entity b) {
+            // Southern edge decides: a structure's footprint extends below its centre.
+            float ay = a.y() + (a.isBuilding() ? ((Building) a).tilesHigh() / 2f : 0f);
+            float by = b.y() + (b.isBuilding() ? ((Building) b).tilesHigh() / 2f : 0f);
+            return Float.compare(ay, by);
+        }
+    };
+
     public WorldRenderer() {
+        sprite.setFilterBitmap(false);
+        sprite.setAntiAlias(false);
+        sprite.setDither(false);
         flat.setStyle(Paint.Style.FILL);
         flat.setAntiAlias(false);
+        stroke.setStyle(Paint.Style.STROKE);
+        text.setColor(Palette.HUD_TEXT);
     }
 
     public void setSelectionBox(boolean active, float x0, float y0, float x1, float y1) {
@@ -49,22 +87,22 @@ public final class WorldRenderer {
 
     public void draw(Canvas canvas, GameSession session) {
         Camera camera = session.camera();
-        GameWorld world = session.world();
+        WorldView view = session.view();
 
         canvas.save();
         canvas.clipRect(camera.viewLeft(), camera.viewTop(),
                 camera.viewLeft() + camera.viewWidth(), camera.viewTop() + camera.viewHeight());
 
         drawTerrain(canvas, session);
-        drawBuildings(canvas, session);
-        drawUnits(canvas, session);
-        drawEffects(canvas, session);
+        drawGroundEffects(canvas, session);
+        drawEntities(canvas, session);
+        drawAirEffects(canvas, session);
         drawPlacementGhost(canvas, session);
         drawFog(canvas, session);
         drawSelectionBox(canvas);
 
         canvas.restore();
-        if (world.isGameOver()) {
+        if (view.isGameOver()) {
             drawOutcome(canvas, session);
         }
     }
@@ -74,7 +112,6 @@ public final class WorldRenderer {
     private void drawTerrain(Canvas canvas, GameSession session) {
         Camera camera = session.camera();
         TileMap map = session.world().map();
-        float px = camera.tilePx();
 
         int x0 = camera.firstVisibleTileX();
         int y0 = camera.firstVisibleTileY();
@@ -82,110 +119,253 @@ public final class WorldRenderer {
         int y1 = camera.lastVisibleTileY();
 
         for (int y = y0; y <= y1; y++) {
-            float sy = camera.screenY(y);
             for (int x = x0; x <= x1; x++) {
-                float sx = camera.screenX(x);
-                flat.setColor(Palette.terrain(map.terrain(x, y), x, y, map.ore(x, y)));
-                // +1 pixel to avoid hairline seams between tiles at fractional zoom.
-                canvas.drawRect(sx, sy, sx + px + 1f, sy + px + 1f, flat);
+                Terrain terrain = map.terrain(x, y);
+                int ore = map.ore(x, y);
+                Bitmap tile = (terrain == Terrain.ORE && ore > 0)
+                        ? atlas.ore(x, y, ore) : atlas.terrain(terrain, x, y);
+                tileRect(camera, x, y);
+                canvas.drawBitmap(tile, null, dst, sprite);
             }
         }
+    }
+
+    /** Destination rectangle for a tile, rounded so neighbouring tiles never leave a seam. */
+    private void tileRect(Camera camera, int tileX, int tileY) {
+        dst.set(Math.round(camera.screenX(tileX)), Math.round(camera.screenY(tileY)),
+                Math.round(camera.screenX(tileX + 1)), Math.round(camera.screenY(tileY + 1)));
     }
 
     // --- entities -------------------------------------------------------------------------
 
-    private void drawBuildings(Canvas canvas, GameSession session) {
-        Camera camera = session.camera();
-        GameWorld world = session.world();
-        FogGrid fog = world.fogFor(session.playerId());
-        float px = camera.tilePx();
+    private void drawEntities(Canvas canvas, GameSession session) {
+        WorldView view = session.view();
+        drawOrder.clear();
 
-        List<Building> buildings = world.buildings();
-        for (int i = 0; i < buildings.size(); i++) {
-            Building b = buildings.get(i);
-            if (!isTileKnown(world, fog, b.tileX(), b.tileY())) {
-                continue;
+        for (int i = 0; i < view.buildings().size(); i++) {
+            Building b = view.buildings().get(i);
+            if (view.isDiscovered(b)) {
+                drawOrder.add(b);
             }
-            float left = camera.screenX(b.tileX());
-            float top = camera.screenY(b.tileY());
-            if (offScreen(camera, left, top, b.tilesWide() * px, b.tilesHigh() * px)) {
-                continue;
+        }
+        for (int i = 0; i < view.units().size(); i++) {
+            Unit u = view.units().get(i);
+            if (view.isDiscovered(u)) {
+                drawOrder.add(u);
             }
-            Faction faction = world.player(b.ownerId()).faction();
-            sprites.drawBuilding(canvas, b, faction, left, top, px);
+        }
+        Collections.sort(drawOrder, byDepth);
 
-            if (isSelected(session, b)) {
-                drawSelectionRect(canvas, left, top, b.tilesWide() * px, b.tilesHigh() * px);
-                drawRallyFlag(canvas, session, b);
-            }
-            if (b.healthFraction() < 1f) {
-                drawHealthBar(canvas, left, top - px * 0.18f, b.tilesWide() * px,
-                        b.healthFraction());
+        for (int i = 0; i < drawOrder.size(); i++) {
+            Entity e = drawOrder.get(i);
+            if (e.isBuilding()) {
+                drawBuilding(canvas, session, (Building) e);
+            } else {
+                drawUnit(canvas, session, (Unit) e);
             }
         }
     }
 
-    private void drawUnits(Canvas canvas, GameSession session) {
+    private void drawBuilding(Canvas canvas, GameSession session, Building b) {
         Camera camera = session.camera();
-        GameWorld world = session.world();
-        FogGrid fog = world.fogFor(session.playerId());
+        WorldView view = session.view();
         float px = camera.tilePx();
 
-        List<Unit> units = world.units();
-        for (int i = 0; i < units.size(); i++) {
-            Unit u = units.get(i);
-            // Enemy units are only drawn where we can actually see them right now.
-            boolean mine = u.ownerId() == session.playerId();
-            if (!mine && world.isFogEnabled() && !fog.isVisible(u.tileX(), u.tileY())) {
-                continue;
-            }
-            float cx = camera.screenX(u.x());
-            float cy = camera.screenY(u.y());
-            if (offScreen(camera, cx - px, cy - px, px * 2, px * 2)) {
-                continue;
-            }
+        int left = Math.round(camera.screenX(b.tileX()));
+        int top = Math.round(camera.screenY(b.tileY()));
+        int right = Math.round(camera.screenX(b.tileX() + b.tilesWide()));
+        int bottom = Math.round(camera.screenY(b.tileY() + b.tilesHigh()));
+        if (right < camera.viewLeft() || bottom < camera.viewTop()
+                || left > camera.viewLeft() + camera.viewWidth()
+                || top > camera.viewTop() + camera.viewHeight()) {
+            return;
+        }
 
-            sprites.drawUnit(canvas, u, world.player(u.ownerId()).faction(), cx, cy, px);
+        Faction faction = view.world().player(b.ownerId()).faction();
+        dst.set(left, top, right, bottom);
+        canvas.drawBitmap(atlas.building(b.type(), faction, b.damageState()), null, dst, sprite);
 
-            // The ring goes on top of the sprite and outside it: a vehicle is nearly a tile
-            // wide, so a ring drawn underneath simply disappears behind it.
-            if (isSelected(session, u)) {
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(1.8f, px * 0.055f));
-                paint.setColor(Palette.SELECTION);
-                canvas.drawCircle(cx, cy, px * 0.6f, paint);
-                paint.setStyle(Paint.Style.FILL);
-            }
+        // A defence with the power cut gets a cold wash and a dead lamp; without this there is
+        // no way to tell a blacked-out turret from a live one.
+        if (b.type().weapon() != null && !b.isPowered()) {
+            flat.setColor(0x66101828);
+            canvas.drawRect(dst, flat);
+            flat.setColor(Palette.POWER_LOW);
+            canvas.drawRect(left + px * 0.35f, top - px * 0.22f,
+                    left + px * 0.65f, top - px * 0.06f, flat);
+        }
 
-            if (u.healthFraction() < 1f) {
-                drawHealthBar(canvas, cx - px * 0.35f, cy - px * 0.42f, px * 0.7f,
-                        u.healthFraction());
-            }
+        // The turret's barrel traverses onto its target.
+        if (b.type() == BuildingType.FLAK_TURRET && b.isPowered()) {
+            canvas.drawBitmap(atlas.flakBarrel(turretFacing(session, b)), null, dst, sprite);
+        }
+
+        if (b.isRepairing()) {
+            drawRepairMark(canvas, session, left, top, right);
+        }
+        if (!b.isComplete()) {
+            drawProgressBar(canvas, left, bottom, right - left, b.constructionFraction());
+        }
+        if (isSelected(session, b)) {
+            drawBrackets(canvas, left, top, right, bottom, view.isPrimary(b));
+        }
+        if (b.healthFraction() < 1f) {
+            drawHealthBar(canvas, left, top - px * 0.16f, right - left, b.healthFraction());
         }
     }
 
-    private void drawEffects(Canvas canvas, GameSession session) {
+    /** Points a turret at whatever it can see, falling back to facing the enemy base. */
+    private int turretFacing(GameSession session, Building turret) {
+        float range = turret.weapon() == null ? 6f : turret.weapon().range();
+        Entity target = session.view().world()
+                .findNearestEnemy(turret.ownerId(), turret.x(), turret.y(), range, false);
+        if (target == null) {
+            target = session.view().world()
+                    .findNearestEnemyAnywhere(turret.ownerId(), turret.x(), turret.y(), true);
+        }
+        if (target == null) {
+            return 0;
+        }
+        return facingIndex((float) Math.atan2(target.y() - turret.y(), target.x() - turret.x()));
+    }
+
+    private void drawUnit(Canvas canvas, GameSession session, Unit u) {
         Camera camera = session.camera();
+        WorldView view = session.view();
+        float px = camera.tilePx();
+        float alpha = session.interpolation();
+
+        float cx = camera.screenX(u.renderX(alpha));
+        float cy = camera.screenY(u.renderY(alpha));
+
+        // Sprites are authored one tile across for infantry, a little over for vehicles.
+        float size = px * (u.type().isVehicle()
+                ? UnitSprites.VEHICLE_SIZE / (float) UnitSprites.TILE : 1f);
+        if (cx + size < camera.viewLeft() || cy + size < camera.viewTop()
+                || cx - size > camera.viewLeft() + camera.viewWidth()
+                || cy - size > camera.viewTop() + camera.viewHeight()) {
+            return;
+        }
+
+        Faction faction = view.world().player(u.ownerId()).faction();
+        Bitmap bitmap = atlas.unit(u.type(), faction, facingIndex(u.facing()), unitFrame(view, u));
+
+        int half = Math.round(size / 2f);
+        int centreX = Math.round(cx);
+        int centreY = Math.round(cy);
+        dst.set(centreX - half, centreY - half, centreX + half, centreY + half);
+        canvas.drawBitmap(bitmap, null, dst, sprite);
+
+        if (isSelected(session, u)) {
+            float r = px * 0.5f;
+            drawBrackets(canvas, Math.round(cx - r), Math.round(cy - r), Math.round(cx + r),
+                    Math.round(cy + r), false);
+        }
+        if (u.healthFraction() < 1f) {
+            drawHealthBar(canvas, cx - px * 0.4f, cy - px * 0.55f, px * 0.8f,
+                    u.healthFraction());
+        }
+    }
+
+    /** Walk cycle for infantry, tread shimmer for vehicles, cargo level for harvesters. */
+    private int unitFrame(WorldView view, Unit u) {
+        if (u.type().isHarvester()) {
+            if (u.oreCarried() <= 0) {
+                return 0;
+            }
+            return u.oreCarried() >= u.oreCapacity() / 2 ? 2 : 1;
+        }
+        if (!u.isMoving()) {
+            return 0;
+        }
+        // Offset by id so a squad does not march in perfect lockstep.
+        return ((view.tick() + u.id()) / WALK_FRAME_TICKS) % UnitSprites.WALK_FRAMES;
+    }
+
+    /** Radians to one of eight sprite facings, 0 being east. */
+    public static int facingIndex(float radians) {
+        int index = (int) Math.round(radians / (Math.PI / 4.0));
+        return ((index % 8) + 8) % 8;
+    }
+
+    // --- effects --------------------------------------------------------------------------
+
+    /** Wrecks and craters sit on the ground, under everything still alive. */
+    private void drawGroundEffects(Canvas canvas, GameSession session) {
+        Camera camera = session.camera();
+        float px = camera.tilePx();
         List<GameSession.Effect> effects = session.effects();
+
         for (int i = 0; i < effects.size(); i++) {
             GameSession.Effect fx = effects.get(i);
-            float x = camera.screenX(fx.x);
-            float y = camera.screenY(fx.y);
-            if (fx.kind == GameSession.Effect.Kind.TRACER) {
-                paint.setColor(Palette.TRACER);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(1.2f, camera.tilePx() * 0.05f));
-                canvas.drawLine(x, y, camera.screenX(fx.toX), camera.screenY(fx.toY), paint);
-                paint.setStyle(Paint.Style.FILL);
-            } else if (fx.kind == GameSession.Effect.Kind.EXPLOSION) {
-                float t = fx.progress();
-                float radius = camera.tilePx() * (0.2f + 0.5f * t);
-                int alpha = (int) (220 * (1f - t));
-                paint.setColor((alpha << 24) | (Palette.EXPLOSION & 0x00FFFFFF));
-                canvas.drawCircle(x, y, radius, paint);
+            if (fx.kind != GameSession.Effect.Kind.WRECK) {
+                continue;
+            }
+            int half = Math.round(px * 0.55f);
+            int cx = Math.round(camera.screenX(fx.x));
+            int cy = Math.round(camera.screenY(fx.y));
+            dst.set(cx - half, cy - half, cx + half, cy + half);
+            // Wrecks fade over their last moments rather than blinking away.
+            sprite.setAlpha(fx.progress() > 0.85f
+                    ? (int) (255 * (1f - (fx.progress() - 0.85f) / 0.15f)) : 255);
+            canvas.drawBitmap(atlas.wreck(fx.variant), null, dst, sprite);
+            sprite.setAlpha(255);
+        }
+    }
+
+    private void drawAirEffects(Canvas canvas, GameSession session) {
+        Camera camera = session.camera();
+        float px = camera.tilePx();
+        List<GameSession.Effect> effects = session.effects();
+
+        for (int i = 0; i < effects.size(); i++) {
+            GameSession.Effect fx = effects.get(i);
+            switch (fx.kind) {
+                case TRACER: {
+                    float x0 = camera.screenX(fx.x);
+                    float y0 = camera.screenY(fx.y);
+                    float x1 = camera.screenX(fx.toX);
+                    float y1 = camera.screenY(fx.toY);
+                    float t = fx.progress();
+                    stroke.setColor(Palette.TRACER);
+                    stroke.setStrokeWidth(Math.max(1.5f, px * 0.05f));
+                    // The tail catches up with the head, so it reads as a round travelling.
+                    canvas.drawLine(x0 + (x1 - x0) * t * 0.6f, y0 + (y1 - y0) * t * 0.6f,
+                            x1, y1, stroke);
+
+                    int flash = Math.round(px * 0.5f);
+                    dst.set(Math.round(x0) - flash / 2, Math.round(y0) - flash / 2,
+                            Math.round(x0) + flash / 2, Math.round(y0) + flash / 2);
+                    canvas.drawBitmap(atlas.muzzleFlash(t > 0.5f ? 1 : 0), null, dst, sprite);
+                    break;
+                }
+                case EXPLOSION: {
+                    int half = Math.round(px * (0.6f + fx.progress() * 0.4f));
+                    int cx = Math.round(camera.screenX(fx.x));
+                    int cy = Math.round(camera.screenY(fx.y));
+                    dst.set(cx - half, cy - half, cx + half, cy + half);
+                    canvas.drawBitmap(atlas.explosion(fx.progress()), null, dst, sprite);
+                    break;
+                }
+                case MOVE_PING:
+                case ATTACK_PING: {
+                    boolean hostile = fx.kind == GameSession.Effect.Kind.ATTACK_PING;
+                    float t = fx.progress();
+                    stroke.setColor(hostile ? Palette.HEALTH_POOR : Palette.SELECTION);
+                    stroke.setAlpha((int) (255 * (1f - t)));
+                    stroke.setStrokeWidth(Math.max(1.5f, px * 0.06f));
+                    canvas.drawCircle(camera.screenX(fx.x), camera.screenY(fx.y),
+                            px * (0.7f - 0.45f * t), stroke);
+                    stroke.setAlpha(255);
+                    break;
+                }
+                default:
+                    break;
             }
         }
     }
+
+    // --- overlays -------------------------------------------------------------------------
 
     private void drawPlacementGhost(Canvas canvas, GameSession session) {
         BuildingType type = session.placing();
@@ -196,44 +376,53 @@ public final class WorldRenderer {
         int tileX = session.placeTileX();
         int tileY = session.placeTileY();
         if (tileX < 0 || tileY < 0) {
-            // Nothing touched yet: park the ghost in the middle of the view.
             tileX = (int) camera.worldX(camera.viewLeft() + camera.viewWidth() / 2f);
             tileY = (int) camera.worldY(camera.viewTop() + camera.viewHeight() / 2f);
         }
         drawGhostAt(canvas, session, type, tileX, tileY);
     }
 
-    /** Draws the translucent build ghost at a tile, coloured by whether the site is legal. */
+    /**
+     * The build ghost: the structure at half opacity plus a per-tile legality grid, so it is
+     * obvious which corner of a footprint is the one hanging over a rock.
+     */
     public void drawGhostAt(Canvas canvas, GameSession session, BuildingType type, int tileX,
                             int tileY) {
         Camera camera = session.camera();
-        float px = camera.tilePx();
-        float left = camera.screenX(tileX - type.tilesWide() / 2);
-        float top = camera.screenY(tileY - type.tilesHigh() / 2);
-        float w = type.tilesWide() * px;
-        float h = type.tilesHigh() * px;
+        WorldView view = session.view();
+        int originX = tileX - type.tilesWide() / 2;
+        int originY = tileY - type.tilesHigh() / 2;
 
-        boolean ok = session.isPlacementValid(type, tileX, tileY);
-        paint.setColor(ok ? Palette.PLACE_OK : Palette.PLACE_BAD);
-        canvas.drawRect(left, top, left + w, top + h, paint);
+        dst.set(Math.round(camera.screenX(originX)), Math.round(camera.screenY(originY)),
+                Math.round(camera.screenX(originX + type.tilesWide())),
+                Math.round(camera.screenY(originY + type.tilesHigh())));
+        sprite.setAlpha(140);
+        canvas.drawBitmap(atlas.building(type, view.faction(), 0), null, dst, sprite);
+        sprite.setAlpha(255);
 
-        canvas.saveLayerAlpha(left - px, top - px, left + w + px, top + h + px, 150);
-        sprites.drawStructureShell(canvas, type, left, top, w, h, px,
-                Palette.faction(session.view().faction()),
-                Palette.factionDark(session.view().faction()));
-        canvas.restore();
+        // Per-tile legality: a thin wash plus an outline. Filling each tile solid, as this
+        // first did, buried the ghost under a slab of green and told the player nothing.
+        boolean allClear = view.canPlaceCentred(type, tileX, tileY);
+        stroke.setStrokeWidth(Math.max(1f, camera.tilePx() * 0.04f));
+        for (int ty = originY; ty < originY + type.tilesHigh(); ty++) {
+            for (int tx = originX; tx < originX + type.tilesWide(); tx++) {
+                boolean tileClear = !view.world().grid().isBlocked(tx, ty) && allClear;
+                tileRect(camera, tx, ty);
+                flat.setColor(tileClear ? 0x2264E064 : 0x44E05A50);
+                canvas.drawRect(dst, flat);
+                stroke.setColor(tileClear ? 0x9964E064 : 0xCCE05A50);
+                canvas.drawRect(dst, stroke);
+            }
+        }
     }
 
-    // --- overlays -------------------------------------------------------------------------
-
     private void drawFog(Canvas canvas, GameSession session) {
-        GameWorld world = session.world();
-        if (!world.isFogEnabled()) {
+        WorldView view = session.view();
+        if (!view.isFogEnabled()) {
             return;
         }
         Camera camera = session.camera();
-        FogGrid fog = world.fogFor(session.playerId());
-        float px = camera.tilePx();
+        FogGrid fog = view.fog();
 
         int x0 = camera.firstVisibleTileX();
         int y0 = camera.firstVisibleTileY();
@@ -241,7 +430,6 @@ public final class WorldRenderer {
         int y1 = camera.lastVisibleTileY();
 
         for (int y = y0; y <= y1; y++) {
-            float sy = camera.screenY(y);
             for (int x = x0; x <= x1; x++) {
                 byte state = fog.state(x, y);
                 if (state == FogGrid.VISIBLE) {
@@ -249,8 +437,8 @@ public final class WorldRenderer {
                 }
                 flat.setColor(state == FogGrid.UNEXPLORED
                         ? Palette.FOG_UNEXPLORED : Palette.FOG_EXPLORED);
-                float sx = camera.screenX(x);
-                canvas.drawRect(sx, sy, sx + px + 1f, sy + px + 1f, flat);
+                tileRect(camera, x, y);
+                canvas.drawRect(dst, flat);
             }
         }
     }
@@ -259,73 +447,84 @@ public final class WorldRenderer {
         if (!dragging) {
             return;
         }
-        paint.setColor(0x33A0E67A);
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawRect(Math.min(dragX0, dragX1), Math.min(dragY0, dragY1),
-                Math.max(dragX0, dragX1), Math.max(dragY0, dragY1), paint);
-        paint.setColor(Palette.SELECTION);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2f);
-        canvas.drawRect(Math.min(dragX0, dragX1), Math.min(dragY0, dragY1),
-                Math.max(dragX0, dragX1), Math.max(dragY0, dragY1), paint);
-        paint.setStyle(Paint.Style.FILL);
+        float left = Math.min(dragX0, dragX1);
+        float top = Math.min(dragY0, dragY1);
+        float right = Math.max(dragX0, dragX1);
+        float bottom = Math.max(dragY0, dragY1);
+
+        flat.setColor(0x2E9BE07A);
+        canvas.drawRect(left, top, right, bottom, flat);
+        stroke.setColor(Palette.SELECTION);
+        stroke.setStrokeWidth(2f);
+        canvas.drawRect(left, top, right, bottom, stroke);
     }
 
-    private void drawRallyFlag(Canvas canvas, GameSession session, Building b) {
-        if (!b.type().isProducer()) {
-            return;
-        }
-        Camera camera = session.camera();
-        float x = camera.screenX(b.rallyX() + 0.5f);
-        float y = camera.screenY(b.rallyY() + 0.5f);
-        paint.setColor(Palette.SELECTION);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2f);
-        canvas.drawLine(x, y, x, y - camera.tilePx() * 0.6f, paint);
-        paint.setStyle(Paint.Style.FILL);
-        canvas.drawRect(x, y - camera.tilePx() * 0.6f, x + camera.tilePx() * 0.3f,
-                y - camera.tilePx() * 0.4f, paint);
+    /** Corner brackets rather than a ring: they never hide the sprite they mark. */
+    private void drawBrackets(Canvas canvas, int left, int top, int right, int bottom,
+                              boolean primary) {
+        float arm = Math.max(4f, (right - left) * 0.28f);
+        stroke.setColor(primary ? Palette.GOLD : Palette.SELECTION);
+        stroke.setStrokeWidth(Math.max(1.8f, (right - left) * 0.05f));
+
+        canvas.drawLine(left, top, left + arm, top, stroke);
+        canvas.drawLine(left, top, left, top + arm, stroke);
+        canvas.drawLine(right, top, right - arm, top, stroke);
+        canvas.drawLine(right, top, right, top + arm, stroke);
+        canvas.drawLine(left, bottom, left + arm, bottom, stroke);
+        canvas.drawLine(left, bottom, left, bottom - arm, stroke);
+        canvas.drawLine(right, bottom, right - arm, bottom, stroke);
+        canvas.drawLine(right, bottom, right, bottom - arm, stroke);
     }
 
-    private void drawSelectionRect(Canvas canvas, float left, float top, float w, float h) {
-        paint.setColor(Palette.SELECTION);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2.5f);
-        canvas.drawRect(left - 2, top - 2, left + w + 2, top + h + 2, paint);
-        paint.setStyle(Paint.Style.FILL);
+    /** A pulsing cross over a structure the repair crews are working on. */
+    private void drawRepairMark(Canvas canvas, GameSession session, int left, int top,
+                                int right) {
+        float px = session.camera().tilePx();
+        boolean lit = (session.view().tick() / 6) % 2 == 0;
+        flat.setColor(lit ? Palette.HEALTH_GOOD : Palette.HUD_TEXT_DIM);
+        float cx = (left + right) / 2f;
+        float cy = top + px * 0.3f;
+        float arm = px * 0.22f;
+        canvas.drawRect(cx - arm, cy - arm / 3f, cx + arm, cy + arm / 3f, flat);
+        canvas.drawRect(cx - arm / 3f, cy - arm, cx + arm / 3f, cy + arm, flat);
     }
 
     private void drawHealthBar(Canvas canvas, float left, float top, float width,
                                float fraction) {
-        float height = Math.max(2.5f, width * 0.09f);
-        flat.setColor(0xCC101010);
-        canvas.drawRect(left, top, left + width, top + height, flat);
+        float height = Math.max(3f, width * 0.08f);
+        flat.setColor(0xCC0C0C0A);
+        canvas.drawRect(left - 1, top - 1, left + width + 1, top + height + 1, flat);
         flat.setColor(Palette.health(fraction));
         canvas.drawRect(left, top, left + width * fraction, top + height, flat);
     }
 
-    private void drawOutcome(Canvas canvas, GameSession session) {
-        GameWorld world = session.world();
-        boolean won = world.winnerId() == session.playerId();
-        paint.setColor(0xB0000000);
-        canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), paint);
-
-        paint.setColor(won ? Palette.GOLD : Palette.REGIME);
-        paint.setTextAlign(Paint.Align.CENTER);
-        paint.setFakeBoldText(true);
-        paint.setTextSize(canvas.getHeight() * 0.13f);
-        canvas.drawText(won ? "VALLEY HELD" : "OVERRUN", canvas.getWidth() / 2f,
-                canvas.getHeight() * 0.45f, paint);
-
-        paint.setFakeBoldText(false);
-        paint.setColor(Palette.HUD_TEXT);
-        paint.setTextSize(canvas.getHeight() * 0.05f);
-        canvas.drawText("Tap to start a new skirmish", canvas.getWidth() / 2f,
-                canvas.getHeight() * 0.58f, paint);
-        paint.setTextAlign(Paint.Align.LEFT);
+    private void drawProgressBar(Canvas canvas, float left, float bottom, float width,
+                                 float fraction) {
+        flat.setColor(0xCC0C0C0A);
+        canvas.drawRect(left, bottom + 2, left + width, bottom + 7, flat);
+        flat.setColor(Palette.GOLD);
+        canvas.drawRect(left, bottom + 2, left + width * fraction, bottom + 7, flat);
     }
 
-    // --- helpers --------------------------------------------------------------------------
+    private void drawOutcome(Canvas canvas, GameSession session) {
+        boolean won = session.view().hasWon();
+        flat.setColor(0xC0000000);
+        canvas.drawRect(0, 0, canvas.getWidth(), canvas.getHeight(), flat);
+
+        text.setTextAlign(Paint.Align.CENTER);
+        text.setFakeBoldText(true);
+        text.setColor(won ? Palette.GOLD : Palette.REGIME);
+        text.setTextSize(canvas.getHeight() * 0.13f);
+        canvas.drawText(won ? "VALLEY HELD" : "OVERRUN", canvas.getWidth() / 2f,
+                canvas.getHeight() * 0.45f, text);
+
+        text.setFakeBoldText(false);
+        text.setColor(Palette.HUD_TEXT);
+        text.setTextSize(canvas.getHeight() * 0.05f);
+        canvas.drawText("Tap to start a new skirmish", canvas.getWidth() / 2f,
+                canvas.getHeight() * 0.58f, text);
+        text.setTextAlign(Paint.Align.LEFT);
+    }
 
     private boolean isSelected(GameSession session, Entity e) {
         List<Integer> selection = session.selection();
@@ -335,16 +534,5 @@ public final class WorldRenderer {
             }
         }
         return false;
-    }
-
-    /** A structure is drawn if we have ever seen its ground; units need live vision. */
-    private boolean isTileKnown(GameWorld world, FogGrid fog, int tileX, int tileY) {
-        return !world.isFogEnabled() || fog.isExplored(tileX, tileY);
-    }
-
-    private boolean offScreen(Camera camera, float left, float top, float w, float h) {
-        return left + w < camera.viewLeft() || top + h < camera.viewTop()
-                || left > camera.viewLeft() + camera.viewWidth()
-                || top > camera.viewTop() + camera.viewHeight();
     }
 }

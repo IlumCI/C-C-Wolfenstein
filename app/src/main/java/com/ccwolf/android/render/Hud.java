@@ -1,9 +1,15 @@
 package com.ccwolf.android.render;
 
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import com.ccwolf.android.GameSession;
+import com.ccwolf.android.art.SpriteAtlas;
+import com.ccwolf.android.art.WolfPalette;
+import com.ccwolf.core.api.PlayerCommand;
+import com.ccwolf.core.api.WorldView;
 import com.ccwolf.core.economy.ProductionItem;
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.Building;
@@ -12,19 +18,16 @@ import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
-import com.ccwolf.core.api.PlayerCommand;
-import com.ccwolf.core.api.WorldView;
-import com.ccwolf.core.sim.Player;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * The sidebar: money and power, the minimap, the three build tabs and their buttons, and a
- * readout of whatever is currently selected.
+ * The sidebar: riveted iron, a minimap, money and power, three build tabs, and the base
+ * management controls.
  *
- * <p>Layout is recomputed whenever the surface changes size and cached as rectangles, which
- * are then used both for drawing and for hit testing, so the two can never disagree.
+ * <p>Layout is computed once per surface size into rectangles that are used for both drawing
+ * and hit testing, so what you see and what you can tap can never drift apart.
  */
 public final class Hud {
 
@@ -38,19 +41,22 @@ public final class Hud {
         UnitType unit;
     }
 
+    private static final int COLUMNS = 2;
+    private static final int ROWS = 3;
+
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Sprites sprites = new Sprites();
+    private final Paint sprite = new Paint();
+    private final SpriteAtlas atlas = SpriteAtlas.get();
     private final Minimap minimap = new Minimap();
     private final RectF rect = new RectF();
+    private final Rect dst = new Rect();
 
     private final List<Slot> slots = new ArrayList<Slot>();
     private final RectF[] tabRects = {new RectF(), new RectF(), new RectF()};
     private final RectF stopButton = new RectF();
+    private final RectF sellButton = new RectF();
+    private final RectF repairButton = new RectF();
     private final RectF pauseButton = new RectF();
-
-    /** The build grid is a fixed 2x3: six slots is enough for the longest tab. */
-    private static final int COLUMNS = 2;
-    private static final int ROWS = 3;
 
     private Tab tab = Tab.STRUCTURES;
     private float left;
@@ -58,6 +64,11 @@ public final class Hud {
     private int screenWidth;
     private int screenHeight;
     private float scale = 1f;
+
+    public Hud() {
+        sprite.setFilterBitmap(false);
+        sprite.setAntiAlias(false);
+    }
 
     public void layout(int screenWidth, int screenHeight, float density) {
         this.screenWidth = screenWidth;
@@ -70,14 +81,11 @@ public final class Hud {
         float pad = 6f * scale;
         float y = pad;
 
-        // The minimap is deliberately smaller than the sidebar is wide: the build buttons
-        // matter more, and every structure has to be reachable without scrolling.
         float minimapSize = Math.min(width - pad * 2, screenHeight * 0.24f);
         minimap.setBounds(left + (width - minimapSize) / 2f, y, minimapSize);
         y += minimapSize + pad;
 
-        // Resource strip sits under the minimap.
-        y += 22f * scale + pad;
+        y += 22f * scale + pad; // resource strip
 
         float tabWidth = (width - pad * 4) / 3f;
         for (int i = 0; i < tabRects.length; i++) {
@@ -90,20 +98,21 @@ public final class Hud {
     }
 
     /**
-     * Lays out the build grid.
+     * Lays out the build grid and the control row.
      *
      * <p>The number of rows is fixed rather than "as many as fit": the structures tab has six
-     * entries and every one of them has to be reachable, so the buttons shrink on a short
-     * screen instead of quietly falling off the bottom.
+     * entries and every one has to be reachable, so buttons shrink on a short screen instead
+     * of falling off the bottom.
      */
     private void buildSlots(float startY, float pad) {
         slots.clear();
 
-        float bottomReserved = 70f * scale;
-        float gridBottom = screenHeight - bottomReserved;
+        // Two rows of buttons plus their padding, measured rather than guessed: the first
+        // attempt reserved too little and pushed SELL and REPAIR off the bottom of the screen.
+        float buttonHeight = 24f * scale;
+        float controls = buttonHeight * 2 + 16f * scale;
+        float gridBottom = screenHeight - controls;
         float slotW = (width - pad * 3) / COLUMNS;
-        // Leave a strip under the grid for the selection readout, or the bottom row's price
-        // tag and the readout text end up on the same pixels.
         float readoutHeight = 18f * scale;
         float available = gridBottom - startY - readoutHeight;
         float slotH = Math.min(slotW * 0.58f, available / ROWS - pad);
@@ -118,10 +127,17 @@ public final class Hud {
             }
         }
 
-        stopButton.set(left + pad, gridBottom + pad,
-                left + width / 2f - pad, gridBottom + pad + 30f * scale);
-        pauseButton.set(left + width / 2f, gridBottom + pad,
-                left + width - pad, gridBottom + pad + 30f * scale);
+        // Two rows of controls: orders on top, base management under them.
+        float buttonH = buttonHeight;
+        float halfW = (width - pad * 3) / 2f;
+        stopButton.set(left + pad, gridBottom + pad, left + pad + halfW,
+                gridBottom + pad + buttonH);
+        pauseButton.set(left + pad * 2 + halfW, gridBottom + pad, left + width - pad,
+                gridBottom + pad + buttonH);
+        float secondRow = gridBottom + pad + buttonH + 4f * scale;
+        sellButton.set(left + pad, secondRow, left + pad + halfW, secondRow + buttonH);
+        repairButton.set(left + pad * 2 + halfW, secondRow, left + width - pad,
+                secondRow + buttonH);
     }
 
     public float sidebarLeft() {
@@ -148,7 +164,6 @@ public final class Hud {
         this.tab = tab;
     }
 
-    /** Screen rectangle of one of the three tab buttons; used for hit-testing in tests. */
     public RectF tabRect(int index) {
         return tabRects[index];
     }
@@ -156,52 +171,79 @@ public final class Hud {
     // --- drawing --------------------------------------------------------------------------
 
     public void draw(Canvas canvas, GameSession session, long nowMs) {
-        Player me = session.view().player();
+        WorldView view = session.view();
 
-        paint.setColor(Palette.HUD_BG);
-        canvas.drawRect(left, 0, screenWidth, screenHeight, paint);
-        paint.setColor(Palette.HUD_BORDER);
-        canvas.drawRect(left, 0, left + 2f, screenHeight, paint);
-
+        drawIronPanel(canvas);
         minimap.draw(canvas, session);
-        drawResources(canvas, me);
+        drawMinimapFrame(canvas);
+        drawResources(canvas, view);
         drawTabs(canvas);
         drawSlots(canvas, session);
         drawSelectionReadout(canvas, session);
-        drawButtons(canvas, session);
+        drawControls(canvas, session);
         drawToast(canvas, session, nowMs);
     }
 
-    private void drawResources(Canvas canvas, Player me) {
+    /** Riveted plate, so the interface looks like it was bolted together in a workshop. */
+    private void drawIronPanel(Canvas canvas) {
+        paint.setColor(Palette.HUD_BG);
+        canvas.drawRect(left, 0, screenWidth, screenHeight, paint);
+
+        // Vertical seam against the battlefield, lit on its left edge.
+        paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+        canvas.drawRect(left, 0, left + 2f * scale, screenHeight, paint);
+        paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+        canvas.drawRect(left + 2f * scale, 0, left + 3f * scale, screenHeight, paint);
+
+        // Rivets down the seam.
+        float rivetX = left + 7f * scale;
+        for (float y = 12f * scale; y < screenHeight; y += 26f * scale) {
+            paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 0));
+            canvas.drawCircle(rivetX, y, 2f * scale, paint);
+            paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 3));
+            canvas.drawCircle(rivetX + 0.6f * scale, y + 0.6f * scale, 1.2f * scale, paint);
+        }
+    }
+
+    private void drawMinimapFrame(Canvas canvas) {
+        RectF bounds = minimap.bounds();
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2f * scale);
+        paint.setColor(WolfPalette.shade(WolfPalette.BRASS, 2));
+        canvas.drawRect(bounds.left - 2, bounds.top - 2, bounds.right + 2, bounds.bottom + 2,
+                paint);
+        paint.setStyle(Paint.Style.FILL);
+    }
+
+    private void drawResources(Canvas canvas, WorldView view) {
         float pad = 6f * scale;
         float y = minimap.bounds().bottom + pad;
 
-        paint.setColor(Palette.HUD_PANEL);
         rect.set(left + pad, y, screenWidth - pad, y + 22f * scale);
-        canvas.drawRect(rect, paint);
+        drawPlate(canvas, rect, false);
 
         paint.setColor(Palette.GOLD);
         paint.setTextSize(15f * scale);
         paint.setFakeBoldText(true);
-        canvas.drawText(String.format(Locale.ROOT, "%,d", me.credits()),
+        canvas.drawText(String.format(Locale.ROOT, "%,d", view.credits()),
                 left + pad * 2, y + 16f * scale, paint);
         paint.setFakeBoldText(false);
 
-        // Power bar: fills green while there is headroom, orange once browned out.
         float barLeft = left + width * 0.52f;
         float barRight = screenWidth - pad * 2;
         paint.setColor(0xFF15160F);
         canvas.drawRect(barLeft, y + 6f * scale, barRight, y + 16f * scale, paint);
 
-        float ratio = me.powerProduced() == 0 ? 1f
-                : Math.min(1f, me.powerDrawn() / (float) me.powerProduced());
-        paint.setColor(me.isLowPower() ? Palette.POWER_LOW : Palette.POWER_OK);
+        float ratio = view.powerProduced() == 0 ? 1f
+                : Math.min(1f, view.powerDrawn() / (float) view.powerProduced());
+        paint.setColor(view.isLowPower() ? Palette.POWER_LOW : Palette.POWER_OK);
         canvas.drawRect(barLeft, y + 6f * scale,
                 barLeft + (barRight - barLeft) * ratio, y + 16f * scale, paint);
 
-        paint.setColor(Palette.HUD_TEXT_DIM);
+        paint.setColor(view.isLowPower() ? Palette.POWER_LOW : Palette.HUD_TEXT_DIM);
         paint.setTextSize(9f * scale);
-        canvas.drawText("POWER", barLeft, y + 5f * scale, paint);
+        canvas.drawText(view.isLowPower() ? "LOW POWER" : "POWER", barLeft, y + 5f * scale,
+                paint);
     }
 
     private void drawTabs(Canvas canvas) {
@@ -210,20 +252,33 @@ public final class Hud {
         paint.setTextAlign(Paint.Align.CENTER);
         for (int i = 0; i < tabRects.length; i++) {
             boolean active = tab.ordinal() == i;
-            paint.setColor(active ? Palette.HUD_PANEL_LIT : Palette.HUD_PANEL);
-            canvas.drawRect(tabRects[i], paint);
-            paint.setColor(active ? Palette.HUD_TEXT : Palette.HUD_TEXT_DIM);
+            drawPlate(canvas, tabRects[i], active);
+            paint.setColor(active ? Palette.GOLD : Palette.HUD_TEXT_DIM);
             canvas.drawText(labels[i], tabRects[i].centerX(),
                     tabRects[i].centerY() + 4f * scale, paint);
         }
         paint.setTextAlign(Paint.Align.LEFT);
     }
 
+    /** A bevelled iron plate: light top-left, dark bottom-right, same as the sprites. */
+    private void drawPlate(Canvas canvas, RectF r, boolean lit) {
+        paint.setColor(lit ? Palette.HUD_PANEL_LIT : Palette.HUD_PANEL);
+        canvas.drawRect(r, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1.5f * scale);
+        paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, lit ? 0 : 1));
+        canvas.drawLine(r.left, r.top, r.right, r.top, paint);
+        canvas.drawLine(r.left, r.top, r.left, r.bottom, paint);
+        paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+        canvas.drawLine(r.left, r.bottom, r.right, r.bottom, paint);
+        canvas.drawLine(r.right, r.top, r.right, r.bottom, paint);
+        paint.setStyle(Paint.Style.FILL);
+    }
+
     private void drawSlots(Canvas canvas, GameSession session) {
         assignSlots(session);
         WorldView view = session.view();
-        Player me = view.player();
-        Faction faction = me.faction();
+        Faction faction = view.faction();
 
         for (int i = 0; i < slots.size(); i++) {
             Slot slot = slots.get(i);
@@ -236,27 +291,14 @@ public final class Hud {
                     : view.blockerFor(slot.unit);
             boolean available = blocker == null;
             int cost = slot.building != null ? slot.building.cost() : slot.unit.cost();
-            boolean affordable = me.canAfford(cost);
 
-            paint.setColor(available ? Palette.HUD_PANEL : Palette.HUD_BG);
-            canvas.drawRect(slot.rect, paint);
-
-            // Icon.
+            drawPlate(canvas, slot.rect, available);
             canvas.save();
             canvas.clipRect(slot.rect);
-            if (slot.building != null) {
-                float size = slot.rect.height() * 0.48f;
-                sprites.drawBuildingIcon(canvas, slot.building, faction,
-                        slot.rect.centerX() - size / 2f, slot.rect.top + 4f * scale, size);
-            } else {
-                // A unit icon is drawn at "tile size", and a soldier only fills about half a
-                // tile, so the icon has to be scaled well past the button height to read.
-                sprites.drawUnitIcon(canvas, slot.unit, faction, slot.rect.centerX(),
-                        slot.rect.top + slot.rect.height() * 0.32f, slot.rect.height() * 0.9f);
-            }
+            drawSlotIcon(canvas, slot, faction, available);
             canvas.restore();
 
-            // Name and price sit on their own strip, so a tall icon can never collide with them.
+            // Name and price sit on their own strip, so a tall icon cannot collide with them.
             float stripTop = slot.rect.bottom - 21f * scale;
             paint.setColor(0xCC101109);
             canvas.drawRect(slot.rect.left, stripTop, slot.rect.right, slot.rect.bottom, paint);
@@ -268,29 +310,57 @@ public final class Hud {
                     : slot.unit.displayName();
             canvas.drawText(ellipsize(name, slot.rect.width() - 4f * scale), slot.rect.centerX(),
                     stripTop + 9.5f * scale, paint);
-            paint.setColor(affordable ? Palette.GOLD : Palette.HEALTH_POOR);
-            canvas.drawText(String.valueOf(cost), slot.rect.centerX(),
-                    slot.rect.bottom - 3f * scale, paint);
+
+            // A dead button says why it is dead, instead of leaving the player guessing.
+            if (blocker != null && !blocker.startsWith("Needs " + cost)) {
+                paint.setColor(Palette.HUD_TEXT_DIM);
+                canvas.drawText(ellipsize(blocker, slot.rect.width() - 4f * scale),
+                        slot.rect.centerX(), slot.rect.bottom - 3f * scale, paint);
+            } else {
+                paint.setColor(view.credits() >= cost ? Palette.GOLD : Palette.HEALTH_POOR);
+                canvas.drawText(String.valueOf(cost), slot.rect.centerX(),
+                        slot.rect.bottom - 3f * scale, paint);
+            }
             paint.setTextAlign(Paint.Align.LEFT);
 
             drawSlotProgress(canvas, session, slot);
-
-            paint.setColor(Palette.HUD_BORDER);
-            paint.setStyle(Paint.Style.STROKE);
-            canvas.drawRect(slot.rect, paint);
-            paint.setStyle(Paint.Style.FILL);
         }
     }
 
-    /** Shows queue depth, build progress, and the "ready to place" state on a slot. */
+    /** Build buttons show the actual game sprite, so the icon and the unit always match. */
+    private void drawSlotIcon(Canvas canvas, Slot slot, Faction faction, boolean available) {
+        Bitmap icon;
+        float boxH = slot.rect.height() * 0.62f;
+        float cx = slot.rect.centerX();
+        float cy = slot.rect.top + slot.rect.height() * 0.32f;
+
+        if (slot.building != null) {
+            icon = atlas.building(slot.building, faction, 0);
+        } else {
+            icon = atlas.unit(slot.unit, faction, 2, slot.unit.isHarvester() ? 2 : 0);
+        }
+
+        float aspect = icon.getWidth() / (float) icon.getHeight();
+        float h = boxH;
+        float w = h * aspect;
+        if (w > slot.rect.width() * 0.8f) {
+            w = slot.rect.width() * 0.8f;
+            h = w / aspect;
+        }
+        dst.set(Math.round(cx - w / 2f), Math.round(cy - h / 2f),
+                Math.round(cx + w / 2f), Math.round(cy + h / 2f));
+        sprite.setAlpha(available ? 255 : 110);
+        canvas.drawBitmap(icon, null, dst, sprite);
+        sprite.setAlpha(255);
+    }
+
+    /** Queue depth, build progress and the ready-to-place state. */
     private void drawSlotProgress(Canvas canvas, GameSession session, Slot slot) {
-        Player me = session.view().player();
-        ProductionQueue queue = slot.building != null ? me.structureQueue()
-                : me.queueFor(slot.unit.producedBy());
+        WorldView view = session.view();
+        ProductionQueue queue = slot.building != null ? view.structureQueue()
+                : view.queueFor(slot.unit.producedBy());
 
         int queued = 0;
-        ProductionItem head = queue.head();
-        boolean isHead = false;
         for (int i = 0; i < queue.items().size(); i++) {
             ProductionItem item = queue.items().get(i);
             boolean match = slot.building != null ? item.buildingType() == slot.building
@@ -299,13 +369,13 @@ public final class Hud {
                 queued++;
             }
         }
-        if (head != null) {
-            isHead = slot.building != null ? head.buildingType() == slot.building
-                    : head.unitType() == slot.unit;
-        }
         if (queued == 0) {
             return;
         }
+
+        ProductionItem head = queue.head();
+        boolean isHead = head != null && (slot.building != null
+                ? head.buildingType() == slot.building : head.unitType() == slot.unit);
 
         if (isHead && head.isFinished()) {
             paint.setColor(0x99000000);
@@ -316,6 +386,7 @@ public final class Hud {
             canvas.drawText("READY", slot.rect.centerX(), slot.rect.centerY(), paint);
             paint.setTextAlign(Paint.Align.LEFT);
         } else if (isHead) {
+            // Fills bottom-up like a C&C build clock.
             float p = head.progress();
             paint.setColor(0x77000000);
             canvas.drawRect(slot.rect.left, slot.rect.top,
@@ -331,41 +402,54 @@ public final class Hud {
     }
 
     private void drawSelectionReadout(Canvas canvas, GameSession session) {
-        float y = stopButton.top - 8f * scale;
-        paint.setTextSize(11f * scale);
+        WorldView view = session.view();
+        float y = stopButton.top - 7f * scale;
+        paint.setTextSize(10f * scale);
 
         Entity single = session.singleSelection();
-        String text;
+        String textLine;
         if (single != null) {
-            text = single.displayName() + "  " + single.hp() + "/" + single.maxHp();
+            textLine = single.displayName() + "  " + single.hp() + "/" + single.maxHp();
             if (single instanceof Unit) {
                 Unit u = (Unit) single;
                 if (u.type().isHarvester()) {
-                    text += "  [" + u.oreCarried() + "/" + u.oreCapacity() + "]";
+                    textLine += "  [" + u.oreCarried() + "/" + u.oreCapacity() + "]";
+                }
+            } else {
+                Building b = (Building) single;
+                if (view.isPrimary(b)) {
+                    textLine += "  PRIMARY";
+                } else if (b.type().isProducer()) {
+                    textLine += "  (tap again: primary)";
+                }
+                if (b.isRepairing()) {
+                    textLine += "  REPAIRING";
                 }
             }
         } else if (session.hasSelection()) {
-            text = session.selection().size() + " units selected";
+            textLine = session.selection().size() + " units selected";
         } else {
-            text = "Nothing selected";
+            textLine = "Nothing selected";
         }
         paint.setColor(Palette.HUD_TEXT_DIM);
-        canvas.drawText(ellipsize(text, width - 12f * scale), left + 6f * scale, y, paint);
+        canvas.drawText(ellipsize(textLine, width - 12f * scale), left + 6f * scale, y, paint);
     }
 
-    private void drawButtons(Canvas canvas, GameSession session) {
-        drawButton(canvas, stopButton, "STOP", session.hasSelection());
-        drawButton(canvas, pauseButton, session.isPaused() ? "RESUME" : "PAUSE", true);
+    private void drawControls(Canvas canvas, GameSession session) {
+        GameSession.PointerMode mode = session.pointerMode();
+        drawButton(canvas, stopButton, "STOP", session.hasSelection(), false);
+        drawButton(canvas, pauseButton, session.isPaused() ? "RESUME" : "PAUSE", true, false);
+        drawButton(canvas, sellButton, "SELL", true,
+                mode == GameSession.PointerMode.SELL);
+        drawButton(canvas, repairButton, "REPAIR", true,
+                mode == GameSession.PointerMode.REPAIR);
     }
 
-    private void drawButton(Canvas canvas, RectF r, String label, boolean enabled) {
-        paint.setColor(enabled ? Palette.HUD_PANEL : Palette.HUD_BG);
-        canvas.drawRect(r, paint);
-        paint.setColor(Palette.HUD_BORDER);
-        paint.setStyle(Paint.Style.STROKE);
-        canvas.drawRect(r, paint);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(enabled ? Palette.HUD_TEXT : Palette.HUD_TEXT_DIM);
+    private void drawButton(Canvas canvas, RectF r, String label, boolean enabled,
+                            boolean armed) {
+        drawPlate(canvas, r, armed);
+        paint.setColor(armed ? Palette.GOLD
+                : (enabled ? Palette.HUD_TEXT : Palette.HUD_TEXT_DIM));
         paint.setTextSize(11f * scale);
         paint.setTextAlign(Paint.Align.CENTER);
         canvas.drawText(label, r.centerX(), r.centerY() + 4f * scale, paint);
@@ -380,10 +464,10 @@ public final class Hud {
         float textWidth = paint.measureText(session.message());
         float cx = left / 2f;
         float y = screenHeight - 28f * scale;
-        paint.setColor(0xB0101010);
+        paint.setColor(0xC0101109);
         canvas.drawRect(cx - textWidth / 2f - 10f * scale, y - 18f * scale,
                 cx + textWidth / 2f + 10f * scale, y + 6f * scale, paint);
-        paint.setColor(Palette.HUD_TEXT);
+        paint.setColor(Palette.GOLD);
         paint.setTextAlign(Paint.Align.CENTER);
         canvas.drawText(session.message(), cx, y, paint);
         paint.setTextAlign(Paint.Align.LEFT);
@@ -417,6 +501,14 @@ public final class Hud {
             session.setPaused(!session.isPaused());
             return true;
         }
+        if (sellButton.contains(x, y)) {
+            session.togglePointerMode(GameSession.PointerMode.SELL);
+            return true;
+        }
+        if (repairButton.contains(x, y)) {
+            session.togglePointerMode(GameSession.PointerMode.REPAIR);
+            return true;
+        }
 
         assignSlots(session);
         for (int i = 0; i < slots.size(); i++) {
@@ -436,7 +528,7 @@ public final class Hud {
             }
             return true;
         }
-        return true; // Anything else in the sidebar is still consumed, never falls through.
+        return true; // Anything else in the sidebar is consumed, never falls through.
     }
 
     private void handleStructureSlot(GameSession session, BuildingType type, boolean longPress) {
@@ -446,7 +538,6 @@ public final class Hud {
             return;
         }
         if (session.readyStructure() == type) {
-            // Finished and waiting: arm placement mode instead of queueing another.
             session.setPlacing(type);
             session.showMessage("Tap the ground to place the " + type.displayName());
             return;
@@ -485,11 +576,11 @@ public final class Hud {
         }
     }
 
-    private String ellipsize(String text, float maxWidth) {
-        if (paint.measureText(text) <= maxWidth) {
-            return text;
+    private String ellipsize(String value, float maxWidth) {
+        if (paint.measureText(value) <= maxWidth) {
+            return value;
         }
-        String out = text;
+        String out = value;
         while (out.length() > 1 && paint.measureText(out + "…") > maxWidth) {
             out = out.substring(0, out.length() - 1);
         }

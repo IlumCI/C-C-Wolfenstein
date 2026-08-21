@@ -91,8 +91,8 @@ public final class UnitSprites {
     private static PixelCanvas infantry(Faction faction, int facing, int frame, Kit kit) {
         PixelCanvas c = new PixelCanvas(INFANTRY_SIZE, INFANTRY_SIZE);
         boolean regime = faction == Faction.REGIME;
-        int[] cloth = regime ? WolfPalette.STEEL : WolfPalette.OLIVE;
-        int[] gear = regime ? WolfPalette.GUNMETAL : WolfPalette.LEATHER;
+        int[] cloth = regime ? WolfPalette.NIGHT : WolfPalette.OLIVE;
+        int[] gear = regime ? WolfPalette.NIGHT : WolfPalette.LEATHER;
 
         float angle = facing * (float) (Math.PI / 4.0);
         float dx = (float) Math.cos(angle);
@@ -114,8 +114,22 @@ public final class UnitSprites {
         c.bevel(8, top, 9, 10, WolfPalette.shade(cloth, 0), WolfPalette.shade(cloth, 4));
 
         // Webbing and belt.
-        c.hLine(8, 16, top + 6, WolfPalette.shade(gear, 2));
-        c.px(12, top + 6, WolfPalette.shade(WolfPalette.BRASS, 1));
+        c.hLine(8, 16, top + 6, WolfPalette.shade(gear, regime ? 4 : 2));
+        c.px(12, top + 6, WolfPalette.shade(regime ? WolfPalette.STEEL : WolfPalette.BRASS, 1));
+
+        if (regime) {
+            // The single hot accent on an otherwise black figure: a red band on the left arm,
+            // and a stencilled number on the shoulder plate.
+            c.rect(7, top + 2, 2, 3, WolfPalette.shade(WolfPalette.BLOOD, 1));
+            c.px(7, top + 2, WolfPalette.shade(WolfPalette.BLOOD, 0));
+            c.px(16, top + 1, WolfPalette.shade(WolfPalette.BONE, 1));
+            c.px(17, top + 1, WolfPalette.shade(WolfPalette.BONE, 2));
+            // Chest plate: a slab with a lit top edge, riveted.
+            c.rect(9, top + 2, 7, 4, WolfPalette.shade(cloth, 1));
+            c.hLine(9, 15, top + 2, WolfPalette.shade(cloth, 0));
+            c.px(9, top + 5, WolfPalette.shade(WolfPalette.STEEL, 2));
+            c.px(15, top + 5, WolfPalette.shade(WolfPalette.STEEL, 2));
+        }
 
         // Shoulders, wider than the coat so the figure reads as a person from above.
         c.rect(7, top, 11, 3, WolfPalette.shade(cloth, 1));
@@ -140,18 +154,25 @@ public final class UnitSprites {
         boolean regime = faction == Faction.REGIME;
         int headY = top - 4;
 
-        if (facingViewer) {
+        if (facingViewer && !regime) {
             c.rect(10, headY + 3, 5, 3, WolfPalette.shade(WolfPalette.FLESH, 2));
             c.px(11, headY + 4, WolfPalette.shade(WolfPalette.FLESH, 4));
             c.px(13, headY + 4, WolfPalette.shade(WolfPalette.FLESH, 4));
         }
 
         if (regime) {
-            int[] steel = WolfPalette.GUNMETAL;
-            c.ellipse(12, headY + 2, 5, 4, WolfPalette.shade(steel, 2));
-            c.ellipse(12, headY + 1, 4, 3, WolfPalette.shade(steel, 1));
-            c.hLine(7, 17, headY + 4, WolfPalette.shade(steel, 3)); // flared rim
-            c.hLine(9, 14, headY - 1, WolfPalette.shade(steel, 0)); // highlight
+            // Lacquered helmet over a gas mask: no skin shows, and the lenses burn red.
+            int[] lacquer = WolfPalette.NIGHT;
+            c.ellipse(12, headY + 2, 5, 4, WolfPalette.shade(lacquer, 2));
+            c.ellipse(12, headY + 1, 4, 3, WolfPalette.shade(lacquer, 1));
+            c.hLine(7, 17, headY + 4, WolfPalette.shade(lacquer, 3)); // flared rim
+            c.hLine(9, 14, headY - 1, WolfPalette.shade(lacquer, 0)); // highlight
+            if (facingViewer) {
+                c.rect(10, headY + 3, 5, 3, WolfPalette.shade(lacquer, 4)); // mask
+                c.px(10, headY + 3, WolfPalette.shade(WolfPalette.BLOOD, 0));
+                c.px(14, headY + 3, WolfPalette.shade(WolfPalette.BLOOD, 0));
+                c.px(12, headY + 5, WolfPalette.shade(lacquer, 3)); // filter
+            }
         } else {
             int[] wool = WolfPalette.LEATHER;
             c.ellipse(12, headY + 2, 4, 3, WolfPalette.shade(wool, 2));
@@ -210,7 +231,7 @@ public final class UnitSprites {
     private static PixelCanvas ubersoldat(int facing, int frame) {
         PixelCanvas c = new PixelCanvas(INFANTRY_SIZE, INFANTRY_SIZE);
         int[] plate = WolfPalette.STEEL;
-        int[] metal = WolfPalette.GUNMETAL;
+        int[] metal = WolfPalette.NIGHT;
         float angle = facing * (float) (Math.PI / 4.0);
         float dx = (float) Math.cos(angle);
         float dy = (float) Math.sin(angle);
@@ -231,6 +252,9 @@ public final class UnitSprites {
         c.bevel(6, top, 13, 11, WolfPalette.shade(plate, 0), WolfPalette.shade(plate, 4));
         c.rect(5, top + 1, 3, 5, WolfPalette.shade(metal, 2));
         c.rect(17, top + 1, 3, 5, WolfPalette.shade(metal, 2));
+        // One red shoulder panel, the only colour anywhere on the machine.
+        c.rect(17, top + 1, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.px(17, top + 1, WolfPalette.shade(WolfPalette.BLOOD, 0));
 
         // Rivets down the chest plate.
         for (int y = top + 2; y < top + 10; y += 3) {
@@ -238,13 +262,16 @@ public final class UnitSprites {
             c.px(15, y, WolfPalette.shade(plate, 0));
         }
 
-        // Head: a welded pot with a visor slit that glows.
-        c.rect(9, top - 4, 7, 5, WolfPalette.shade(metal, 2));
-        c.hLine(9, 15, top - 4, WolfPalette.shade(metal, 1));
-        c.hLine(8, 16, top + 1, WolfPalette.shade(metal, 3));
+        // Head: a bolted face plate, blank as a statue, with two red optics.
+        c.rect(9, top - 4, 7, 5, WolfPalette.shade(plate, 1));
+        c.hLine(9, 15, top - 4, WolfPalette.shade(plate, 0));
+        c.hLine(8, 16, top + 1, WolfPalette.shade(plate, 3));
+        c.px(9, top - 3, WolfPalette.shade(plate, 3));
+        c.px(15, top - 3, WolfPalette.shade(plate, 3));
         if (facingViewer) {
-            c.hLine(10, 14, top - 2, WolfPalette.shade(WolfPalette.OCCULT, 1));
-            c.px(12, top - 2, WolfPalette.shade(WolfPalette.OCCULT, 0));
+            c.px(10, top - 2, WolfPalette.shade(WolfPalette.BLOOD, 0));
+            c.px(14, top - 2, WolfPalette.shade(WolfPalette.BLOOD, 0));
+            c.px(12, top - 1, WolfPalette.shade(plate, 4));
         }
 
         // Arm cannon.
@@ -300,7 +327,7 @@ public final class UnitSprites {
 
     private static PixelCanvas panzer(Faction faction, int frame) {
         PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
-        int[] hull = faction == Faction.REGIME ? WolfPalette.STEEL : WolfPalette.OLIVE;
+        int[] hull = faction == Faction.REGIME ? WolfPalette.NIGHT : WolfPalette.OLIVE;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = VEHICLE_SIZE / 2;
         int cy = VEHICLE_SIZE / 2;
@@ -328,9 +355,13 @@ public final class UnitSprites {
         c.hLine(cx + 4, cx + 15, cy - 1, WolfPalette.shade(metal, 1));
         c.rect(cx + 14, cy - 2, 3, 5, WolfPalette.shade(metal, 3)); // muzzle brake
 
-        // Captured: a hasty repaint over Regime steel, with a stripe daubed on the hull.
-        if (faction != Faction.REGIME) {
-            c.rect(cx - 9, cy - 5, 4, 3, WolfPalette.shade(WolfPalette.STEEL, 3));
+        if (faction == Faction.REGIME) {
+            // Regime armour carries a red band across the engine deck.
+            c.hLine(cx - 9, cx - 5, cy - 4, WolfPalette.shade(WolfPalette.BLOOD, 1));
+            c.hLine(cx - 9, cx - 5, cy - 3, WolfPalette.shade(WolfPalette.BLOOD, 2));
+        } else {
+            // Captured: black paint showing through a hasty olive repaint, plus a daubed stripe.
+            c.rect(cx - 9, cy - 5, 4, 3, WolfPalette.shade(WolfPalette.NIGHT, 2));
             c.hLine(cx - 10, cx - 4, cy + 3, WolfPalette.shade(WolfPalette.BONE, 2));
         }
 
@@ -339,7 +370,7 @@ public final class UnitSprites {
 
     private static PixelCanvas hound(Faction faction, int frame) {
         PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
-        int[] body = WolfPalette.STEEL;
+        int[] body = WolfPalette.NIGHT;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = VEHICLE_SIZE / 2;
         int cy = VEHICLE_SIZE / 2;
@@ -406,7 +437,7 @@ public final class UnitSprites {
      */
     private static PixelCanvas harvester(Faction faction, int frame) {
         PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
-        int[] body = faction == Faction.REGIME ? WolfPalette.STEEL : WolfPalette.OLIVE;
+        int[] body = faction == Faction.REGIME ? WolfPalette.NIGHT : WolfPalette.OLIVE;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = VEHICLE_SIZE / 2;
         int cy = VEHICLE_SIZE / 2;

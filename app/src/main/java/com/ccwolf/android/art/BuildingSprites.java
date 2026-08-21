@@ -66,12 +66,25 @@ public final class BuildingSprites {
         return c;
     }
 
+    /**
+     * Regime construction is poured concrete under black roofing — brutalist mass with one
+     * red accent. Resistance construction is timber and scavenged iron.
+     */
     private static int[] walls(boolean regime) {
-        return regime ? WolfPalette.STONE : WolfPalette.LEATHER;
+        return regime ? WolfPalette.CONCRETE : WolfPalette.LEATHER;
     }
 
     private static int[] roofs(boolean regime) {
-        return regime ? WolfPalette.GUNMETAL : WolfPalette.OLIVE;
+        return regime ? WolfPalette.NIGHT : WolfPalette.OLIVE;
+    }
+
+    /**
+     * A red band along a roof edge. Every Regime structure gets one: at a glance across the
+     * valley, red-on-black is the enemy and olive-on-brown is you.
+     */
+    private static void redStripe(PixelCanvas c, int x, int y, int w) {
+        c.hLine(x, x + w - 1, y, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.hLine(x, x + w - 1, y + 1, WolfPalette.shade(WolfPalette.BLOOD, 2));
     }
 
     /**
@@ -212,6 +225,7 @@ public final class BuildingSprites {
         windows(c, w - 20, wallTop, 2, 9);
 
         if (regime) {
+            redStripe(c, 3, 12, w - 6);
             banner(c, 33, 6, 15);
             banner(c, w - 13, 6, 15);
         } else {
@@ -248,6 +262,9 @@ public final class BuildingSprites {
 
         door(c, w / 2, wallTop, 4, regime);
         windows(c, 6, wallTop, 1, 6);
+        if (regime) {
+            redStripe(c, 4, 12, w - 8);
+        }
     }
 
     private static void refinery(PixelCanvas c, boolean regime, int w, int h) {
@@ -282,6 +299,9 @@ public final class BuildingSprites {
         }
 
         door(c, shedX + 12, wallTop, 4, regime);
+        if (regime) {
+            redStripe(c, shedX, 8, w - shedX - 3);
+        }
         if (!regime) {
             sandbags(c, shedX + 20, 4, w - shedX - 24);
         }
@@ -312,6 +332,7 @@ public final class BuildingSprites {
         c.hLine(w - 12, w - 6, h - 4, WolfPalette.shade(WolfPalette.LEATHER, 3));
 
         if (regime) {
+            redStripe(c, 3, 6, w - 6);
             banner(c, 6, 8, 14);
         } else {
             sandbags(c, 4, h - 5, 16);
@@ -342,6 +363,10 @@ public final class BuildingSprites {
 
         // Oil-stained apron in front of the doors.
         c.speckle(doorX - 3, h - 3, doorW + 6, 3, WolfPalette.shade(WolfPalette.SMOKE, 4), 11, 2);
+
+        if (regime) {
+            redStripe(c, 3, 8, w - 6);
+        }
 
         // Gantry crane along the roofline.
         c.rect(6, 3, w - 12, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 2));

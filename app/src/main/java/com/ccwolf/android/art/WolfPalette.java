@@ -22,9 +22,25 @@ public final class WolfPalette {
         0xFF8B8168, 0xFF6E6552, 0xFF554E3E, 0xFF3D382C, 0xFF2A261E,
     };
 
-    /** Regime uniform and armour plate: cold steel blue. */
+    /**
+     * Regime field uniform: black leather and lacquered plate with a cold highlight.
+     *
+     * <p>The reference the Regime is drawn from is unrelieved black with exactly one saturated
+     * colour on it. An earlier pass had them in steel blue, which read as "generic sci-fi
+     * soldier" — the black is most of what makes the silhouette theirs.
+     */
+    public static final int[] NIGHT = {
+        0xFF3E4148, 0xFF2C2E34, 0xFF1E2025, 0xFF141519, 0xFF0A0B0D,
+    };
+
+    /** Heavy armour plate: pale gunmetal, the Ubersoldat's steel skin. */
     public static final int[] STEEL = {
-        0xFF6E7B92, 0xFF55617A, 0xFF404A60, 0xFF2E3648, 0xFF1D2331,
+        0xFFB8BCC4, 0xFF9096A0, 0xFF6C727C, 0xFF4A4F58, 0xFF2E3238,
+    };
+
+    /** Poured concrete: brutalist mass, deliberately joyless. */
+    public static final int[] CONCRETE = {
+        0xFF7E8087, 0xFF63656B, 0xFF4B4D52, 0xFF35373B, 0xFF232427,
     };
 
     /** Bare gunmetal: weapons, treads, barrels. */
@@ -32,9 +48,12 @@ public final class WolfPalette {
         0xFF5E5E64, 0xFF47474D, 0xFF343439, 0xFF232327, 0xFF141417,
     };
 
-    /** Regime banners and blood. */
+    /**
+     * The one saturated colour the Regime allows itself: armbands, banners, lenses, stripes.
+     * Kept hot on purpose — against the black it is the whole identity.
+     */
     public static final int[] BLOOD = {
-        0xFFC8342E, 0xFFA81E20, 0xFF7A1416, 0xFF530E10, 0xFF33080A,
+        0xFFFF4A3C, 0xFFD8231F, 0xFFA31414, 0xFF6E0D0F, 0xFF3D0709,
     };
 
     /** Brass fittings, buckles, shell casings, gold trim. */

@@ -19,9 +19,9 @@ public final class Palette {
     public static final int ROAD = Color.rgb(104, 98, 82);
     public static final int RUBBLE = Color.rgb(72, 68, 58);
     public static final int WATER = Color.rgb(38, 56, 74);
-    public static final int WALL = Color.rgb(40, 38, 36);
-    public static final int ORE = Color.rgb(140, 158, 62);
-    public static final int ORE_RICH = Color.rgb(178, 196, 74);
+    public static final int WALL = Color.rgb(53, 55, 59);
+    public static final int ORE = Color.rgb(92, 190, 62);
+    public static final int ORE_RICH = Color.rgb(143, 232, 106);
 
     // --- factions -------------------------------------------------------------------------
     public static final int RESISTANCE = Color.rgb(214, 178, 92);
