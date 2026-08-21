@@ -330,82 +330,190 @@ public final class UnitSprites {
     }
 
     /**
-     * The Ubersoldat: a steel golem, not a man in a coat. Pale plate, hydraulics, a bolted
-     * face with red optics, and one red shoulder panel.
+     * The Ubersoldat: a hunched steel golem, top-heavy and hulking.
+     *
+     * <p>Three things carry the design, and the first pass at it had none of them. The
+     * silhouette is widest and tallest at the pauldrons, with a small head sunk between them —
+     * not a head-sized box perched on a torso-sized box. Every plate group is separated by a
+     * near-black recess, so it reads as armour bolted over a machine rather than one grey
+     * mass. And the plates sit in the middle of the steel ramp with highlights only on their
+     * top edges; lit from the pale end of the ramp it glowed like white plastic.
      */
     private static PixelCanvas ubersoldat(int facing, int frame) {
         PixelCanvas c = new PixelCanvas(INFANTRY_SIZE, INFANTRY_SIZE);
         int[] plate = WolfPalette.STEEL;
-        int[] joint = WolfPalette.NIGHT;
+        int[] shade = WolfPalette.NIGHT;
         float angle = facing * (float) (Math.PI / 4.0);
         float dx = (float) Math.cos(angle);
         float dy = (float) Math.sin(angle);
-        boolean toViewer = dy > 0.35f;
+        float perpX = -dy;
+        float perpY = dx;
+        boolean toViewer = dy > 0.3f;
         int step = frame == 1 ? 1 : 0;
 
-        c.groundShadow(16, 29, 10, 3);
+        c.groundShadow(16, 30, 11, 3);
 
-        // --- legs: armoured shin plates over black hydraulics ------------------------------
-        c.rect(10, 20 - step, 5, 4, WolfPalette.shade(joint, 2));
-        c.panel(9, 23 - step, 7, 5, plate, 2);
-        c.rect(9, 27 - step, 7, 2, WolfPalette.shade(plate, 4));
+        // --- legs: dark hip joint, thick thigh, armoured shin, splayed foot ---------------
+        drawGolemLeg(c, 11, 17, -step, plate, shade);
+        drawGolemLeg(c, 21, 17, step, plate, shade);
 
-        c.rect(18, 20 + step, 5, 4, WolfPalette.shade(joint, 2));
-        c.panel(17, 23 + step, 7, 5, plate, 2);
-        c.rect(17, 27 + step, 7, 2, WolfPalette.shade(plate, 4));
-
-        // --- torso: a riveted slab with a black waist section ------------------------------
-        int top = 8;
-        c.rect(11, top + 11, 11, 4, WolfPalette.shade(joint, 2));
-        c.panel(8, top, 17, 12, plate, 1);
-        c.rivets(10, top + 2, 14, 9, 4, WolfPalette.shade(plate, 0),
-                WolfPalette.shade(plate, 4));
-        // Chest ridge.
-        c.vLine(16, top + 1, top + 10, WolfPalette.shade(plate, 0));
-        c.vLine(17, top + 1, top + 10, WolfPalette.shade(plate, 3));
-
-        // --- shoulders: big pauldrons, the right one red -----------------------------------
-        c.panel(4, top, 6, 7, plate, 1);
-        c.panel(23, top, 6, 7, plate, 1);
-        c.rect(24, top + 1, 4, 3, WolfPalette.shade(WolfPalette.BLOOD, 1));
-        c.hLine(24, 27, top + 1, WolfPalette.shade(WolfPalette.BLOOD, 0));
-
-        // --- head: a bolted face plate, blank as a statue ----------------------------------
-        int headY = top - 7;
-        c.rect(14, headY + 5, 5, 3, WolfPalette.shade(joint, 2));
-        c.panel(11, headY, 11, 7, plate, 1);
-        c.px(12, headY + 1, WolfPalette.shade(plate, 3));
-        c.px(21, headY + 1, WolfPalette.shade(plate, 3));
-        c.hLine(11, 21, headY, WolfPalette.shade(plate, 0));
-        if (toViewer) {
-            c.rect(13, headY + 2, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
-            c.rect(18, headY + 2, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
-            c.px(13, headY + 2, WolfPalette.shade(WolfPalette.BLOOD, 0));
-            c.px(18, headY + 2, WolfPalette.shade(WolfPalette.BLOOD, 0));
-            // Grille where a mouth would be.
-            for (int i = 0; i < 3; i++) {
-                c.px(15 + i * 2, headY + 5, WolfPalette.shade(joint, 0));
-            }
+        // --- waist: a narrow band of exposed machinery ------------------------------------
+        c.rect(12, 15, 9, 4, WolfPalette.shade(shade, 2));
+        for (int x = 12; x < 21; x += 2) {
+            c.vLine(x, 15, 18, WolfPalette.shade(shade, 1));
         }
 
-        // --- arm cannon --------------------------------------------------------------------
-        int handX = 16;
-        int handY = top + 6;
-        int tipX = Math.round(handX + dx * 17f);
-        int tipY = Math.round(handY + dy * 17f);
-        c.line(handX, handY - 2, tipX, tipY - 2, WolfPalette.shade(plate, 1));
-        c.line(handX, handY - 1, tipX, tipY - 1, WolfPalette.shade(plate, 2));
-        c.line(handX, handY, tipX, tipY, WolfPalette.shade(plate, 3));
-        c.line(handX, handY + 1, tipX, tipY + 1, WolfPalette.shade(joint, 2));
-        // Muzzle and feed drum.
-        c.ellipse(tipX, tipY - 1, 2, 2, WolfPalette.shade(joint, 1));
-        int drumX = Math.round(handX + dx * 7f);
-        int drumY = Math.round(handY + dy * 7f);
-        c.ellipse(drumX, drumY - 3, 3, 3, WolfPalette.shade(joint, 2));
-        c.px(drumX, drumY - 3, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        // --- torso: a barrel, built row by row so it has a chest and a waist ---------------
+        int[] rowLeft  = {11, 10,  9,  9,  9, 10, 10, 11, 12};
+        int[] rowRight = {21, 22, 23, 23, 23, 22, 22, 21, 20};
+        for (int i = 0; i < rowLeft.length; i++) {
+            int y = 6 + i;
+            int fill = i < 3 ? 1 : (i < 6 ? 2 : 3);
+            c.hLine(rowLeft[i], rowRight[i], y, WolfPalette.shade(plate, fill));
+            c.px(rowLeft[i], y, WolfPalette.shade(plate, 0));
+            c.px(rowRight[i], y, WolfPalette.shade(plate, 4));
+        }
+        // Sternum ridge, raised and catching the light.
+        c.vLine(16, 7, 13, WolfPalette.shade(plate, 0));
+        c.vLine(17, 7, 13, WolfPalette.shade(plate, 3));
+        // Chest plate seams, and four bolt heads at the corners of the breastplate.
+        c.hLine(11, 21, 11, WolfPalette.shade(shade, 2));
+        c.hLine(10, 22, 14, WolfPalette.shade(shade, 2));
+        c.px(12, 8, WolfPalette.shade(plate, 0));
+        c.px(20, 8, WolfPalette.shade(plate, 0));
+        c.px(12, 13, WolfPalette.shade(plate, 0));
+        c.px(20, 13, WolfPalette.shade(plate, 0));
+        // A wash of grime along the bottom edge only, where it would actually collect.
+        c.hLine(10, 22, 15, WolfPalette.shade(shade, 1));
+
+        // --- pauldrons: the widest, tallest thing on the model ----------------------------
+        drawPauldron(c, 6, 11, plate, shade, false);
+        drawPauldron(c, 26, 11, plate, shade, true);
+
+        // --- head: small, sunk between the pauldrons --------------------------------------
+        // Neck recess first, so the head reads as set into the shoulders.
+        c.rect(13, 7, 7, 3, WolfPalette.shade(shade, 3));
+        c.rect(12, 1, 9, 8, WolfPalette.shade(plate, 3));
+        c.rect(13, 2, 7, 6, WolfPalette.shade(plate, 2));
+        c.hLine(12, 20, 1, WolfPalette.shade(plate, 1));
+        c.vLine(12, 1, 8, WolfPalette.shade(plate, 2));
+        c.vLine(20, 1, 8, WolfPalette.shade(plate, 4));
+        // Bolts holding the face plate on.
+        c.px(13, 2, WolfPalette.shade(plate, 0));
+        c.px(19, 2, WolfPalette.shade(plate, 0));
+        c.px(13, 7, WolfPalette.shade(plate, 0));
+        c.px(19, 7, WolfPalette.shade(plate, 0));
+        // Centre seam down the mask.
+        c.vLine(16, 3, 7, WolfPalette.shade(shade, 2));
+
+        if (toViewer) {
+            // Thin optic slits rather than red squares, and a jaw grille under them.
+            c.hLine(14, 15, 4, WolfPalette.shade(WolfPalette.BLOOD, 1));
+            c.hLine(17, 18, 4, WolfPalette.shade(WolfPalette.BLOOD, 1));
+            c.px(14, 4, WolfPalette.shade(WolfPalette.BLOOD, 0));
+            c.px(18, 4, WolfPalette.shade(WolfPalette.BLOOD, 0));
+            c.hLine(14, 18, 6, WolfPalette.shade(shade, 4));
+            c.px(15, 6, WolfPalette.shade(shade, 1));
+            c.px(17, 6, WolfPalette.shade(shade, 1));
+        } else {
+            // From behind: the back of the skull cap and its cable loom.
+            c.hLine(14, 18, 5, WolfPalette.shade(plate, 3));
+            c.px(16, 8, WolfPalette.shade(shade, 1));
+        }
+
+        // --- arms: a heavy fist on one side, the cannon on the other ----------------------
+        int shoulderX = Math.round(16 + perpX * 7f);
+        int shoulderY = Math.round(12 + perpY * 7f);
+        int fistX = Math.round(shoulderX + dx * 5f);
+        int fistY = Math.round(shoulderY + dy * 5f);
+        c.thickLine(shoulderX, shoulderY, fistX, fistY, 2, WolfPalette.shade(plate, 2));
+        c.thickLine(shoulderX, shoulderY, fistX, fistY, 1, WolfPalette.shade(plate, 1));
+        c.ellipse(fistX, fistY, 3, 3, WolfPalette.shade(plate, 2));
+        c.ellipse(fistX, fistY, 2, 2, WolfPalette.shade(shade, 1));
+
+        drawArmCannon(c, dx, dy, perpX, perpY, plate, shade);
 
         c.outline(OUTLINE);
         return c;
+    }
+
+    /** A pauldron: a rounded mass sitting above the shoulder with a dark recess beneath it. */
+    private static void drawPauldron(PixelCanvas c, int cx, int cy, int[] plate, int[] shade,
+                                     boolean red) {
+        // Recess under the plate, so it does not merge into the torso.
+        c.ellipse(cx, cy + 3, 6, 4, WolfPalette.shade(shade, 2));
+        c.ellipse(cx, cy, 6, 5, WolfPalette.shade(plate, 3));
+        c.ellipse(cx, cy - 1, 6, 4, WolfPalette.shade(plate, 2));
+        c.ellipse(cx - 1, cy - 2, 4, 2, WolfPalette.shade(plate, 1));
+        // Lip along the top edge, the only bright line on the plate.
+        c.hLine(cx - 4, cx + 3, cy - 5, WolfPalette.shade(plate, 0));
+        // Ribs.
+        c.line(cx - 5, cy, cx + 5, cy, WolfPalette.shade(shade, 1));
+        c.line(cx - 4, cy + 3, cx + 4, cy + 3, WolfPalette.shade(shade, 1));
+        c.px(cx - 3, cy - 2, WolfPalette.shade(plate, 0));
+        c.px(cx + 3, cy - 2, WolfPalette.shade(plate, 0));
+        c.px(cx, cy + 2, WolfPalette.shade(plate, 0));
+
+        if (red) {
+            // A painted band along the pauldron edge — the only colour on the machine.
+            c.hLine(cx - 4, cx + 2, cy - 4, WolfPalette.shade(WolfPalette.BLOOD, 1));
+            c.px(cx - 4, cy - 4, WolfPalette.shade(WolfPalette.BLOOD, 0));
+        }
+    }
+
+    /** Thigh, knee, shin and a splayed foot with a toe cap. */
+    private static void drawGolemLeg(PixelCanvas c, int hipX, int hipY, int step, int[] plate,
+                                     int[] shade) {
+        // Hip joint: a dark gap between torso and leg.
+        c.ellipse(hipX, hipY + step, 3, 3, WolfPalette.shade(shade, 2));
+        // Thigh.
+        c.rect(hipX - 3, hipY + 1 + step, 7, 5, WolfPalette.shade(plate, 3));
+        c.hLine(hipX - 3, hipX + 3, hipY + 1 + step, WolfPalette.shade(plate, 1));
+        // Knee.
+        c.rect(hipX - 3, hipY + 6 + step, 7, 2, WolfPalette.shade(shade, 2));
+        // Shin plate.
+        c.rect(hipX - 4, hipY + 8 + step, 8, 6, WolfPalette.shade(plate, 2));
+        c.hLine(hipX - 4, hipX + 3, hipY + 8 + step, WolfPalette.shade(plate, 0));
+        c.vLine(hipX + 3, hipY + 8 + step, hipY + 13 + step, WolfPalette.shade(plate, 4));
+        c.px(hipX - 2, hipY + 10 + step, WolfPalette.shade(plate, 0));
+        c.px(hipX + 1, hipY + 10 + step, WolfPalette.shade(plate, 0));
+        // Foot: wider than the shin, with a lit toe cap.
+        c.rect(hipX - 5, hipY + 12 + step, 10, 3, WolfPalette.shade(plate, 3));
+        c.hLine(hipX - 5, hipX + 4, hipY + 12 + step, WolfPalette.shade(plate, 1));
+        c.hLine(hipX - 5, hipX + 4, hipY + 14 + step, WolfPalette.shade(shade, 3));
+    }
+
+    /** A multi-segment arm cannon: upper arm, housing, drum magazine, barrel and muzzle. */
+    private static void drawArmCannon(PixelCanvas c, float dx, float dy, float perpX,
+                                      float perpY, int[] plate, int[] shade) {
+        int rootX = Math.round(16 - perpX * 7f);
+        int rootY = Math.round(12 - perpY * 7f);
+
+        int elbowX = Math.round(rootX + dx * 4f);
+        int elbowY = Math.round(rootY + dy * 4f);
+        int housingX = Math.round(rootX + dx * 9f);
+        int housingY = Math.round(rootY + dy * 9f);
+        int muzzleX = Math.round(rootX + dx * 16f);
+        int muzzleY = Math.round(rootY + dy * 16f);
+
+        // Upper arm.
+        c.thickLine(rootX, rootY, elbowX, elbowY, 3, WolfPalette.shade(shade, 2));
+        c.thickLine(rootX, rootY, elbowX, elbowY, 2, WolfPalette.shade(plate, 2));
+        // Housing: the fattest part, where the mechanism lives.
+        c.thickLine(elbowX, elbowY, housingX, housingY, 4, WolfPalette.shade(plate, 3));
+        c.thickLine(elbowX, elbowY, housingX, housingY, 3, WolfPalette.shade(plate, 2));
+        c.thickLine(elbowX, elbowY, housingX, housingY, 1, WolfPalette.shade(plate, 1));
+        // Drum magazine hanging off the housing.
+        int drumX = Math.round(housingX - perpX * 4f);
+        int drumY = Math.round(housingY - perpY * 4f);
+        c.ellipse(drumX, drumY, 3, 3, WolfPalette.shade(shade, 2));
+        c.ellipse(drumX, drumY, 2, 2, WolfPalette.shade(plate, 3));
+        c.px(drumX, drumY, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        // Barrel and a flared muzzle.
+        c.thickLine(housingX, housingY, muzzleX, muzzleY, 2, WolfPalette.shade(shade, 1));
+        c.thickLine(housingX, housingY, muzzleX, muzzleY, 1, WolfPalette.shade(plate, 3));
+        c.ellipse(muzzleX, muzzleY, 2, 2, WolfPalette.shade(shade, 0));
+        c.px(muzzleX, muzzleY, WolfPalette.shade(shade, 3));
     }
 
     // --- vehicles (drawn facing east, rotated at bake time) --------------------------------

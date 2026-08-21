@@ -110,6 +110,29 @@ public final class PixelCanvas {
         return this;
     }
 
+    /**
+     * A line with mass: parallel runs offset along the perpendicular.
+     *
+     * <p>Needed for limbs that point in an arbitrary direction. A single-pixel line reads as a
+     * stick whichever way it points, and stacking axis-aligned rectangles only works for the
+     * four cardinal facings.
+     */
+    public PixelCanvas thickLine(int x0, int y0, int x1, int y1, int halfWidth, int color) {
+        float dx = x1 - x0;
+        float dy = y1 - y0;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.001f) {
+            return this;
+        }
+        float px = -dy / len;
+        float py = dx / len;
+        for (int i = -halfWidth; i <= halfWidth; i++) {
+            line(Math.round(x0 + px * i), Math.round(y0 + py * i),
+                    Math.round(x1 + px * i), Math.round(y1 + py * i), color);
+        }
+        return this;
+    }
+
     /** Bresenham line, for barrels, aerials and cracks. */
     public PixelCanvas line(int x0, int y0, int x1, int y1, int color) {
         int dx = Math.abs(x1 - x0);
