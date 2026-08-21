@@ -15,6 +15,18 @@ public final class GameEvent {
         SHOT_FIRED,
         ENTITY_DESTROYED,
         UNIT_TRAINED,
+
+        /** A squad came off the production line as one body. */
+
+        SQUAD_TRAINED,
+
+        /** A squad's morale gave out and it is running. */
+
+        SQUAD_BROKEN,
+
+        /** The last member of a squad was killed. */
+
+        SQUAD_WIPED,
         BUILDING_STARTED,
         BUILDING_COMPLETED,
         BUILDING_SOLD,

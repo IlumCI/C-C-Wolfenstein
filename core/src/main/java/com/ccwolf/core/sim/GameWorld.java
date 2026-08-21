@@ -14,6 +14,7 @@ import com.ccwolf.core.event.GameEvent;
 import com.ccwolf.core.fog.FogGrid;
 import com.ccwolf.core.map.TileMap;
 import com.ccwolf.core.order.HarvestOrder;
+import com.ccwolf.core.order.JoinSquadOrder;
 import com.ccwolf.core.order.MoveOrder;
 import com.ccwolf.core.order.Order;
 import com.ccwolf.core.order.SquadMemberOrder;
@@ -93,6 +94,9 @@ public final class GameWorld {
      * ticks while still bounding the pathological case.
      */
     private static final float SEPARATION_MAX_STEP = 1.0f;
+
+    /** How far out from a factory door a spawning unit or squad will look for room. */
+    private static final int SPAWN_SEARCH_RADIUS = 8;
 
     /** Ticks between a squad's target sweeps, staggered by squad id. */
     private static final int SQUAD_SCAN_INTERVAL = 6;
@@ -299,6 +303,58 @@ public final class GameWorld {
         }
     }
 
+    /**
+     * Folds a replacement into a squad that has room for him.
+     *
+     * @return true if he joined; false if the squad was already at strength
+     */
+    public boolean attachToSquad(Squad squad, Unit unit) {
+        if (squad == null || unit == null || !unit.isAlive() || squad.isWipedOut()) {
+            return false;
+        }
+        int slot = squad.addMember(unit.id());
+        if (slot < 0) {
+            // Somebody else filled the last gap while this man was walking.
+            return false;
+        }
+        detachFromSquad(unit);
+        unit.joinSquad(squad.id(), slot);
+        unit.setOrder(new SquadMemberOrder(squad.id()));
+        return true;
+    }
+
+    /**
+     * Queues replacements for an under-strength squad.
+     *
+     * <p>They are trained at the barracks like anything else and walk to the squad, so a worn
+     * squad is rebuilt rather than replaced — and one that has been left forward and bleeding
+     * costs its owner the walk as well as the credits.
+     *
+     * @return how many replacements were queued
+     */
+    public int reinforceSquad(int playerId, Squad squad) {
+        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+            return 0;
+        }
+        int wanted = squad.shortfall();
+        if (wanted <= 0) {
+            return 0;
+        }
+        Player p = player(playerId);
+        ProductionQueue queue = p.infantryQueue();
+        int queued = 0;
+        for (int i = 0; i < wanted && !queue.isFull(); i++) {
+            if (!p.spend(squad.type().cost())) {
+                break;
+            }
+            ProductionItem item = ProductionItem.forUnit(squad.type());
+            item.setJoinSquadId(squad.id());
+            queue.add(item);
+            queued++;
+        }
+        return queued;
+    }
+
     public SquadRegistry squads() {
         return squads;
     }
@@ -448,7 +504,7 @@ public final class GameWorld {
      * @return the new unit, or null if there is nowhere to put it right now
      */
     public Unit spawnUnitNear(int ownerId, UnitType type, int tileX, int tileY) {
-        for (int r = 0; r <= 8; r++) {
+        for (int r = 0; r <= SPAWN_SEARCH_RADIUS; r++) {
             for (int dy = -r; dy <= r; dy++) {
                 for (int dx = -r; dx <= r; dx++) {
                     if (r > 0 && Math.max(Math.abs(dx), Math.abs(dy)) != r) {
@@ -629,6 +685,33 @@ public final class GameWorld {
             return false;
         }
         queue.add(ProductionItem.forUnit(type));
+        return true;
+    }
+
+    /**
+     * Queues a whole squad of a type that forms them.
+     *
+     * <p>Falls back to a single unit for types that fight alone, so the caller does not have to
+     * know which is which — the sidebar offers what the type says it is.
+     */
+    public boolean enqueueSquad(int playerId, UnitType type) {
+        if (!type.formsSquads()) {
+            return enqueueUnit(playerId, type);
+        }
+        Player p = player(playerId);
+        if (!canProduce(playerId, type)) {
+            return false;
+        }
+        ProductionQueue queue = p.queueFor(type.producedBy());
+        if (queue.isFull()) {
+            return false;
+        }
+        ProductionItem item = ProductionItem.forSquad(type, type.squadSize());
+        if (!p.spend(item.cost())) {
+            events.add(GameEvent.at(GameEvent.Type.INSUFFICIENT_FUNDS, playerId, -1, 0, 0));
+            return false;
+        }
+        queue.add(item);
         return true;
     }
 
@@ -1012,8 +1095,25 @@ public final class GameWorld {
             head.advance(rate);
             return;
         }
-        Unit spawned = spawnUnitNear(p.id(), head.unitType(),
-                factory.tileX() + factory.tilesWide() / 2, factory.tileY() + factory.tilesHigh());
+        int exitX = factory.tileX() + factory.tilesWide() / 2;
+        int exitY = factory.tileY() + factory.tilesHigh();
+
+        if (head.isSquad()) {
+            Squad squad = spawnSquadNear(p.id(), head.unitType(), head.count(), exitX, exitY);
+            if (squad == null) {
+                return; // Not enough room outside the factory yet; try again next tick.
+            }
+            queue.removeHead();
+            for (int i = 0; i < head.count(); i++) {
+                p.noteUnitBuilt();
+            }
+            events.add(GameEvent.at(GameEvent.Type.SQUAD_TRAINED, p.id(), squad.id(),
+                    squad.anchorX(), squad.anchorY()));
+            orderSquadTo(p.id(), squad, SquadOrder.MOVE, factory.rallyX(), factory.rallyY());
+            return;
+        }
+
+        Unit spawned = spawnUnitNear(p.id(), head.unitType(), exitX, exitY);
         if (spawned == null) {
             return; // Exit blocked; try again next tick.
         }
@@ -1021,11 +1121,67 @@ public final class GameWorld {
         p.noteUnitBuilt();
         events.add(GameEvent.at(GameEvent.Type.UNIT_TRAINED, p.id(), spawned.id(),
                 spawned.x(), spawned.y()));
-        if (spawned.type().isHarvester()) {
+        if (head.joinSquadId() >= 0 && squads.byId(head.joinSquadId()) != null) {
+            spawned.setOrder(new JoinSquadOrder(head.joinSquadId()));
+        } else if (spawned.type().isHarvester()) {
             spawned.setOrder(new HarvestOrder());
         } else {
             spawned.setOrder(new MoveOrder(factory.rallyX(), factory.rallyY()));
         }
+    }
+
+    /**
+     * Puts a whole squad on the ground outside a factory, or none of it.
+     *
+     * <p>All or nothing on purpose. Trickling members out as room appears would mean squads
+     * that exist at half strength while the rest of them is still queued, and reinforcement
+     * logic to fold the stragglers in — a lot of machinery to avoid waiting a few ticks for the
+     * doorway to clear.
+     *
+     * @return the new squad, or null if there was not room for all of it
+     */
+    public Squad spawnSquadNear(int ownerId, UnitType type, int count, int tileX, int tileY) {
+        List<int[]> pocket = findPocket(count, tileX, tileY);
+        if (pocket == null) {
+            return null;
+        }
+        List<Unit> members = new ArrayList<Unit>(count);
+        for (int i = 0; i < pocket.size(); i++) {
+            int[] tile = pocket.get(i);
+            members.add(spawnUnit(ownerId, type, tile[0] + 0.5f, tile[1] + 0.5f));
+        }
+        return formSquad(ownerId, members);
+    }
+
+    /**
+     * Finds {@code count} walkable, uncrowded tiles near a point.
+     *
+     * <p>Searched ring by ring so a squad appears clustered around its factory door rather than
+     * smeared along whichever direction happened to be scanned first.
+     *
+     * @return the tiles, or null if that many could not be found
+     */
+    private List<int[]> findPocket(int count, int tileX, int tileY) {
+        List<int[]> found = new ArrayList<int[]>(count);
+        for (int radius = 0; radius <= SPAWN_SEARCH_RADIUS && found.size() < count; radius++) {
+            for (int dy = -radius; dy <= radius && found.size() < count; dy++) {
+                for (int dx = -radius; dx <= radius && found.size() < count; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) != radius) {
+                        continue;
+                    }
+                    int x = tileX + dx;
+                    int y = tileY + dy;
+                    if (x < 0 || y < 0 || x >= map.width() || y >= map.height()) {
+                        continue;
+                    }
+                    if (grid.isBlocked(x, y) || isTileCrowded(x, y)) {
+                        continue;
+                    }
+                    found.add(new int[] {x, y});
+                }
+            }
+        }
+        return found.size() == count ? found : null;
     }
 
     /**

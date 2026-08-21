@@ -13,6 +13,11 @@ import com.ccwolf.core.order.SabotageOrder;
 import com.ccwolf.core.order.MoveOrder;
 import com.ccwolf.core.order.Order;
 import com.ccwolf.core.sim.GameWorld;
+import com.ccwolf.core.squad.Formation;
+import com.ccwolf.core.squad.Squad;
+import com.ccwolf.core.squad.SquadOrder;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Everything a player — human or otherwise — can ask the simulation to do.
@@ -65,6 +70,260 @@ public abstract class PlayerCommand {
     /** Lets each unit build its own order, so a mixed selection can react differently. */
     private interface OrderFactory {
         Order create(GameWorld world, Unit unit);
+    }
+
+    // --- helpers shared by the squad commands ----------------------------------------------
+
+    /**
+     * Resolves ids to living squads the issuing player actually owns.
+     *
+     * <p>Squad commands are their own classes rather than the unit commands taught to accept
+     * squad ids. Overloading would be fewer classes but would make an id mean two things at the
+     * one seam the codebase is most careful about, and the caller always knows which it picked.
+     */
+    private static CommandResult applyToSquads(GameWorld world, int playerId, int[] squadIds,
+                                               SquadAction action) {
+        int applied = 0;
+        for (int i = 0; i < squadIds.length; i++) {
+            Squad squad = world.squads().byId(squadIds[i]);
+            if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+                continue;
+            }
+            action.apply(world, playerId, squad);
+            applied++;
+        }
+        return applied > 0 ? CommandResult.accepted()
+                : CommandResult.rejected("No squads of yours to order");
+    }
+
+    private interface SquadAction {
+        void apply(GameWorld world, int playerId, Squad squad);
+    }
+
+    // --- squad orders ---------------------------------------------------------------------
+
+    /** Send squads somewhere, ignoring what they pass on the way. */
+    public static final class SquadMove extends PlayerCommand {
+        private final int[] squadIds;
+        private final int tileX;
+        private final int tileY;
+
+        public SquadMove(int[] squadIds, int tileX, int tileY) {
+            this.squadIds = squadIds.clone();
+            this.tileX = tileX;
+            this.tileY = tileY;
+        }
+
+        @Override
+        public String describe() {
+            return "Squad move to " + tileX + "," + tileY;
+        }
+
+        @Override
+        CommandResult execute(final GameWorld world, int playerId) {
+            return applyToSquads(world, playerId, squadIds, new SquadAction() {
+                @Override
+                public void apply(GameWorld w, int player, Squad squad) {
+                    w.orderSquadTo(player, squad, SquadOrder.MOVE, tileX, tileY);
+                }
+            });
+        }
+    }
+
+    /** Send squads somewhere, stopping to deal with anything hostile on the way. */
+    public static final class SquadAttackMove extends PlayerCommand {
+        private final int[] squadIds;
+        private final int tileX;
+        private final int tileY;
+
+        public SquadAttackMove(int[] squadIds, int tileX, int tileY) {
+            this.squadIds = squadIds.clone();
+            this.tileX = tileX;
+            this.tileY = tileY;
+        }
+
+        @Override
+        public String describe() {
+            return "Squad attack-move to " + tileX + "," + tileY;
+        }
+
+        @Override
+        CommandResult execute(final GameWorld world, int playerId) {
+            return applyToSquads(world, playerId, squadIds, new SquadAction() {
+                @Override
+                public void apply(GameWorld w, int player, Squad squad) {
+                    w.orderSquadTo(player, squad, SquadOrder.ATTACK_MOVE, tileX, tileY);
+                }
+            });
+        }
+    }
+
+    /** Put squads onto one specific target. */
+    public static final class SquadAttack extends PlayerCommand {
+        private final int[] squadIds;
+        private final int targetId;
+
+        public SquadAttack(int[] squadIds, int targetId) {
+            this.squadIds = squadIds.clone();
+            this.targetId = targetId;
+        }
+
+        @Override
+        public String describe() {
+            return "Squad attack #" + targetId;
+        }
+
+        @Override
+        CommandResult execute(final GameWorld world, int playerId) {
+            Entity target = world.entity(targetId);
+            if (target == null || !target.isAlive()) {
+                return CommandResult.rejected("Nothing there to attack");
+            }
+            if (target.ownerId() == playerId) {
+                return CommandResult.rejected("That is yours");
+            }
+            return applyToSquads(world, playerId, squadIds, new SquadAction() {
+                @Override
+                public void apply(GameWorld w, int player, Squad squad) {
+                    w.orderSquadAttack(player, squad, targetId);
+                }
+            });
+        }
+    }
+
+    /** Halt squads where they stand. They still fight what comes to them. */
+    public static final class SquadStop extends PlayerCommand {
+        private final int[] squadIds;
+
+        public SquadStop(int[] squadIds) {
+            this.squadIds = squadIds.clone();
+        }
+
+        @Override
+        public String describe() {
+            return "Squad hold";
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            return applyToSquads(world, playerId, squadIds, new SquadAction() {
+                @Override
+                public void apply(GameWorld w, int player, Squad squad) {
+                    w.orderSquadHold(player, squad);
+                }
+            });
+        }
+    }
+
+    /** Change the shape squads stand in. */
+    public static final class SetFormation extends PlayerCommand {
+        private final int[] squadIds;
+        private final Formation formation;
+
+        public SetFormation(int[] squadIds, Formation formation) {
+            this.squadIds = squadIds.clone();
+            this.formation = formation;
+        }
+
+        @Override
+        public String describe() {
+            return "Form " + formation;
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            return applyToSquads(world, playerId, squadIds, new SquadAction() {
+                @Override
+                public void apply(GameWorld w, int player, Squad squad) {
+                    squad.setFormation(formation);
+                }
+            });
+        }
+    }
+
+    /** Break named members out of a squad; two or more of them form a new one. */
+    public static final class SplitSquad extends PlayerCommand {
+        private final int squadId;
+        private final int[] unitIds;
+
+        public SplitSquad(int squadId, int[] unitIds) {
+            this.squadId = squadId;
+            this.unitIds = unitIds.clone();
+        }
+
+        @Override
+        public String describe() {
+            return "Break up squad #" + squadId;
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            Squad squad = world.squads().byId(squadId);
+            if (squad == null || squad.ownerId() != playerId) {
+                return CommandResult.rejected("No such squad of yours");
+            }
+            List<Unit> leaving = new ArrayList<Unit>();
+            for (int i = 0; i < unitIds.length; i++) {
+                Entity e = world.entity(unitIds[i]);
+                if (e instanceof Unit && e.ownerId() == playerId && e.isAlive()) {
+                    leaving.add((Unit) e);
+                }
+            }
+            if (leaving.isEmpty()) {
+                return CommandResult.rejected("Nobody to break out");
+            }
+            world.splitSquad(squad, leaving);
+            return CommandResult.accepted();
+        }
+    }
+
+    /** Queue replacements to bring a worn squad back up to strength. */
+    public static final class Reinforce extends PlayerCommand {
+        private final int squadId;
+
+        public Reinforce(int squadId) {
+            this.squadId = squadId;
+        }
+
+        @Override
+        public String describe() {
+            return "Reinforce squad #" + squadId;
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            Squad squad = world.squads().byId(squadId);
+            if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+                return CommandResult.rejected("No such squad of yours");
+            }
+            if (squad.shortfall() <= 0) {
+                return CommandResult.rejected("Already at strength");
+            }
+            int queued = world.reinforceSquad(playerId, squad);
+            return queued > 0 ? CommandResult.accepted()
+                    : CommandResult.rejected("Cannot train replacements right now");
+        }
+    }
+
+    /** Queue a whole squad rather than one man. */
+    public static final class QueueSquad extends PlayerCommand {
+        private final UnitType type;
+
+        public QueueSquad(UnitType type) {
+            this.type = type;
+        }
+
+        @Override
+        public String describe() {
+            return "Train " + type.displayName() + " squad";
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            return world.enqueueSquad(playerId, type)
+                    ? CommandResult.accepted()
+                    : CommandResult.rejected("Cannot train that right now");
+        }
     }
 
     // --- unit orders ----------------------------------------------------------------------

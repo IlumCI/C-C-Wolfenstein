@@ -146,6 +146,27 @@ public final class Squad {
         return isWipedOut();
     }
 
+    /**
+     * Puts a replacement into the first empty slot.
+     *
+     * @return the slot taken, or -1 if the squad is already at full strength
+     */
+    public int addMember(int unitId) {
+        for (int slot = 0; slot < memberIds.length; slot++) {
+            if (memberIds[slot] < 0) {
+                memberIds[slot] = unitId;
+                strength++;
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    /** Men still owed to bring this squad back to strength, ignoring any already walking. */
+    public int shortfall() {
+        return initialStrength - strength;
+    }
+
     public boolean contains(int unitId) {
         for (int slot = 0; slot < memberIds.length; slot++) {
             if (memberIds[slot] == unitId) {

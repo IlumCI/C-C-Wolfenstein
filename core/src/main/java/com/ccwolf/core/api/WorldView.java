@@ -12,6 +12,8 @@ import com.ccwolf.core.fog.FogGrid;
 import com.ccwolf.core.map.TileMap;
 import com.ccwolf.core.sim.GameWorld;
 import com.ccwolf.core.sim.Player;
+import com.ccwolf.core.squad.Squad;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -105,6 +107,35 @@ public final class WorldView {
      * Whether an enemy entity should be drawn at all: units need live vision, structures only
      * need to have been seen once, which is what makes a remembered base persist under fog.
      */
+    // --- squads ---------------------------------------------------------------------------
+
+    /** Every squad the viewing player owns, in creation order. */
+    public List<Squad> mySquads() {
+        List<Squad> out = new ArrayList<Squad>();
+        List<Squad> all = world.squads().all();
+        for (int i = 0; i < all.size(); i++) {
+            Squad squad = all.get(i);
+            if (squad.ownerId() == playerId && !squad.isWipedOut()) {
+                out.add(squad);
+            }
+        }
+        return out;
+    }
+
+    public Squad squad(int squadId) {
+        return world.squads().byId(squadId);
+    }
+
+    /** The squad a unit belongs to, or null if it fights alone. */
+    public Squad squadOf(Unit unit) {
+        return world.squadOf(unit);
+    }
+
+    /** Where a squad member should be standing, for drawing its place in the line. */
+    public void slotPosition(Squad squad, int slot, float[] out) {
+        squad.slotPosition(slot, out);
+    }
+
     public boolean isDiscovered(Entity e) {
         if (e == null) {
             return false;
