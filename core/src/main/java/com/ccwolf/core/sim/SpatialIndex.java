@@ -13,6 +13,15 @@ import java.util.List;
  */
 final class SpatialIndex {
 
+    /**
+     * Tiles per cell edge.
+     *
+     * <p>Four looks too coarse: the query this mostly serves is separation steering asking for
+     * neighbours within about 1.6 tiles, so most of what a cell returns is thrown away. Halving
+     * it to two was tried and measured, and it is slower — 14% fewer candidates fetched, but a
+     * query then spans nine cells instead of four and the per-cell overhead costs more than the
+     * fetch saves. Left at four on the evidence.
+     */
     private static final int CELL_SIZE = 4;
 
     private final int cols;

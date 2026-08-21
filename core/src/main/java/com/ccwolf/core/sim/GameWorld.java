@@ -73,6 +73,21 @@ public final class GameWorld {
 
     private static final int REPAIR_HP_PER_STEP = 8;
 
+    /**
+     * The most a unit may be displaced by separation in one tick, as a multiple of its radius.
+     *
+     * <p>A crowd sums a lot of small pushes into one large one, and left uncapped a unit in the
+     * middle of a press is flung further than it could ever move under its own power.
+     *
+     * <p>Sized against the radius rather than the walking speed, which was the first thing
+     * tried and was wrong: a clamp of a fraction of a tick's walk is far smaller than the
+     * overlap of two stacked units, so a crowd took a second or more to come apart. Spawn
+     * points never cleared, {@code isTileCrowded} kept rejecting, and the AI quietly stopped
+     * producing units altogether. One radius a tick separates a stacked pair in two or three
+     * ticks while still bounding the pathological case.
+     */
+    private static final float SEPARATION_MAX_STEP = 1.0f;
+
     /** Repairing a structure from scrap costs this fraction of building it new. */
     private static final float REPAIR_COST_FACTOR = 0.5f;
 
@@ -990,7 +1005,29 @@ public final class GameWorld {
      * Pushes overlapping units apart. This is what keeps a moving group looking like a group
      * instead of a single stacked sprite, without making units block each other's paths.
      */
+    /**
+     * Pushes overlapping units apart.
+     *
+     * <p>Three things about how this is done matter more than the pushing itself.
+     *
+     * <p><b>Pairs are resolved once, and both units move.</b> Each overlapping pair is handled
+     * by whichever unit has the lower id, which pushes both halves at the same time. Before,
+     * every pair was visited twice — and the second visit measured against a neighbour that had
+     * already moved this tick, so the result depended on list order and crowds oscillated.
+     *
+     * <p><b>Displacement is accumulated and applied afterwards.</b> Same reason: a unit should
+     * be pushed by where its neighbours were at the top of the tick, not by where the ones
+     * ahead of it in the list have already been shoved to.
+     *
+     * <p><b>A push may not drive a unit backwards.</b> This is the important one. Separation
+     * used to move units bodily against the direction they were walking, so in a crowd they
+     * stopped making headway, tripped {@code Mover}'s stuck detector, and threw their route away
+     * — at five hundred a side that accounted for roughly half of all the pathfinding in the
+     * game. Removing the component of the push that opposes a unit's own movement makes it
+     * slide past its neighbours instead of being knocked back into them.
+     */
     private void applySeparation() {
+        // Pass one: work out where everyone should be pushed, moving nobody.
         for (int i = 0; i < units.size(); i++) {
             Unit a = units.get(i);
             if (!a.isAlive()) {
@@ -1000,11 +1037,11 @@ public final class GameWorld {
             float reach = a.radius() * 2f + 1f;
             spatialIndex.query(a.x(), a.y(), reach, queryScratch);
             profiler.countSeparationPairs(queryScratch.size());
-            float pushX = 0f;
-            float pushY = 0f;
+
             for (int j = 0; j < queryScratch.size(); j++) {
                 Unit b = queryScratch.get(j);
-                if (b == a || !b.isAlive()) {
+                // The lower id owns the pair, so it is resolved exactly once.
+                if (b == a || !b.isAlive() || b.id() < a.id()) {
                     continue;
                 }
                 float dx = a.x() - b.x();
@@ -1023,20 +1060,61 @@ public final class GameWorld {
                     d = 0.014f;
                 }
                 float overlap = (minDist - d) * 0.5f;
-                pushX += dx / d * overlap;
-                pushY += dy / d * overlap;
+                float pushX = dx / d * overlap;
+                float pushY = dy / d * overlap;
+                a.addSeparationPush(pushX, pushY);
+                b.addSeparationPush(-pushX, -pushY);
             }
-            if (pushX != 0f || pushY != 0f) {
-                float nx = clamp(a.x() + pushX, map.width());
-                float ny = clamp(a.y() + pushY, map.height());
-                if (!grid.isBlocked((int) nx, (int) ny)) {
-                    a.setPosition(nx, ny);
-                } else if (!grid.isBlocked((int) nx, a.tileY())) {
-                    // Slide along the wall rather than stopping dead against it.
-                    a.setPosition(nx, a.y());
-                } else if (!grid.isBlocked(a.tileX(), (int) ny)) {
-                    a.setPosition(a.x(), ny);
+        }
+
+        // Pass two: clamp, project, and move.
+        for (int i = 0; i < units.size(); i++) {
+            Unit a = units.get(i);
+            float pushX = a.separationPushX();
+            float pushY = a.separationPushY();
+            a.clearSeparationPush();
+            if (!a.isAlive() || (pushX == 0f && pushY == 0f)) {
+                continue;
+            }
+
+            // Slide, do not reverse: strip out whatever part of the push opposes the direction
+            // this unit is already travelling in.
+            float vx = a.velocityX();
+            float vy = a.velocityY();
+            float speedSq = vx * vx + vy * vy;
+            if (speedSq > 1e-6f) {
+                float inverse = 1f / (float) Math.sqrt(speedSq);
+                float headingX = vx * inverse;
+                float headingY = vy * inverse;
+                float against = pushX * headingX + pushY * headingY;
+                if (against < 0f) {
+                    pushX -= against * headingX;
+                    pushY -= against * headingY;
                 }
+            }
+
+            // Nothing gets shoved further in one tick than it could have walked. Without this,
+            // a unit deep in a crowd is flung about by the sum of everyone touching it.
+            float limit = SEPARATION_MAX_STEP * a.radius();
+            float pushSq = pushX * pushX + pushY * pushY;
+            if (pushSq > limit * limit) {
+                float scale = limit / (float) Math.sqrt(pushSq);
+                pushX *= scale;
+                pushY *= scale;
+            }
+            if (pushX == 0f && pushY == 0f) {
+                continue;
+            }
+
+            float nx = clamp(a.x() + pushX, map.width());
+            float ny = clamp(a.y() + pushY, map.height());
+            if (!grid.isBlocked((int) nx, (int) ny)) {
+                a.setPosition(nx, ny);
+            } else if (!grid.isBlocked((int) nx, a.tileY())) {
+                // Slide along the wall rather than stopping dead against it.
+                a.setPosition(nx, a.y());
+            } else if (!grid.isBlocked(a.tileX(), (int) ny)) {
+                a.setPosition(a.x(), ny);
             }
         }
     }

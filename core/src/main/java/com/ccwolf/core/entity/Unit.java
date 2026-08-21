@@ -37,6 +37,16 @@ public final class Unit extends Entity {
     private int repathCooldown;
     private int blockedTicks;
     private float lastWaypointDistance = Float.MAX_VALUE;
+    /**
+     * Separation displacement accumulated this tick, applied once at the end of it.
+     *
+     * <p>Scratch, not state: it is written and cleared inside a single tick and means nothing
+     * between them. It lives on the unit rather than in a parallel array so that a pair of
+     * overlapping units can be resolved in one visit, pushing both apart at once.
+     */
+    private float separationPushX;
+    private float separationPushY;
+
     private float velocityX;
     private float velocityY;
 
@@ -308,6 +318,24 @@ public final class Unit extends Entity {
 
     public void setLastWaypointDistance(float d) {
         this.lastWaypointDistance = d;
+    }
+
+    public void addSeparationPush(float dx, float dy) {
+        separationPushX += dx;
+        separationPushY += dy;
+    }
+
+    public float separationPushX() {
+        return separationPushX;
+    }
+
+    public float separationPushY() {
+        return separationPushY;
+    }
+
+    public void clearSeparationPush() {
+        separationPushX = 0f;
+        separationPushY = 0f;
     }
 
     public float velocityX() {

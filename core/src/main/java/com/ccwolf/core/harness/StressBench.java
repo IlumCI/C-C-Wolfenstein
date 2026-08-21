@@ -93,7 +93,10 @@ public final class StressBench {
      */
     private static int deploy(GameWorld world, int ownerId, int count, int originX, int originY,
             TileMap map) {
-        UnitType[] mix = mixFor(world.player(ownerId).faction());
+        // Shuffled from the world's seeded RNG, so different seeds give genuinely different
+        // battles. Without this the deployment is fixed and every seed runs the same fight,
+        // which makes sweeping seeds look meaningful while telling you nothing.
+        UnitType[] mix = shuffled(mixFor(world.player(ownerId).faction()), world.random());
         int placed = 0;
         int radius = 1;
 
@@ -122,6 +125,17 @@ public final class StressBench {
             radius++;
         }
         return placed;
+    }
+
+    private static UnitType[] shuffled(UnitType[] mix, java.util.Random random) {
+        UnitType[] out = Arrays.copyOf(mix, mix.length);
+        for (int i = out.length - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            UnitType swap = out[i];
+            out[i] = out[j];
+            out[j] = swap;
+        }
+        return out;
     }
 
     /** A believable order of battle: mostly line infantry, with support and armour among it. */
