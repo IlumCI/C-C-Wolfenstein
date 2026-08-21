@@ -35,6 +35,7 @@ public final class SkirmishHarness {
         boolean profile = false;
         boolean digest = false;
         int benchUnits = 0;
+        boolean benchSquads = false;
 
         for (int i = 0; i < args.length - 1; i++) {
             String key = args[i];
@@ -58,11 +59,14 @@ public final class SkirmishHarness {
                 profile = true;
             } else if ("--digest".equals(args[i])) {
                 digest = true;
+            } else if ("--squads".equals(args[i])) {
+                benchSquads = true;
             }
         }
 
         if (benchUnits > 0) {
-            StressBench.run(mapName, benchUnits, maxTicks == 24000 ? 2000 : maxTicks, seed);
+            StressBench.run(mapName, benchUnits, maxTicks == 24000 ? 2000 : maxTicks, seed,
+                    benchSquads);
             return;
         }
 

@@ -45,6 +45,26 @@ public final class Squad {
 
     private Formation formation = Formation.WEDGE;
 
+    private SquadOrder order = SquadOrder.HOLD;
+
+    /** Where the squad has been sent, in tiles. Meaningless unless the order uses it. */
+    private int destTileX = -1;
+    private int destTileY = -1;
+
+    /** The specific thing an ATTACK order is about, or -1. */
+    private int orderTargetId = -1;
+
+    /**
+     * The route the anchor is walking, packed tiles, and where along it we are.
+     *
+     * <p>One route for the whole squad. This is the entire reason a squad is cheaper than the
+     * men in it: eight members following an anchor cost one search between them.
+     */
+    private int[] path;
+    private int pathIndex;
+    private int pathDestX = -1;
+    private int pathDestY = -1;
+
     /** The one target the whole squad is working on, or -1. */
     private int engagedTargetId = -1;
 
@@ -206,6 +226,94 @@ public final class Squad {
 
     public void setFormation(Formation value) {
         this.formation = value;
+    }
+
+    public SquadOrder order() {
+        return order;
+    }
+
+    public int destTileX() {
+        return destTileX;
+    }
+
+    public int destTileY() {
+        return destTileY;
+    }
+
+    public int orderTargetId() {
+        return orderTargetId;
+    }
+
+    /** Sends the squad somewhere, discarding whatever route it was on. */
+    public void setDestination(SquadOrder order, int tileX, int tileY) {
+        this.order = order;
+        this.destTileX = tileX;
+        this.destTileY = tileY;
+        this.orderTargetId = -1;
+        clearPath();
+    }
+
+    public void setAttackTarget(int targetId) {
+        this.order = SquadOrder.ATTACK;
+        this.orderTargetId = targetId;
+        this.destTileX = -1;
+        this.destTileY = -1;
+        clearPath();
+    }
+
+    public void hold() {
+        this.order = SquadOrder.HOLD;
+        this.orderTargetId = -1;
+        clearPath();
+    }
+
+    public int[] path() {
+        return path;
+    }
+
+    public int pathIndex() {
+        return pathIndex;
+    }
+
+    public void advancePath() {
+        pathIndex++;
+    }
+
+    public boolean pathComplete() {
+        return path == null || pathIndex >= path.length;
+    }
+
+    public boolean hasPathTo(int tileX, int tileY) {
+        return path != null && pathDestX == tileX && pathDestY == tileY
+                && pathIndex < path.length;
+    }
+
+    public void setPath(int[] packedTiles, int tileX, int tileY) {
+        this.path = packedTiles;
+        this.pathIndex = 0;
+        this.pathDestX = tileX;
+        this.pathDestY = tileY;
+    }
+
+    public void clearPath() {
+        this.path = null;
+        this.pathIndex = 0;
+        this.pathDestX = -1;
+        this.pathDestY = -1;
+    }
+
+    public float anchorDistanceTo(float x, float y) {
+        float dx = x - anchorX;
+        float dy = y - anchorY;
+        return (float) Math.sqrt(dx * dx + dy * dy);
+    }
+
+    public int anchorTileX() {
+        return (int) anchorX;
+    }
+
+    public int anchorTileY() {
+        return (int) anchorY;
     }
 
     public int engagedTargetId() {

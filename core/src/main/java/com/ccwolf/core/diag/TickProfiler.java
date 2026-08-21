@@ -24,6 +24,7 @@ public final class TickProfiler {
         PRODUCTION,
         SABOTAGE,
         STEALTH,
+        SQUADS,
         UNITS,
         BUILDINGS,
         REPAIRS,

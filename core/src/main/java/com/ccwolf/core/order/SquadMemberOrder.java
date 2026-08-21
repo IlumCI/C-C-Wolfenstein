@@ -1,5 +1,6 @@
 package com.ccwolf.core.order;
 
+import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.sim.GameWorld;
 import com.ccwolf.core.squad.Squad;
@@ -48,6 +49,17 @@ public final class SquadMemberOrder implements Order {
             // The squad is gone or this unit has left it; it is on its own now.
             world.mover().stop(unit);
             return true;
+        }
+
+        // Shoot what the squad is shooting. The squad did the looking; this is just the
+        // trigger pull, which is the only part that has to happen per man.
+        Entity target = squad.engagedTargetId() >= 0
+                ? world.entity(squad.engagedTargetId()) : null;
+        if (target != null && target.isAlive() && world.inWeaponRange(unit, target)) {
+            world.mover().stop(unit);
+            unit.faceToward(target.x(), target.y());
+            world.tryAttack(unit, target);
+            return false;
         }
 
         squad.slotPosition(unit.squadSlot(), slot);

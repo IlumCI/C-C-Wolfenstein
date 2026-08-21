@@ -19,7 +19,9 @@ import com.ccwolf.core.order.Order;
 import com.ccwolf.core.order.SquadMemberOrder;
 import com.ccwolf.core.squad.Formation;
 import com.ccwolf.core.squad.Squad;
+import com.ccwolf.core.squad.SquadOrder;
 import com.ccwolf.core.squad.SquadRegistry;
+import com.ccwolf.core.path.AStar;
 import com.ccwolf.core.path.AStar;
 import com.ccwolf.core.path.Mover;
 import com.ccwolf.core.path.OccupancyGrid;
@@ -92,6 +94,25 @@ public final class GameWorld {
      */
     private static final float SEPARATION_MAX_STEP = 1.0f;
 
+    /** Ticks between a squad's target sweeps, staggered by squad id. */
+    private static final int SQUAD_SCAN_INTERVAL = 6;
+
+    /** How far past its reach a squad will hang on to a target before letting go. */
+    private static final float SQUAD_LEASH = 3f;
+
+    /** How far a member may be from its slot before the squad waits for it. */
+    private static final float SQUAD_COHESION = 3.5f;
+
+    /**
+     * How fast the anchor walks, as a fraction of what its members can manage.
+     *
+     * <p>Must be less than one. At full speed a member that is out of station can never take it
+     * up, because the slot it is chasing runs away exactly as fast as it does: the squad stalls,
+     * waits, creeps forward, stalls again. The first version of this walked a squad one and a
+     * third tiles in thirty seconds. The margin is what lets a formation form up while moving.
+     */
+    private static final float ANCHOR_SPEED_FRACTION = 0.8f;
+
     /** Repairing a structure from scrap costs this fraction of building it new. */
     private static final float REPAIR_COST_FACTOR = 0.5f;
 
@@ -104,6 +125,9 @@ public final class GameWorld {
 
     /** Squads, and the roster of who is in them. */
     private final SquadRegistry squads = new SquadRegistry();
+
+    /** Reused by the squad pass so walking a formation allocates nothing. */
+    private final float[] slotScratch = new float[2];
 
     /**
      * Where the tick goes. Off unless something switches it on, so the normal path pays one
@@ -229,6 +253,50 @@ public final class GameWorld {
             taken.get(i).clearOrders();
         }
         return taken.size() >= 2 ? formSquad(squad.ownerId(), taken) : null;
+    }
+
+    /** Sends a squad somewhere, fighting on the way or not depending on the order. */
+    public void orderSquadTo(int playerId, Squad squad, SquadOrder order, int tileX, int tileY) {
+        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+            return;
+        }
+        squad.setDestination(order, tileX, tileY);
+        refreshSquadOrders(squad);
+    }
+
+    public void orderSquadAttack(int playerId, Squad squad, int targetId) {
+        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+            return;
+        }
+        squad.setAttackTarget(targetId);
+        refreshSquadOrders(squad);
+    }
+
+    public void orderSquadHold(int playerId, Squad squad) {
+        if (squad == null || squad.ownerId() != playerId || squad.isWipedOut()) {
+            return;
+        }
+        squad.hold();
+        refreshSquadOrders(squad);
+    }
+
+    /**
+     * Puts every member back under the squad's orders.
+     *
+     * <p>Needed because members can be left holding a stale individual order — a leash walk to a
+     * slot, say — that would otherwise outlive the command that replaced it.
+     */
+    private void refreshSquadOrders(Squad squad) {
+        for (int slot = 0; slot < squad.slotCount(); slot++) {
+            int memberId = squad.memberAt(slot);
+            if (memberId < 0) {
+                continue;
+            }
+            Entity member = entity(memberId);
+            if (member instanceof Unit) {
+                ((Unit) member).setOrder(new SquadMemberOrder(squad.id()));
+            }
+        }
     }
 
     public SquadRegistry squads() {
@@ -843,6 +911,10 @@ public final class GameWorld {
         updateStealth();
         profiler.end(TickProfiler.Phase.STEALTH);
 
+        profiler.begin(TickProfiler.Phase.SQUADS);
+        updateSquads();
+        profiler.end(TickProfiler.Phase.SQUADS);
+
         profiler.begin(TickProfiler.Phase.UNITS);
         updateUnits();
         profiler.end(TickProfiler.Phase.UNITS);
@@ -986,6 +1058,193 @@ public final class GameWorld {
                 events.add(GameEvent.at(GameEvent.Type.PLACEMENT_READY, p.id(), -1, 0, 0));
             }
         }
+    }
+
+    /**
+     * One anchor, one route, one enemy scan per squad.
+     *
+     * <p>This is where a squad earns its keep. Eight men following an anchor cost one
+     * pathfinding search between them instead of eight, and one target sweep instead of eight —
+     * and those two are the expensive parts of a unit's tick. Everything the members then do is
+     * steering at a point a few tiles away, which is free.
+     *
+     * <p>Runs before {@code updateUnits}, so members read an anchor that has already moved this
+     * tick rather than trailing it by one.
+     */
+    private void updateSquads() {
+        List<Squad> all = squads.all();
+        for (int i = 0; i < all.size(); i++) {
+            Squad squad = all.get(i);
+            if (squad.isWipedOut()) {
+                continue;
+            }
+            updateSquadTarget(squad);
+            advanceSquadAnchor(squad);
+        }
+    }
+
+    /**
+     * Finds the squad something to shoot at, once for everybody.
+     *
+     * <p>Staggered by squad id so that seventy squads do not all sweep on the same tick and
+     * turn one tick in six into a spike.
+     */
+    private void updateSquadTarget(Squad squad) {
+        Entity target = squad.engagedTargetId() >= 0 ? entity(squad.engagedTargetId()) : null;
+        if (target != null && !target.isAlive()) {
+            target = null;
+        }
+        // Let go of anything that has run far enough past the squad's reach.
+        if (target != null) {
+            float reach = squadReach(squad) + SQUAD_LEASH;
+            float dx = target.x() - squad.anchorX();
+            float dy = target.y() - squad.anchorY();
+            if (dx * dx + dy * dy > reach * reach) {
+                target = null;
+            }
+        }
+
+        if (squad.order() == SquadOrder.ATTACK) {
+            // An explicit attack order overrides whatever the sweep found.
+            Entity ordered = entity(squad.orderTargetId());
+            squad.setEngagedTargetId(ordered != null && ordered.isAlive() ? ordered.id() : -1);
+            if (ordered == null || !ordered.isAlive()) {
+                squad.hold();
+            }
+            return;
+        }
+
+        if (target == null && squad.order() != SquadOrder.MOVE
+                && (tick + squad.id()) % SQUAD_SCAN_INTERVAL == 0) {
+            target = findNearestEnemy(squad.ownerId(), squad.anchorX(), squad.anchorY(),
+                    squadReach(squad), true);
+        }
+        squad.setEngagedTargetId(target == null ? -1 : target.id());
+    }
+
+    /** How far a squad can see or shoot, whichever is further — the radius it sweeps. */
+    private float squadReach(Squad squad) {
+        return Math.max(squad.type().sight(), squadFiringRange(squad));
+    }
+
+    /** How close a squad has to be before its members can actually shoot. */
+    private float squadFiringRange(Squad squad) {
+        Weapon weapon = squad.type().weapon();
+        // A shade inside the real range, so members settling into slots are not left straddling
+        // it with half the squad unable to fire.
+        return weapon == null ? 0f : weapon.range() * 0.8f;
+    }
+
+    /**
+     * Walks the anchor along the squad's route.
+     *
+     * <p>Two things stop it. A squad that has found something to fight stands and fights rather
+     * than walking away mid-firefight. And a squad whose rearmost man has fallen behind waits
+     * for him, or the formation strings out into single file and stops being a formation.
+     */
+    private void advanceSquadAnchor(Squad squad) {
+        if (squad.order() == SquadOrder.HOLD) {
+            return;
+        }
+
+        // A squad with something to fight closes on it, whether it went looking for that fight
+        // or walked into it. Stopping at the moment of contact is wrong: a squad sees further
+        // than it shoots, so it would freeze a tile or two outside its own range and stand
+        // there. Close to weapon range, then stop.
+        Entity engaged = squad.engagedTargetId() >= 0 ? entity(squad.engagedTargetId()) : null;
+        if (engaged != null && !engaged.isAlive()) {
+            engaged = null;
+        }
+
+        int destX;
+        int destY;
+        if (engaged != null && squad.order() != SquadOrder.MOVE) {
+            if (squad.anchorDistanceTo(engaged.x(), engaged.y()) <= squadFiringRange(squad)) {
+                return; // In range; stand and shoot.
+            }
+            destX = engaged.tileX();
+            destY = engaged.tileY();
+        } else if (squad.order() == SquadOrder.ATTACK) {
+            return; // Ordered onto something that is gone.
+        } else {
+            destX = squad.destTileX();
+            destY = squad.destTileY();
+        }
+        if (destX < 0 || destY < 0) {
+            return;
+        }
+
+        if (!squad.hasPathTo(destX, destY)) {
+            int[] route = mover.pathfinder().findPath(grid, squad.anchorTileX(),
+                    squad.anchorTileY(), destX, destY);
+            profiler.countAstarSearch(mover.pathfinder().nodesExpanded());
+            if (route == null || route.length == 0) {
+                squad.hold();
+                return;
+            }
+            squad.setPath(route, destX, destY);
+        }
+
+        if (isSquadStrungOut(squad)) {
+            return;
+        }
+
+        float step = squad.type().speed() * ANCHOR_SPEED_FRACTION * TICK_SECONDS;
+        while (step > 0f && !squad.pathComplete()) {
+            int packed = squad.path()[squad.pathIndex()];
+            float waypointX = AStar.packX(packed) + 0.5f;
+            float waypointY = AStar.packY(packed) + 0.5f;
+            float dx = waypointX - squad.anchorX();
+            float dy = waypointY - squad.anchorY();
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= step) {
+                squad.setAnchor(waypointX, waypointY);
+                squad.advancePath();
+                step -= distance;
+                if (distance > 1e-4f) {
+                    squad.setHeading((float) StrictMath.atan2(dy, dx));
+                }
+            } else {
+                squad.setAnchor(squad.anchorX() + dx / distance * step,
+                        squad.anchorY() + dy / distance * step);
+                squad.setHeading((float) StrictMath.atan2(dy, dx));
+                step = 0f;
+            }
+        }
+
+        if (squad.pathComplete()) {
+            squad.clearPath();
+            if (squad.order() != SquadOrder.ATTACK) {
+                squad.hold();
+            }
+        }
+    }
+
+    /**
+     * True while somebody is far enough behind that the squad should wait.
+     *
+     * <p>Without this the anchor walks at full speed regardless and anyone held up by terrain or
+     * a building is left behind permanently, which turns a formation into a queue.
+     */
+    private boolean isSquadStrungOut(Squad squad) {
+        for (int slot = 0; slot < squad.slotCount(); slot++) {
+            int memberId = squad.memberAt(slot);
+            if (memberId < 0) {
+                continue;
+            }
+            Entity member = entity(memberId);
+            if (member == null) {
+                continue;
+            }
+            squad.slotPosition(slot, slotScratch);
+            float dx = member.x() - slotScratch[0];
+            float dy = member.y() - slotScratch[1];
+            if (dx * dx + dy * dy > SQUAD_COHESION * SQUAD_COHESION) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void updateUnits() {

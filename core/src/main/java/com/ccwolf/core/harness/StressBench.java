@@ -9,7 +9,12 @@ import com.ccwolf.core.map.TileMap;
 import com.ccwolf.core.order.AttackMoveOrder;
 import com.ccwolf.core.sim.GameWorld;
 import com.ccwolf.core.sim.Player;
+import com.ccwolf.core.squad.Squad;
+import com.ccwolf.core.squad.SquadOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 
 /**
@@ -34,6 +39,14 @@ public final class StressBench {
     }
 
     public static void run(String mapName, int unitsPerSide, int ticks, long seed) {
+        run(mapName, unitsPerSide, ticks, seed, false);
+    }
+
+    /**
+     * @param inSquads form the infantry into squads rather than sending every man individually
+     */
+    public static void run(String mapName, int unitsPerSide, int ticks, long seed,
+            boolean inSquads) {
         TileMap map = MapCatalog.load(mapName);
         GameWorld world = new GameWorld(map, seed);
         Player resistance =
@@ -58,8 +71,14 @@ public final class StressBench {
 
         // Send each side at the other, so they meet in the middle and stay in contact. The
         // costly state is the melee, not the march.
-        order(world, resistance.id(), east[0], east[1]);
-        order(world, regime.id(), west[0], west[1]);
+        if (inSquads) {
+            int westSquads = formSquads(world, resistance.id(), east[0], east[1]);
+            int eastSquads = formSquads(world, regime.id(), west[0], west[1]);
+            System.out.println("Formed " + westSquads + " vs " + eastSquads + " squads");
+        } else {
+            order(world, resistance.id(), east[0], east[1]);
+            order(world, regime.id(), west[0], west[1]);
+        }
 
         for (int i = 0; i < WARMUP_TICKS; i++) {
             world.step();
@@ -152,6 +171,54 @@ public final class StressBench {
             UnitType.ROCKETEER, UnitType.GRENADIER,
             UnitType.PARTISAN, UnitType.PARTISAN, UnitType.MARKSMAN, UnitType.CAPTURED_PANZER,
         };
+    }
+
+    /**
+     * Groups an army into squads by type and sends them all the same way.
+     *
+     * <p>Types that fight alone — vehicles, harvesters, infiltrators — are ordered individually,
+     * which is the point of comparison: this measures a mixed force the way one would actually
+     * be fielded, not an artificially tidy one.
+     */
+    private static int formSquads(GameWorld world, int ownerId, int tileX, int tileY) {
+        Map<UnitType, List<Unit>> byType = new LinkedHashMap<UnitType, List<Unit>>();
+        List<Unit> loners = new ArrayList<Unit>();
+
+        List<Unit> units = world.units();
+        for (int i = 0; i < units.size(); i++) {
+            Unit unit = units.get(i);
+            if (unit.ownerId() != ownerId) {
+                continue;
+            }
+            if (!unit.type().formsSquads()) {
+                loners.add(unit);
+                continue;
+            }
+            List<Unit> pool = byType.get(unit.type());
+            if (pool == null) {
+                pool = new ArrayList<Unit>();
+                byType.put(unit.type(), pool);
+            }
+            pool.add(unit);
+        }
+
+        int formed = 0;
+        for (Map.Entry<UnitType, List<Unit>> entry : byType.entrySet()) {
+            List<Unit> pool = entry.getValue();
+            int size = entry.getKey().squadSize();
+            for (int start = 0; start + 1 < pool.size(); start += size) {
+                List<Unit> members = pool.subList(start, Math.min(start + size, pool.size()));
+                Squad squad = world.formSquad(ownerId, new ArrayList<Unit>(members));
+                if (squad != null) {
+                    world.orderSquadTo(ownerId, squad, SquadOrder.ATTACK_MOVE, tileX, tileY);
+                    formed++;
+                }
+            }
+        }
+        for (int i = 0; i < loners.size(); i++) {
+            loners.get(i).setOrder(new AttackMoveOrder(tileX, tileY));
+        }
+        return formed;
     }
 
     private static void order(GameWorld world, int ownerId, int tileX, int tileY) {
