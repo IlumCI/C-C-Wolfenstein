@@ -84,6 +84,7 @@ public final class DesktopMain {
     private static void renderHeadless(GameSession session, WorldRenderer renderer, Hud hud,
             int frames) {
         BufferedImage buffer = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
+        renderer.profiler().setEnabled(true);
         long slowest = 0L;
         long total = 0L;
         // Discarded: the first frames measure the JIT compiling the renderer, not the renderer.
@@ -104,6 +105,10 @@ public final class DesktopMain {
                 g.dispose();
             }
             long elapsed = System.nanoTime() - started;
+            if (i == warmup) {
+                // Discard the warm-up frames' timings along with their wall clock.
+                renderer.profiler().reset();
+            }
             if (i >= warmup) {
                 total += elapsed;
                 slowest = Math.max(slowest, elapsed);
@@ -117,6 +122,8 @@ public final class DesktopMain {
                 frames, measured, warmup, meanMs, slowest / 1_000_000.0, 1000.0 / meanMs);
         System.out.println("Units alive: " + session.world().units().size()
                 + ", tick " + session.world().tick());
+        System.out.println();
+        System.out.println(renderer.profiler().report());
     }
 
     /** Draws into an offscreen buffer, then blits — the same shape as the Android loop. */

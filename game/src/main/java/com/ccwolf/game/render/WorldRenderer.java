@@ -49,6 +49,12 @@ public final class WorldRenderer {
     private final Brush text = new Brush().setAntiAlias(true);
     private final Rect dst = new Rect();
 
+    /** Where the frame goes. Off unless something switches it on. */
+    private final RenderProfiler profiler = new RenderProfiler();
+
+    /** The ground, baked into blocks so a frame does not redraw it a tile at a time. */
+    private final TerrainCache terrainCache = new TerrainCache();
+
     /**
      * The cold cast over anything a Saboteur has switched off. Applied as a tint on the
      * artwork rather than as a rectangle so it follows the sprite's shape — a wash drawn over
@@ -83,6 +89,19 @@ public final class WorldRenderer {
         text.setColor(Palette.HUD_TEXT);
     }
 
+    public RenderProfiler profiler() {
+        return profiler;
+    }
+
+    /** How many blocks have been composited since startup — a still camera should stop. */
+    public int terrainBakes() {
+        return terrainCache.bakes();
+    }
+
+    public int terrainBlocksResident() {
+        return terrainCache.blocksResident();
+    }
+
     public void setSelectionBox(boolean active, float x0, float y0, float x1, float y1) {
         this.dragging = active;
         this.dragX0 = x0;
@@ -98,17 +117,45 @@ public final class WorldRenderer {
         surface.pushClip(camera.viewLeft(), camera.viewTop(),
                 camera.viewLeft() + camera.viewWidth(), camera.viewTop() + camera.viewHeight());
 
+        profiler.beginFrame();
+
+        profiler.begin(RenderProfiler.Pass.TERRAIN);
         drawTerrain(surface, session);
+        profiler.end(RenderProfiler.Pass.TERRAIN);
+
         // Ground marks go straight onto the terrain, under everything standing on it.
+        profiler.begin(RenderProfiler.Pass.DECALS);
         session.fx().drawDecals(surface, camera);
+        profiler.end(RenderProfiler.Pass.DECALS);
+
+        profiler.begin(RenderProfiler.Pass.GROUND_FX);
         drawGroundEffects(surface, session);
+        profiler.end(RenderProfiler.Pass.GROUND_FX);
+
+        profiler.begin(RenderProfiler.Pass.ENTITIES);
         drawEntities(surface, session);
+        profiler.end(RenderProfiler.Pass.ENTITIES);
+
         // Rounds in flight and particles go over the top of everything alive.
+        profiler.begin(RenderProfiler.Pass.OVERLAY_FX);
         session.fx().drawOverlay(surface, camera);
+        profiler.end(RenderProfiler.Pass.OVERLAY_FX);
+
+        profiler.begin(RenderProfiler.Pass.AIR_FX);
         drawAirEffects(surface, session);
+        profiler.end(RenderProfiler.Pass.AIR_FX);
+
+        profiler.begin(RenderProfiler.Pass.GHOST);
         drawPlacementGhost(surface, session);
+        profiler.end(RenderProfiler.Pass.GHOST);
+
+        profiler.begin(RenderProfiler.Pass.FOG);
         drawFog(surface, session);
+        profiler.end(RenderProfiler.Pass.FOG);
+
+        profiler.begin(RenderProfiler.Pass.SELECTION);
         drawSelectionBox(surface);
+        profiler.end(RenderProfiler.Pass.SELECTION);
 
         surface.popClip();
         if (view.isGameOver()) {
@@ -127,16 +174,28 @@ public final class WorldRenderer {
         int x1 = camera.lastVisibleTileX();
         int y1 = camera.lastVisibleTileY();
 
-        for (int y = y0; y <= y1; y++) {
-            for (int x = x0; x <= x1; x++) {
-                Terrain terrain = map.terrain(x, y);
-                int ore = map.ore(x, y);
-                Image tile = (terrain == Terrain.ORE && ore > 0)
-                        ? atlas.ore(x, y, ore) : atlas.terrain(terrain, x, y);
-                tileRect(camera, x, y);
-                surface.drawImage(tile, dst, sprite);
+        // Blocks, not tiles. Drawing the ground a tile at a time was 84% of a frame and cost
+        // exactly as much with four units on the map as with a thousand.
+        int bx0 = Math.floorDiv(x0, TerrainCache.BLOCK_TILES);
+        int by0 = Math.floorDiv(y0, TerrainCache.BLOCK_TILES);
+        int bx1 = Math.floorDiv(x1, TerrainCache.BLOCK_TILES);
+        int by1 = Math.floorDiv(y1, TerrainCache.BLOCK_TILES);
+
+        int drawn = 0;
+        for (int by = by0; by <= by1; by++) {
+            for (int bx = bx0; bx <= bx1; bx++) {
+                Image block = terrainCache.block(map, bx, by);
+                int tileX = bx * TerrainCache.BLOCK_TILES;
+                int tileY = by * TerrainCache.BLOCK_TILES;
+                surface.drawImage(block,
+                        camera.screenX(tileX), camera.screenY(tileY),
+                        camera.screenX(tileX + TerrainCache.BLOCK_TILES),
+                        camera.screenY(tileY + TerrainCache.BLOCK_TILES),
+                        sprite);
+                drawn++;
             }
         }
+        profiler.countDraws(RenderProfiler.Pass.TERRAIN, drawn);
     }
 
     /** Destination rectangle for a tile, rounded so neighbouring tiles never leave a seam. */
@@ -506,18 +565,32 @@ public final class WorldRenderer {
         int x1 = camera.lastVisibleTileX();
         int y1 = camera.lastVisibleTileY();
 
+        // Runs, not tiles. Fog comes in contiguous regions - the far side of the map is one
+        // unbroken sheet of unexplored - so filling it a tile at a time asks for hundreds of
+        // rectangles where a few dozen say the same thing.
+        int drawn = 0;
         for (int y = y0; y <= y1; y++) {
-            for (int x = x0; x <= x1; x++) {
-                byte state = fog.state(x, y);
-                if (state == FogGrid.VISIBLE) {
+            int runStart = -1;
+            byte runState = FogGrid.VISIBLE;
+
+            for (int x = x0; x <= x1 + 1; x++) {
+                // One past the end closes whatever run is open.
+                byte state = x > x1 ? FogGrid.VISIBLE : fog.state(x, y);
+                if (state == runState) {
                     continue;
                 }
-                flat.setColor(state == FogGrid.UNEXPLORED
-                        ? Palette.FOG_UNEXPLORED : Palette.FOG_EXPLORED);
-                tileRect(camera, x, y);
-                surface.fillRect(dst, flat);
+                if (runStart >= 0) {
+                    flat.setColor(runState == FogGrid.UNEXPLORED
+                            ? Palette.FOG_UNEXPLORED : Palette.FOG_EXPLORED);
+                    surface.fillRect(camera.screenX(runStart), camera.screenY(y),
+                            camera.screenX(x), camera.screenY(y + 1), flat);
+                    drawn++;
+                }
+                runStart = state == FogGrid.VISIBLE ? -1 : x;
+                runState = state;
             }
         }
+        profiler.countDraws(RenderProfiler.Pass.FOG, drawn);
     }
 
     private void drawSelectionBox(Surface surface) {

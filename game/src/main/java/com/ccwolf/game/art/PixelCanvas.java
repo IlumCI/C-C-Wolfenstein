@@ -446,4 +446,9 @@ public final class PixelCanvas {
     public Image toImage() {
         return Gfx.image(pixels, width, height);
     }
+
+    /** For artwork with no transparency in it, which a backend can draw more cheaply. */
+    public Image toOpaqueImage() {
+        return Gfx.opaqueImage(pixels, width, height);
+    }
 }

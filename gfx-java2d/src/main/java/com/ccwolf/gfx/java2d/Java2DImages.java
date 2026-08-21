@@ -20,4 +20,9 @@ public final class Java2DImages implements ImageFactory {
     public Image create(int[] argb, int width, int height) {
         return Java2DImage.fromPixels(argb, width, height);
     }
+
+    @Override
+    public Image createOpaque(int[] argb, int width, int height) {
+        return Java2DImage.fromPixels(argb, width, height, true);
+    }
 }

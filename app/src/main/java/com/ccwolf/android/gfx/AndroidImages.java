@@ -20,4 +20,9 @@ public final class AndroidImages implements ImageFactory {
     public Image create(int[] argb, int width, int height) {
         return AndroidImage.fromPixels(argb, width, height);
     }
+
+    @Override
+    public Image createOpaque(int[] argb, int width, int height) {
+        return AndroidImage.fromPixels(argb, width, height, true);
+    }
 }

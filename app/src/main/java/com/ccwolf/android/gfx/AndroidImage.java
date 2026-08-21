@@ -23,8 +23,18 @@ public final class AndroidImage implements Image {
     }
 
     public static AndroidImage fromPixels(int[] argb, int width, int height) {
+        return fromPixels(argb, width, height, false);
+    }
+
+    /**
+     * @param opaque true when no pixel has alpha, which lets the platform skip blending
+     */
+    public static AndroidImage fromPixels(int[] argb, int width, int height, boolean opaque) {
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         bitmap.setPixels(argb, 0, width, 0, 0, width, height);
+        if (opaque) {
+            bitmap.setHasAlpha(false);
+        }
         return new AndroidImage(bitmap);
     }
 

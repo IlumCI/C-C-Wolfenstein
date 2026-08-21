@@ -26,10 +26,24 @@ public final class Gfx {
     }
 
     public static Image image(int[] argb, int width, int height) {
+        return factory().create(argb, width, height);
+    }
+
+    /**
+     * An image every pixel of which is opaque.
+     *
+     * <p>Only for artwork that genuinely has no transparency — the ground. Passing pixels with
+     * alpha through here does not make them blend, it makes them wrong.
+     */
+    public static Image opaqueImage(int[] argb, int width, int height) {
+        return factory().createOpaque(argb, width, height);
+    }
+
+    private static ImageFactory factory() {
         if (factory == null) {
             throw new IllegalStateException(
                     "No graphics backend installed - call Gfx.install(...) during startup");
         }
-        return factory.create(argb, width, height);
+        return factory;
     }
 }

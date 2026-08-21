@@ -29,7 +29,15 @@ public final class Java2DImage implements Image {
     }
 
     public static Java2DImage fromPixels(int[] argb, int width, int height) {
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        return fromPixels(argb, width, height, false);
+    }
+
+    /**
+     * @param opaque true when no pixel has alpha, which lets AWT copy rather than composite
+     */
+    public static Java2DImage fromPixels(int[] argb, int width, int height, boolean opaque) {
+        BufferedImage image = new BufferedImage(width, height,
+                opaque ? BufferedImage.TYPE_INT_RGB : BufferedImage.TYPE_INT_ARGB);
         image.setRGB(0, 0, width, height, argb, 0, width);
         return new Java2DImage(image);
     }
