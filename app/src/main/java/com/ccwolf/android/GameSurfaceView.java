@@ -6,9 +6,12 @@ import android.graphics.Canvas;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import com.ccwolf.android.input.InputController;
-import com.ccwolf.android.render.Hud;
-import com.ccwolf.android.render.WorldRenderer;
+import com.ccwolf.android.gfx.AndroidSurface;
+import com.ccwolf.game.GameSession;
+import com.ccwolf.game.input.InputController;
+import com.ccwolf.game.input.PointerEvent;
+import com.ccwolf.game.render.Hud;
+import com.ccwolf.game.render.WorldRenderer;
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.entity.Faction;
 
@@ -27,6 +30,12 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     private final Hud hud = new Hud();
     private final WorldRenderer renderer = new WorldRenderer();
     private InputController input;
+
+    /** Bound to each frame's canvas rather than rebuilt, so a frame allocates nothing. */
+    private final AndroidSurface surface = new AndroidSurface();
+
+    /** Refilled from each MotionEvent, for the same reason. */
+    private final PointerEvent pointer = new PointerEvent();
 
     private RenderThread thread;
     private final float density;
@@ -75,7 +84,7 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
             restart();
             return true;
         }
-        return input.onTouch(event);
+        return input.onPointer(translate(event, pointer));
     }
 
     @Override
@@ -116,6 +125,45 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     }
 
     /** Draws frames and drives the simulation clock. */
+    /**
+     * Copies an Android touch event into the platform-neutral form the gesture logic reads.
+     *
+     * <p>Android reports the whole gesture in one object with an action code that folds in
+     * which pointer changed; the game only needs to know what kind of change it was and where
+     * the fingers are.
+     */
+    private static PointerEvent translate(MotionEvent event, PointerEvent out) {
+        PointerEvent.Action action;
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                action = PointerEvent.Action.DOWN;
+                break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                action = PointerEvent.Action.POINTER_DOWN;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                action = PointerEvent.Action.MOVE;
+                break;
+            case MotionEvent.ACTION_POINTER_UP:
+                action = PointerEvent.Action.POINTER_UP;
+                break;
+            case MotionEvent.ACTION_UP:
+                action = PointerEvent.Action.UP;
+                break;
+            case MotionEvent.ACTION_CANCEL:
+            default:
+                action = PointerEvent.Action.CANCEL;
+                break;
+        }
+
+        int count = Math.min(event.getPointerCount(), PointerEvent.MAX_POINTERS);
+        out.set(action, count);
+        for (int i = 0; i < count; i++) {
+            out.setPointer(i, event.getX(i), event.getY(i));
+        }
+        return out;
+    }
+
     private final class RenderThread extends Thread {
 
         private final SurfaceHolder holder;
@@ -148,9 +196,10 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
                     canvas = holder.lockCanvas();
                     if (canvas != null && current != null) {
                         synchronized (holder) {
-                            canvas.drawColor(0xFF0B0C0A);
-                            renderer.draw(canvas, current);
-                            hud.draw(canvas, current, System.currentTimeMillis());
+                            surface.bind(canvas);
+                            surface.clear(0xFF0B0C0A);
+                            renderer.draw(surface, current);
+                            hud.draw(surface, current, System.currentTimeMillis());
                         }
                     }
                 } finally {

@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import com.ccwolf.android.gfx.AndroidImages;
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.entity.Faction;
 
@@ -20,6 +21,9 @@ public final class GameActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Before anything can bake a sprite.
+        AndroidImages.install();
+
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

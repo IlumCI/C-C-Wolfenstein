@@ -36,13 +36,15 @@ android {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":gfx"))
+    implementation(project(":game"))
 
-    // Robolectric with native graphics lets the renderer and HUD actually draw into a bitmap
-    // on a build machine, so layout and drawing bugs surface without a device.
+    // The rendering and art tests live in :game now and run on a plain JVM through the AWT
+    // backend - faster than Robolectric was, and no SDK anywhere near them. What is left here
+    // is the Android shell, which needs a device to mean anything.
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.13")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.2")
 }
 

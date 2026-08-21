@@ -17,6 +17,10 @@ dependencyResolutionManagement {
 rootProject.name = "cc-wolfenstein"
 
 include(":core")
+include(":gfx")
+include(":gfx-java2d")
+include(":game")
+include(":desktop")
 
 // The `:app` module needs the Android SDK. Including it unconditionally would make even
 // `gradle :core:test` fail on a machine without the SDK (Gradle configures every project),
