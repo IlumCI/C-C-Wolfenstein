@@ -24,7 +24,9 @@ public final class GameActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        view = new GameSurfaceView(this, Faction.RESISTANCE, Difficulty.VETERAN,
+        // Recruit difficulty by default: the opening minute is the player's only chance to
+        // get a barracks up, and a Veteran opponent is at the gate before that happens.
+        view = new GameSurfaceView(this, Faction.RESISTANCE, Difficulty.RECRUIT,
                 System.currentTimeMillis());
         setContentView(view);
         goFullscreen();

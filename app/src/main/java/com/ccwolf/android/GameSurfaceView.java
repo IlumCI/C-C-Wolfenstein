@@ -30,10 +30,14 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
 
     private RenderThread thread;
     private final float density;
+    private final Faction faction;
+    private final Difficulty difficulty;
 
     public GameSurfaceView(Context context, Faction faction, Difficulty difficulty, long seed) {
         super(context);
         this.density = context.getResources().getDisplayMetrics().density;
+        this.faction = faction;
+        this.difficulty = difficulty;
         getHolder().addCallback(this);
         setFocusable(true);
         newSession(faction, difficulty, seed);
@@ -51,10 +55,9 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
         return session;
     }
 
-    /** Starts a fresh match on the same map, used by the end-of-game overlay. */
+    /** Starts a fresh match with the same side and difficulty, from the end-of-game overlay. */
     public void restart() {
-        Faction faction = session.player().faction();
-        newSession(faction, Difficulty.VETERAN, System.currentTimeMillis());
+        newSession(faction, difficulty, System.currentTimeMillis());
     }
 
     private void applyLayout(int width, int height) {
