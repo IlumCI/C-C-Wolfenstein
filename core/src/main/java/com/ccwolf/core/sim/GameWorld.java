@@ -1101,12 +1101,12 @@ public final class GameWorld {
         }
 
         events.add(GameEvent.shot(attacker.ownerId(), attacker.id(), attacker.x(), attacker.y(),
-                target.x(), target.y(), damage));
+                target.x(), target.y(), damage, weapon.weaponClass(), kindOf(target)));
         events.add(GameEvent.at(GameEvent.Type.UNDER_ATTACK, target.ownerId(), target.id(),
                 target.x(), target.y()));
         if (killed) {
-            events.add(GameEvent.at(GameEvent.Type.ENTITY_DESTROYED, target.ownerId(),
-                    target.id(), target.x(), target.y()));
+            events.add(GameEvent.destroyed(target.ownerId(), target.id(), target.x(), target.y(),
+                    kindOf(target)));
         }
         return true;
     }
@@ -1159,9 +1159,18 @@ public final class GameWorld {
         events.add(GameEvent.at(GameEvent.Type.UNDER_ATTACK, victim.ownerId(), victim.id(),
                 victim.x(), victim.y()));
         if (killed) {
-            events.add(GameEvent.at(GameEvent.Type.ENTITY_DESTROYED, victim.ownerId(),
-                    victim.id(), victim.x(), victim.y()));
+            events.add(GameEvent.destroyed(victim.ownerId(), victim.id(), victim.x(),
+                    victim.y(), kindOf(victim)));
         }
+    }
+
+    /** Classifies an entity for the presentation layer: flesh, machine or masonry. */
+    private static GameEvent.TargetKind kindOf(Entity e) {
+        if (e.isBuilding()) {
+            return GameEvent.TargetKind.STRUCTURE;
+        }
+        return ((Unit) e).type().isVehicle() ? GameEvent.TargetKind.VEHICLE
+                : GameEvent.TargetKind.INFANTRY;
     }
 
     /** Range is measured to the target's edge, so big structures are hittable from outside. */

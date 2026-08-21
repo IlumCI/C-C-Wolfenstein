@@ -24,6 +24,10 @@ public final class Camera {
     private int mapWidth = 1;
     private int mapHeight = 1;
 
+    /** Per-frame jitter in tiles, set by the effects layer when something large goes up. */
+    private float shakeX;
+    private float shakeY;
+
     public void setViewport(int left, int top, int width, int height) {
         this.viewLeft = left;
         this.viewTop = top;
@@ -90,12 +94,23 @@ public final class Camera {
         clamp();
     }
 
+    /**
+     * Shake is applied here rather than by each drawing call, so terrain, sprites, effects and
+     * the build ghost all move together. Input is deliberately left un-shaken — see
+     * {@link #worldX} — because a tap should land where the player aimed it, not where the
+     * explosion happened to throw the view.
+     */
+    public void setShake(float offsetXTiles, float offsetYTiles) {
+        this.shakeX = offsetXTiles;
+        this.shakeY = offsetYTiles;
+    }
+
     public float screenX(float tileX) {
-        return viewLeft + viewWidth / 2f + (tileX - centerX) * tilePx;
+        return viewLeft + viewWidth / 2f + (tileX - centerX + shakeX) * tilePx;
     }
 
     public float screenY(float tileY) {
-        return viewTop + viewHeight / 2f + (tileY - centerY) * tilePx;
+        return viewTop + viewHeight / 2f + (tileY - centerY + shakeY) * tilePx;
     }
 
     public float worldX(float screenX) {

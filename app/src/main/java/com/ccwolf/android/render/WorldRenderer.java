@@ -94,8 +94,12 @@ public final class WorldRenderer {
                 camera.viewLeft() + camera.viewWidth(), camera.viewTop() + camera.viewHeight());
 
         drawTerrain(canvas, session);
+        // Ground marks go straight onto the terrain, under everything standing on it.
+        session.fx().drawDecals(canvas, camera);
         drawGroundEffects(canvas, session);
         drawEntities(canvas, session);
+        // Rounds in flight and particles go over the top of everything alive.
+        session.fx().drawOverlay(canvas, camera);
         drawAirEffects(canvas, session);
         drawPlacementGhost(canvas, session);
         drawFog(canvas, session);
@@ -321,32 +325,6 @@ public final class WorldRenderer {
         for (int i = 0; i < effects.size(); i++) {
             GameSession.Effect fx = effects.get(i);
             switch (fx.kind) {
-                case TRACER: {
-                    float x0 = camera.screenX(fx.x);
-                    float y0 = camera.screenY(fx.y);
-                    float x1 = camera.screenX(fx.toX);
-                    float y1 = camera.screenY(fx.toY);
-                    float t = fx.progress();
-                    stroke.setColor(Palette.TRACER);
-                    stroke.setStrokeWidth(Math.max(1.5f, px * 0.05f));
-                    // The tail catches up with the head, so it reads as a round travelling.
-                    canvas.drawLine(x0 + (x1 - x0) * t * 0.6f, y0 + (y1 - y0) * t * 0.6f,
-                            x1, y1, stroke);
-
-                    int flash = Math.round(px * 0.5f);
-                    dst.set(Math.round(x0) - flash / 2, Math.round(y0) - flash / 2,
-                            Math.round(x0) + flash / 2, Math.round(y0) + flash / 2);
-                    canvas.drawBitmap(atlas.muzzleFlash(t > 0.5f ? 1 : 0), null, dst, sprite);
-                    break;
-                }
-                case EXPLOSION: {
-                    int half = Math.round(px * (0.6f + fx.progress() * 0.4f));
-                    int cx = Math.round(camera.screenX(fx.x));
-                    int cy = Math.round(camera.screenY(fx.y));
-                    dst.set(cx - half, cy - half, cx + half, cy + half);
-                    canvas.drawBitmap(atlas.explosion(fx.progress()), null, dst, sprite);
-                    break;
-                }
                 case MOVE_PING:
                 case ATTACK_PING: {
                     boolean hostile = fx.kind == GameSession.Effect.Kind.ATTACK_PING;

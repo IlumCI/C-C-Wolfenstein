@@ -1,5 +1,6 @@
 package com.ccwolf.android;
 
+import com.ccwolf.android.fx.FxDirector;
 import com.ccwolf.android.render.Camera;
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.api.CommandBus;
@@ -81,6 +82,7 @@ public final class GameSession {
     private final Camera camera = new Camera();
     private final int playerId;
 
+    private final FxDirector fx;
     private final List<Integer> selection = new ArrayList<Integer>();
     private final List<Effect> effects = new ArrayList<Effect>();
     private final List<GameEvent> eventScratch = new ArrayList<GameEvent>();
@@ -103,6 +105,7 @@ public final class GameSession {
         this.commands = skirmish.commands();
         this.playerId = skirmish.humanPlayerId();
         this.view = skirmish.viewFor(playerId);
+        this.fx = new FxDirector(seed);
         camera.setMap(world.map());
         int[] spawn = world.map().spawnPoint(playerId);
         camera.centerOn(spawn[0] + 3f, spawn[1] + 3f);
@@ -133,6 +136,11 @@ public final class GameSession {
 
     public List<Effect> effects() {
         return effects;
+    }
+
+    /** Muzzle flashes, rounds in flight, blood, fire and everything else you can see. */
+    public FxDirector fx() {
+        return fx;
     }
 
     public boolean isPaused() {
@@ -204,6 +212,8 @@ public final class GameSession {
 
     public void update(float deltaSeconds) {
         ageEffects((long) (deltaSeconds * 1000f));
+        fx.update(deltaSeconds);
+        camera.setShake(fx.shakeOffsetX(), fx.shakeOffsetY());
         if (paused || world.isGameOver()) {
             world.clearEvents();
             return;
@@ -226,19 +236,27 @@ public final class GameSession {
     private void collectEffects() {
         eventScratch.clear();
         world.drainEvents(eventScratch);
+        // The effects layer takes the whole stream; what is left here is interface reaction.
+        fx.consume(eventScratch, playerId);
         for (int i = 0; i < eventScratch.size(); i++) {
             GameEvent e = eventScratch.get(i);
             switch (e.type()) {
-                case SHOT_FIRED:
-                    effects.add(new Effect(Effect.Kind.TRACER, e.x(), e.y(), e.toX(), e.toY(),
-                            e.ownerId(), 0, TRACER_MS));
-                    break;
                 case ENTITY_DESTROYED:
-                    effects.add(new Effect(Effect.Kind.EXPLOSION, e.x(), e.y(), e.x(), e.y(),
-                            e.ownerId(), 0, EXPLOSION_MS));
-                    // Wrecks and craters linger, so a battlefield looks fought over.
-                    effects.add(new Effect(Effect.Kind.WRECK, e.x(), e.y(), e.x(), e.y(),
-                            e.ownerId(), e.entityId() & 3, WRECK_MS));
+                    // The fireball, gore and debris belong to the effects layer now; the wreck
+                    // is a sprite that sits on the ground, so it stays here.
+                    if (e.targetKind() != com.ccwolf.core.event.GameEvent.TargetKind.INFANTRY) {
+                        effects.add(new Effect(Effect.Kind.WRECK, e.x(), e.y(), e.x(), e.y(),
+                                e.ownerId(), e.entityId() & 3, WRECK_MS));
+                    }
+                    break;
+                case SABOTAGED:
+                    if (e.ownerId() == playerId) {
+                        showMessage("Sabotage! Something has gone dark");
+                    }
+                    break;
+                case HIJACKED:
+                    showMessage(e.ownerId() == playerId ? "Vehicle captured"
+                            : "They have taken one of ours");
                     break;
                 case PLACEMENT_READY:
                     if (e.ownerId() == playerId) {
