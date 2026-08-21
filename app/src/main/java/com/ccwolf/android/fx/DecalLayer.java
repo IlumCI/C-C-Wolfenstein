@@ -114,13 +114,13 @@ public final class DecalLayer {
 
             // Blobby rather than round: three overlapping rectangles read as a stain at this
             // scale, where a clean ellipse reads as a decal from a different game.
-            drawBlob(canvas, screenX, screenY, radius, variant[i]);
+            drawBlob(canvas, screenX, screenY, radius, variant[i], scatterOf(kind[i]));
 
             if (kind[i] == Kind.CRATER) {
                 paint.setColor(withAlpha(
                         WolfPalette.shade(WolfPalette.DIRT, 1), (int) (alpha * 0.8f)));
                 drawBlob(canvas, screenX, screenY - radius * 0.25f, radius * 0.55f,
-                        variant[i] + 1);
+                        variant[i] + 1, scatterOf(kind[i]));
             }
         }
     }
@@ -129,13 +129,41 @@ public final class DecalLayer {
      * Stains are built from several small rectangles at varying sizes. Three big ones read as
      * a box; a spread of smaller ones reads as something that soaked into the ground.
      */
-    private void drawBlob(Canvas canvas, float cx, float cy, float radius, int seed) {
-        for (int i = 0; i < 7; i++) {
-            float offsetX = ((seed * 3 + i * 7) % 7 - 3) * radius * 0.26f;
-            float offsetY = ((seed * 5 + i * 3) % 7 - 3) * radius * 0.22f;
-            float r = radius * (i == 0 ? 0.85f : (0.30f + ((seed + i) % 4) * 0.12f));
-            canvas.drawRect(cx + offsetX - r, cy + offsetY - r * 0.66f,
-                    cx + offsetX + r, cy + offsetY + r * 0.66f, paint);
+    private void drawBlob(Canvas canvas, float cx, float cy, float radius, int seed,
+            float scatter) {
+        // A small core with pieces placed around a jittered ring, so the pieces break the
+        // outline rather than filling it in. Packing them inside the core is what made every
+        // scorch mark draw as a rectangle with four square corners.
+        float core = radius * (0.6f - scatter * 0.22f);
+        canvas.drawRect(cx - core, cy - core * 0.7f, cx + core, cy + core * 0.7f, paint);
+
+        int pieces = 12;
+        for (int i = 0; i < pieces; i++) {
+            // Deterministic per-mark jitter: the same decal must not shimmer between frames.
+            int noise = (seed * 37 + i * 131) & 0xFF;
+            double angle = i * (Math.PI * 2 / pieces) + (noise / 255.0 - 0.5) * 0.7;
+            float ring = radius * (0.45f + scatter * 0.55f) * (0.6f + (noise & 7) / 12f);
+            float px = cx + (float) Math.cos(angle) * ring;
+            float py = cy + (float) Math.sin(angle) * ring * 0.72f;
+            float r = radius * (0.34f - scatter * 0.16f) * (0.6f + ((noise >> 3) & 3) * 0.3f);
+            canvas.drawRect(px - r, py - r * 0.72f, px + r, py + r * 0.72f, paint);
+        }
+    }
+
+    /** How far a mark's pieces fly apart: 1 is a splatter, 0 is a solid patch. */
+    private static float scatterOf(Kind what) {
+        switch (what) {
+            case BLOOD:
+                return 1.0f;
+            case OIL:
+                return 0.45f;
+            case BURN:
+                return 0.6f;
+            case CRATER:
+                return 0.3f;
+            case SCORCH:
+            default:
+                return 0.5f;
         }
     }
 

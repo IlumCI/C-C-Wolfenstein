@@ -21,6 +21,9 @@ public final class ParticleSystem {
     /** Live particles allowed at once. Spawns past this are dropped, oldest-first. */
     public static final int CAPACITY = 700;
 
+    /** Fraction of a particle's life after which it starts fading out. */
+    private static final float TAIL_FADE = 0.65f;
+
     /** How a particle behaves and what it is drawn as. */
     public enum Kind {
         /** Bright, fast, short-lived: bullet strikes and metal-on-metal. */
@@ -48,6 +51,16 @@ public final class ParticleSystem {
     private final float[] size = new float[CAPACITY];
     private final Kind[] kind = new Kind[CAPACITY];
     private final boolean[] alive = new boolean[CAPACITY];
+
+    /**
+     * Per-particle offset into the palette ramp.
+     *
+     * <p>Colour is otherwise a function of age alone, so every particle in one puff picks the
+     * same shade on the same frame and an explosion draws as a heap of identical yellow
+     * bricks. This spreads a burst across neighbouring shades so it has a hot core and cooler
+     * edges without needing per-particle colour storage.
+     */
+    private final int[] heat = new int[CAPACITY];
 
     private final Paint paint = new Paint();
     private final Random random;
@@ -100,6 +113,7 @@ public final class ParticleSystem {
         vy[slot] = velY;
         life[slot] = lifeSeconds;
         maxLife[slot] = lifeSeconds;
+        heat[slot] = random.nextInt(3) - 1;
         size[slot] = sizeTiles;
         kind[slot] = what;
         alive[slot] = true;
@@ -183,13 +197,24 @@ public final class ParticleSystem {
     }
 
     public void draw(Canvas canvas, Camera camera) {
+        // Two passes, so the fire in an explosion is not buried under its own smoke. Spawn
+        // order alone put the flame down first and the smoke plume straight over the top of
+        // it, which turned every detonation into a grey cauliflower.
+        drawPass(canvas, camera, true);
+        drawPass(canvas, camera, false);
+    }
+
+    private void drawPass(Canvas canvas, Camera camera, boolean background) {
         float px = camera.tilePx();
         for (int i = 0; i < CAPACITY; i++) {
-            if (!alive[i]) {
+            if (!alive[i] || isBackground(kind[i]) != background) {
                 continue;
             }
             float age = 1f - life[i] / maxLife[i];
-            paint.setColor(colourFor(kind[i], age));
+            // Everything thins out as it dies. Without this a dust cloud or a flame pops out
+            // of existence at full opacity, which reads as the effect being cut off rather
+            // than burning down.
+            paint.setColor(fade(colourFor(kind[i], age, heat[i]), age));
 
             float screenX = camera.screenX(x[i]);
             float screenY = camera.screenY(y[i]);
@@ -205,12 +230,32 @@ public final class ParticleSystem {
      * Particles walk down a palette ramp as they age rather than fading through alpha, which
      * is what keeps them looking hand-drawn instead of like a modern particle system.
      */
-    private static int colourFor(Kind what, float age) {
+    /** Scales alpha over the last third of a particle's life. */
+    /** Nudges a ramp index by a particle's heat offset. WolfPalette.shade clamps the rest. */
+    private static int step(int shade, int heat) {
+        return shade + heat;
+    }
+
+    /** Smoke, dust and tumbling debris sit behind the hot particles. */
+    private static boolean isBackground(Kind what) {
+        return what == Kind.SMOKE || what == Kind.DUST || what == Kind.DEBRIS;
+    }
+
+    private static int fade(int colour, float age) {
+        if (age < TAIL_FADE) {
+            return colour;
+        }
+        int alpha = (colour >>> 24) == 0 ? 255 : (colour >>> 24);
+        alpha = (int) (alpha * (1f - (age - TAIL_FADE) / (1f - TAIL_FADE)));
+        return (Math.max(0, alpha) << 24) | (colour & 0x00FFFFFF);
+    }
+
+    private static int colourFor(Kind what, float age, int heat) {
         switch (what) {
             case SPARK:
-                return WolfPalette.shade(WolfPalette.FIRE, age < 0.4f ? 0 : (age < 0.75f ? 1 : 2));
+                return WolfPalette.shade(WolfPalette.FIRE, step(age < 0.4f ? 0 : (age < 0.75f ? 1 : 2), heat));
             case SMOKE: {
-                int shade = age < 0.3f ? 1 : (age < 0.6f ? 2 : 3);
+                int shade = step(age < 0.3f ? 1 : (age < 0.6f ? 2 : 3), heat);
                 int colour = WolfPalette.shade(WolfPalette.SMOKE, shade);
                 // Smoke is the one thing that fades out, or the map fills up with grey blocks.
                 int alpha = (int) (200 * (1f - age));
@@ -218,18 +263,20 @@ public final class ParticleSystem {
             }
             case BLOOD:
                 // Dark and venous. Drawn from the hot end of the ramp it read as bright red
-                // confetti rather than as blood.
-                return WolfPalette.shade(WolfPalette.BLOOD, age < 0.4f ? 2 : 4);
+                // confetti rather than as blood, so it only ever varies darker: letting the
+                // heat offset run the other way puts those bright specks straight back.
+                return WolfPalette.shade(WolfPalette.BLOOD,
+                        step(age < 0.4f ? 2 : 4, Math.max(0, heat)));
             case DEBRIS:
-                return WolfPalette.shade(WolfPalette.GUNMETAL, age < 0.5f ? 2 : 3);
+                return WolfPalette.shade(WolfPalette.GUNMETAL, step(age < 0.5f ? 2 : 3, heat));
             case FLAME:
-                return WolfPalette.shade(WolfPalette.FIRE, age < 0.25f ? 0
-                        : (age < 0.55f ? 1 : (age < 0.8f ? 2 : 3)));
+                return WolfPalette.shade(WolfPalette.FIRE, step(age < 0.25f ? 0
+                        : (age < 0.55f ? 1 : (age < 0.8f ? 2 : 3)), heat));
             case DUST:
-                return WolfPalette.shade(WolfPalette.DIRT, age < 0.5f ? 1 : 2);
+                return WolfPalette.shade(WolfPalette.DIRT, step(age < 0.5f ? 1 : 2, heat));
             case PLASMA:
             default:
-                return WolfPalette.shade(WolfPalette.OCCULT, age < 0.4f ? 0 : (age < 0.7f ? 1 : 3));
+                return WolfPalette.shade(WolfPalette.OCCULT, step(age < 0.4f ? 0 : (age < 0.7f ? 1 : 3), heat));
         }
     }
 }

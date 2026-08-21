@@ -224,19 +224,26 @@ public final class ProjectileLayer {
                     float sr = tile * 0.09f;
                     canvas.drawRect(screenX - sr, groundY - sr * 0.5f, screenX + sr,
                             groundY + sr * 0.5f, paint);
+                    // Taller than it is wide: a square charge reads as a floating crate.
                     paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-                    float r = tile * 0.1f;
-                    canvas.drawRect(screenX - r, screenY - r, screenX + r, screenY + r, paint);
+                    float r = tile * 0.07f;
+                    canvas.drawRect(screenX - r, screenY - r * 1.4f, screenX + r,
+                            screenY + r * 1.4f, paint);
                     break;
                 }
                 case PLASMA:
                 default: {
+                    // A cross rather than a filled square. A solid block of green at this
+                    // size read as a hovering tile, not as a bolt of anything.
                     paint.setColor(WolfPalette.shade(WolfPalette.OCCULT, 2));
-                    float outer = tile * 0.17f;
-                    canvas.drawRect(screenX - outer, screenY - outer, screenX + outer,
-                            screenY + outer, paint);
+                    float arm = tile * 0.13f;
+                    float thin = tile * 0.045f;
+                    canvas.drawRect(screenX - arm, screenY - thin, screenX + arm,
+                            screenY + thin, paint);
+                    canvas.drawRect(screenX - thin, screenY - arm, screenX + thin,
+                            screenY + arm, paint);
                     paint.setColor(WolfPalette.shade(WolfPalette.OCCULT, 0));
-                    float inner = tile * 0.08f;
+                    float inner = tile * 0.055f;
                     canvas.drawRect(screenX - inner, screenY - inner, screenX + inner,
                             screenY + inner, paint);
                     break;
