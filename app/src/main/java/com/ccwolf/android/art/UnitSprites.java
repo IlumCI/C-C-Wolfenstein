@@ -48,24 +48,85 @@ public final class UnitSprites {
                 return vehicle(jeep(faction, frame), facing, 15, 5);
             case CAPTURED_PANZER:
                 return vehicle(panzer(faction, frame), facing, 18, 6);
+            case STURMPANZER:
+                return vehicle(sturmpanzer(frame), facing, 20, 7);
             case PANZERHUND:
                 return vehicle(hound(frame), facing, 15, 5);
             case HARVESTER:
                 return vehicle(harvester(faction, frame), facing, 18, 6);
             case UBERSOLDAT:
                 return ubersoldat(facing, frame);
-            case ROCKETEER:
-                return infantry(faction, facing, frame, Kit.ROCKET);
-            case SOLDAT:
-                return infantry(faction, facing, frame, Kit.SMG);
-            case PARTISAN:
             default:
-                return infantry(faction, facing, frame, Kit.RIFLE);
+                return infantry(faction, facing, frame, loadoutFor(type, faction));
         }
     }
 
-    /** What an infantryman is carrying, which is most of how you tell them apart. */
-    private enum Kit { RIFLE, SMG, ROCKET }
+    /**
+     * Everything that makes one infantryman look different from another.
+     *
+     * <p>Six Resistance units sharing one body with a different gun would read as one unit
+     * with six weapons. Headgear changes the silhouette, the pack changes the outline from
+     * behind, and the crouch changes the height — so they are told apart at a glance even
+     * before you notice what they are carrying.
+     */
+    private static final class Loadout {
+        final Kit kit;
+        final Head head;
+        final Pack pack;
+        final boolean crouched;
+        /** Dressed as a civilian rather than in fatigues — the point of an infiltrator. */
+        boolean civilian;
+        /** Shade offset into the faction's cloth ramp, so the squad is not uniformly dressed. */
+        final int clothShift;
+
+        Loadout(Kit kit, Head head, Pack pack, boolean crouched, int clothShift) {
+            this.kit = kit;
+            this.head = head;
+            this.pack = pack;
+            this.crouched = crouched;
+            this.clothShift = clothShift;
+        }
+    }
+
+    private static Loadout loadoutFor(UnitType type, Faction faction) {
+        switch (type) {
+            case ROCKETEER:
+                // Wearing a helmet taken off a dead Soldat: free storytelling.
+                return new Loadout(Kit.ROCKET, Head.STOLEN_HELMET, Pack.ROCKET_BAG, false, 0);
+            case MARKSMAN:
+                return new Loadout(Kit.SNIPER, Head.GHILLIE, Pack.NONE, true, 1);
+            case GRENADIER:
+                return new Loadout(Kit.GRENADE, Head.BANDANA, Pack.CHARGE_BAG, false, -1);
+            case SABOTEUR:
+                return new Loadout(Kit.NONE, Head.HOOD, Pack.WIRE_COIL, true, 1);
+            case INFILTRATOR: {
+                Loadout infiltrator =
+                        new Loadout(Kit.NONE, Head.CAP, Pack.SATCHEL_ONLY, true, 1);
+                infiltrator.civilian = true;
+                return infiltrator;
+            }
+            case SCHARFSCHUTZE:
+                return new Loadout(Kit.SNIPER, Head.COVERED_HELMET, Pack.DRAPE, true, 0);
+            case STURMPIONIER:
+                return new Loadout(Kit.FLAMER, Head.REGIME_HELMET, Pack.FUEL_TANKS, false, -1);
+            case SOLDAT:
+                return new Loadout(Kit.SMG, Head.REGIME_HELMET, Pack.NONE, false, 0);
+            case PARTISAN:
+            default:
+                return new Loadout(Kit.RIFLE, Head.CAP, Pack.BANDOLIER, false, 0);
+        }
+    }
+
+    /** What an infantryman is carrying. */
+    private enum Kit { RIFLE, SMG, ROCKET, SNIPER, GRENADE, FLAMER, NONE }
+
+    /** What is on their head — the fastest way to tell two sprites apart from above. */
+    private enum Head { CAP, BANDANA, STOLEN_HELMET, HOOD, GHILLIE, REGIME_HELMET,
+        COVERED_HELMET }
+
+    /** What is on their back, which is what you see when they are walking away. */
+    private enum Pack { NONE, BANDOLIER, ROCKET_BAG, CHARGE_BAG, WIRE_COIL, FUEL_TANKS, DRAPE,
+        SATCHEL_ONLY }
 
     /**
      * Turns a hull drawn facing east into a finished sprite for one facing.
@@ -90,13 +151,16 @@ public final class UnitSprites {
      * A foot soldier at 32 pixels: boots, legs, coat, webbing, shoulders, head and weapon,
      * each drawn as its own small shape so the figure has parts rather than being one blob.
      */
-    private static PixelCanvas infantry(Faction faction, int facing, int frame, Kit kit) {
+    private static PixelCanvas infantry(Faction faction, int facing, int frame,
+                                        Loadout loadout) {
         PixelCanvas c = new PixelCanvas(INFANTRY_SIZE, INFANTRY_SIZE);
         boolean regime = faction == Faction.REGIME;
 
-        int[] coat = regime ? WolfPalette.NIGHT : WolfPalette.OLIVE;
+        int[] coat = loadout.civilian ? WolfPalette.LEATHER
+                : (regime ? WolfPalette.NIGHT : WolfPalette.OLIVE);
         int[] webbing = regime ? WolfPalette.NIGHT : WolfPalette.LEATHER;
         int[] trousers = regime ? WolfPalette.NIGHT : WolfPalette.LEATHER;
+        int cloth = clamp(1 + loadout.clothShift);
 
         float angle = facing * (float) (Math.PI / 4.0);
         float dx = (float) Math.cos(angle);
@@ -104,66 +168,126 @@ public final class UnitSprites {
         boolean toViewer = dy > 0.35f;
         boolean away = dy < -0.35f;
         int step = frame == 1 ? 1 : 0;
+        // A crouching figure sits lower and reads shorter, which is most of the silhouette
+        // difference between a marksman lying up and a rifleman standing about.
+        int drop = loadout.crouched ? 3 : 0;
 
-        c.groundShadow(16, 28, 7, 3);
+        c.groundShadow(16, 28, loadout.crouched ? 8 : 7, 3);
 
-        // --- legs and boots: the back leg is drawn first and a shade darker -----------------
+        // --- legs and boots ----------------------------------------------------------------
         int bootLight = WolfPalette.shade(WolfPalette.LEATHER, regime ? 3 : 2);
         int bootDark = WolfPalette.shade(WolfPalette.LEATHER, 4);
 
-        c.panel(12, 20 - step, 4, 5, trousers, 2);
+        c.panel(12, 20 - step + drop, 4, 5 - drop, trousers, 2);
         c.rect(12, 24 - step, 4, 3, bootDark);
         c.hLine(12, 15, 24 - step, bootLight);
 
-        c.panel(17, 20 + step, 4, 5, trousers, 1);
+        c.panel(17, 20 + step + drop, 4, 5 - drop, trousers, 1);
         c.rect(17, 24 + step, 4, 3, bootDark);
         c.hLine(17, 20, 24 + step, bootLight);
 
-        // --- greatcoat ---------------------------------------------------------------------
-        int top = 10;
-        c.panel(11, top, 11, 12, coat, 1);
-        // Coat skirt flares below the belt.
-        c.rect(10, top + 8, 13, 4, WolfPalette.shade(coat, 2));
-        c.hLine(10, 22, top + 8, WolfPalette.shade(coat, 0));
-        c.hLine(10, 22, top + 11, WolfPalette.shade(coat, 4));
-        // Centre seam and a couple of buttons.
-        c.vLine(16, top + 1, top + 10, WolfPalette.shade(coat, 3));
+        // --- coat --------------------------------------------------------------------------
+        int top = 10 + drop;
+        c.panel(11, top, 11, 12 - drop, coat, cloth);
+        c.rect(10, top + 8 - drop, 13, 4, WolfPalette.shade(coat, cloth + 1));
+        c.hLine(10, 22, top + 8 - drop, WolfPalette.shade(coat, cloth - 1));
+        c.hLine(10, 22, top + 11 - drop, WolfPalette.shade(coat, 4));
+        c.vLine(16, top + 1, top + 10 - drop, WolfPalette.shade(coat, cloth + 2));
         c.px(16, top + 3, WolfPalette.shade(WolfPalette.BRASS, 2));
         c.px(16, top + 6, WolfPalette.shade(WolfPalette.BRASS, 2));
 
         // --- shoulders ---------------------------------------------------------------------
-        c.panel(9, top - 1, 15, 4, coat, 1);
-        c.hLine(9, 23, top - 1, WolfPalette.shade(coat, 0));
+        int shoulderWidth = loadout.crouched ? 13 : 15;
+        int shoulderX = 16 - shoulderWidth / 2;
+        c.panel(shoulderX, top - 1, shoulderWidth, 4, coat, cloth);
+        c.hLine(shoulderX, shoulderX + shoulderWidth - 1, top - 1,
+                WolfPalette.shade(coat, cloth - 1));
 
-        // --- webbing, belt and pouches -----------------------------------------------------
-        c.hLine(11, 21, top + 8, WolfPalette.shade(webbing, 3));
-        c.hLine(11, 21, top + 9, WolfPalette.shade(webbing, 4));
-        c.rect(11, top + 8, 3, 3, WolfPalette.shade(webbing, 2));
-        c.rect(19, top + 8, 3, 3, WolfPalette.shade(webbing, 2));
-        c.px(16, top + 8, WolfPalette.shade(WolfPalette.BRASS, 1));
+        // --- belt and pouches ---------------------------------------------------------------
+        c.hLine(11, 21, top + 8 - drop, WolfPalette.shade(webbing, 3));
+        c.rect(11, top + 8 - drop, 3, 3, WolfPalette.shade(webbing, 2));
+        c.rect(19, top + 8 - drop, 3, 3, WolfPalette.shade(webbing, 2));
+        c.px(16, top + 8 - drop, WolfPalette.shade(WolfPalette.BRASS, 1));
 
-        if (away) {
-            // Seen from behind: pack, rolled blanket, entrenching tool.
-            c.panel(12, top + 1, 9, 8, webbing, 2);
-            c.hLine(12, 20, top + 4, WolfPalette.shade(webbing, 4));
-            c.rect(11, top, 11, 2, WolfPalette.shade(webbing, 1));
-            c.rect(20, top + 5, 2, 4, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-        }
+        drawPack(c, loadout.pack, top, away, webbing);
 
         if (regime) {
             regimeKit(c, top, coat);
-        } else {
+        } else if (loadout.pack == Pack.BANDOLIER) {
             resistanceKit(c, top, toViewer);
+        } else {
+            // Everyone in the cell wears the rag; only the riflemen wear the bandolier too.
+            c.rect(9, top + 3, 3, 3, WolfPalette.shade(WolfPalette.BLOOD, 2));
+            c.px(9, top + 3, WolfPalette.shade(WolfPalette.BLOOD, 1));
         }
 
-        drawHead(c, faction, top, toViewer, away);
-        drawWeapon(c, kit, dx, dy, top, regime);
+        drawHead(c, faction, loadout.head, top, toViewer, away);
+        drawWeapon(c, loadout.kit, dx, dy, top, regime);
 
         c.outline(OUTLINE);
         return c;
     }
 
-    /** Black plate, a red armband and a stencilled number: the Regime's whole visual identity. */
+    private static int clamp(int shade) {
+        return Math.max(0, Math.min(3, shade));
+    }
+
+    /** What is slung on the back: the outline you see when a unit walks away from you. */
+    private static void drawPack(PixelCanvas c, Pack pack, int top, boolean away, int[] webbing) {
+        switch (pack) {
+            case ROCKET_BAG:
+                // Spare rockets in a rack, nose-up.
+                c.panel(19, top + 1, 6, 8, webbing, 2);
+                for (int i = 0; i < 2; i++) {
+                    c.vLine(20 + i * 2, top, top + 3, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
+                    c.px(20 + i * 2, top - 1, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                }
+                break;
+            case CHARGE_BAG:
+                // A satchel of bundled charges, fuses showing.
+                c.panel(19, top + 5, 7, 7, webbing, 1);
+                c.hLine(19, 25, top + 8, WolfPalette.shade(webbing, 4));
+                c.px(21, top + 4, WolfPalette.shade(WolfPalette.BONE, 2));
+                c.px(23, top + 4, WolfPalette.shade(WolfPalette.BONE, 2));
+                break;
+            case WIRE_COIL:
+                // A coil of det cord over one shoulder.
+                c.ellipse(21, top + 4, 4, 4, WolfPalette.shade(WolfPalette.LEATHER, 3));
+                c.ellipse(21, top + 4, 3, 3, WolfPalette.shade(WolfPalette.LEATHER, 1));
+                c.ellipse(21, top + 4, 1, 1, WolfPalette.shade(WolfPalette.LEATHER, 4));
+                break;
+            case FUEL_TANKS:
+                // Twin pressure bottles, the reason nobody stands behind a Sturmpionier.
+                c.panel(18, top, 4, 10, WolfPalette.GUNMETAL, 2);
+                c.panel(22, top + 1, 4, 9, WolfPalette.GUNMETAL, 3);
+                c.hLine(18, 21, top, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                c.hLine(22, 25, top + 1, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                break;
+            case DRAPE:
+                // A shooter's cloth drape hanging off the shoulders.
+                c.rect(9, top + 2, 14, 9, WolfPalette.shade(WolfPalette.NIGHT, 1));
+                c.hLine(9, 22, top + 2, WolfPalette.shade(WolfPalette.NIGHT, 0));
+                for (int x = 10; x < 23; x += 3) {
+                    c.px(x, top + 11, WolfPalette.shade(WolfPalette.NIGHT, 3));
+                }
+                break;
+            case SATCHEL_ONLY:
+                c.panel(20, top + 6, 5, 6, webbing, 2);
+                break;
+            case BANDOLIER:
+            case NONE:
+            default:
+                break;
+        }
+
+        if (away && pack != Pack.DRAPE && pack != Pack.FUEL_TANKS) {
+            // Seen from behind, everyone carries a rolled blanket.
+            c.rect(11, top, 11, 3, WolfPalette.shade(webbing, 1));
+            c.hLine(11, 21, top, WolfPalette.shade(webbing, 0));
+        }
+    }
+
+    /** Black plate, a red armband and a stencilled number    /** Black plate, a red armband and a stencilled number: the Regime's whole visual identity. */
     private static void regimeKit(PixelCanvas c, int top, int[] coat) {
         // Chest plate.
         c.panel(12, top + 1, 9, 6, coat, 0);
@@ -211,60 +335,125 @@ public final class UnitSprites {
     }
 
     /**
-     * Heads. The Regime wears a lacquered helmet over a gas mask and never shows skin; the
-     * Resistance wears a flat cap, and you can see their face.
+     * Heads. This is where most of the variety lives: from directly above, headgear is the
+     * clearest difference between two figures of the same build.
      */
-    private static void drawHead(PixelCanvas c, Faction faction, int top, boolean toViewer,
-                                 boolean away) {
-        boolean regime = faction == Faction.REGIME;
+    private static void drawHead(PixelCanvas c, Faction faction, Head head, int top,
+                                 boolean toViewer, boolean away) {
         int headY = top - 8;
+        boolean regimeHelmet = head == Head.REGIME_HELMET || head == Head.COVERED_HELMET
+                || head == Head.STOLEN_HELMET;
 
         // Neck.
         c.rect(15, headY + 6, 3, 3, WolfPalette.shade(
-                regime ? WolfPalette.NIGHT : WolfPalette.FLESH, 3));
+                regimeHelmet && faction == Faction.REGIME ? WolfPalette.NIGHT
+                        : WolfPalette.FLESH, 3));
 
-        if (regime) {
-            int[] lacquer = WolfPalette.NIGHT;
-            // Skull under the helmet.
-            c.ellipse(16, headY + 4, 5, 5, WolfPalette.shade(lacquer, 3));
-            // Helmet dome with a flared rim, lit from the north-west.
-            c.ellipse(16, headY + 3, 6, 5, WolfPalette.shade(lacquer, 2));
-            c.ellipse(15, headY + 2, 5, 4, WolfPalette.shade(lacquer, 1));
-            c.ellipse(15, headY + 1, 3, 2, WolfPalette.shade(lacquer, 0));
-            c.hLine(9, 23, headY + 7, WolfPalette.shade(lacquer, 3));
-            c.hLine(9, 23, headY + 8, WolfPalette.shade(lacquer, 4));
-
+        // Face, for anyone not behind a mask.
+        boolean masked = head == Head.REGIME_HELMET && faction == Faction.REGIME;
+        if (!away && !masked) {
+            c.ellipse(16, headY + 5, 4, 4, WolfPalette.shade(WolfPalette.FLESH, 2));
+            c.hLine(13, 19, headY + 7, WolfPalette.shade(WolfPalette.FLESH, 3));
             if (toViewer) {
-                // Gas mask: two burning lenses and a filter canister.
-                c.rect(12, headY + 4, 9, 4, WolfPalette.shade(lacquer, 4));
-                c.rect(12, headY + 4, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
-                c.rect(18, headY + 4, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
-                c.px(13, headY + 4, WolfPalette.shade(WolfPalette.BLOOD, 0));
-                c.px(19, headY + 4, WolfPalette.shade(WolfPalette.BLOOD, 0));
-                c.rect(15, headY + 7, 3, 3, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
-                c.hLine(15, 17, headY + 7, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+                c.px(14, headY + 5, WolfPalette.shade(WolfPalette.NIGHT, 1));
+                c.px(18, headY + 5, WolfPalette.shade(WolfPalette.NIGHT, 1));
             }
-        } else {
-            int[] wool = WolfPalette.LEATHER;
-            if (!away) {
-                // Face and dark hair under the cap.
-                c.ellipse(16, headY + 5, 4, 4, WolfPalette.shade(WolfPalette.FLESH, 2));
-                c.hLine(13, 19, headY + 7, WolfPalette.shade(WolfPalette.FLESH, 3));
+        }
+
+        switch (head) {
+            case REGIME_HELMET: {
+                int[] lacquer = WolfPalette.NIGHT;
+                c.ellipse(16, headY + 4, 5, 5, WolfPalette.shade(lacquer, 3));
+                c.ellipse(16, headY + 3, 6, 5, WolfPalette.shade(lacquer, 2));
+                c.ellipse(15, headY + 2, 5, 4, WolfPalette.shade(lacquer, 1));
+                c.ellipse(15, headY + 1, 3, 2, WolfPalette.shade(lacquer, 0));
+                c.hLine(9, 23, headY + 7, WolfPalette.shade(lacquer, 3));
+                c.hLine(9, 23, headY + 8, WolfPalette.shade(lacquer, 4));
                 if (toViewer) {
-                    c.px(14, headY + 5, WolfPalette.shade(WolfPalette.NIGHT, 1));
-                    c.px(18, headY + 5, WolfPalette.shade(WolfPalette.NIGHT, 1));
+                    // Gas mask: two burning lenses and a filter canister.
+                    c.rect(12, headY + 4, 9, 4, WolfPalette.shade(lacquer, 4));
+                    c.rect(12, headY + 4, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                    c.rect(18, headY + 4, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                    c.px(13, headY + 4, WolfPalette.shade(WolfPalette.BLOOD, 0));
+                    c.px(19, headY + 4, WolfPalette.shade(WolfPalette.BLOOD, 0));
+                    c.rect(15, headY + 7, 3, 3, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
                 }
+                break;
             }
-            // Flat cap: crown plus a peak jutting the way he is looking.
-            c.ellipse(16, headY + 2, 6, 4, WolfPalette.shade(wool, 2));
-            c.ellipse(15, headY + 1, 5, 3, WolfPalette.shade(wool, 1));
-            c.hLine(11, 21, headY + 4, WolfPalette.shade(wool, 3));
-            c.hLine(12, 20, headY + 5, WolfPalette.shade(wool, 4));
-            c.px(11, headY + 2, WolfPalette.shade(wool, 0));
+            case STOLEN_HELMET: {
+                // Regime steel on a Resistance head, with the insignia scratched off and a
+                // strip of rag tied round it so their own side does not shoot them.
+                int[] steel = WolfPalette.GUNMETAL;
+                c.ellipse(16, headY + 3, 6, 5, WolfPalette.shade(steel, 3));
+                c.ellipse(15, headY + 2, 5, 4, WolfPalette.shade(steel, 2));
+                c.ellipse(15, headY + 1, 3, 2, WolfPalette.shade(steel, 1));
+                c.hLine(9, 23, headY + 7, WolfPalette.shade(steel, 4));
+                c.hLine(10, 22, headY + 2, WolfPalette.shade(WolfPalette.BLOOD, 2));
+                c.px(10, headY + 2, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                break;
+            }
+            case COVERED_HELMET: {
+                // Helmet under a cloth cover, edges broken up with scrim.
+                int[] cover = WolfPalette.NIGHT;
+                c.ellipse(16, headY + 3, 6, 5, WolfPalette.shade(cover, 2));
+                c.ellipse(15, headY + 2, 5, 4, WolfPalette.shade(cover, 1));
+                c.hLine(9, 23, headY + 7, WolfPalette.shade(cover, 3));
+                for (int i = 0; i < 4; i++) {
+                    c.px(11 + i * 3, headY + 8, WolfPalette.shade(WolfPalette.OLIVE, 2));
+                }
+                break;
+            }
+            case GHILLIE: {
+                // A ragged wrap: irregular fringe rather than a clean brim.
+                int[] rag = WolfPalette.OLIVE;
+                c.ellipse(16, headY + 4, 7, 5, WolfPalette.shade(rag, 3));
+                c.ellipse(15, headY + 3, 6, 4, WolfPalette.shade(rag, 2));
+                for (int i = 0; i < 7; i++) {
+                    int x = 10 + i * 2;
+                    c.vLine(x, headY + 7, headY + 8 + (i % 3), WolfPalette.shade(rag, 4));
+                    c.px(x, headY + 6, WolfPalette.shade(rag, 1));
+                }
+                break;
+            }
+            case HOOD: {
+                // A hood pulled up: tall at the back, shadowed where the face should be.
+                int[] cloth = WolfPalette.LEATHER;
+                c.ellipse(16, headY + 3, 6, 6, WolfPalette.shade(cloth, 3));
+                c.ellipse(16, headY + 2, 5, 5, WolfPalette.shade(cloth, 2));
+                c.rect(13, headY + 4, 7, 4, WolfPalette.shade(cloth, 4));
+                c.hLine(13, 19, headY + 4, WolfPalette.shade(cloth, 1));
+                if (toViewer) {
+                    c.px(14, headY + 6, WolfPalette.shade(WolfPalette.FLESH, 3));
+                    c.px(18, headY + 6, WolfPalette.shade(WolfPalette.FLESH, 3));
+                }
+                break;
+            }
+            case BANDANA: {
+                // Bare head, dark hair, a rag round the brow and goggles pushed up.
+                int[] hair = WolfPalette.LEATHER;
+                c.ellipse(16, headY + 3, 5, 4, WolfPalette.shade(hair, 4));
+                c.hLine(11, 21, headY + 3, WolfPalette.shade(WolfPalette.BLOOD, 2));
+                c.hLine(11, 21, headY + 4, WolfPalette.shade(WolfPalette.BLOOD, 3));
+                c.px(11, headY + 5, WolfPalette.shade(WolfPalette.BLOOD, 3));
+                c.hLine(12, 20, headY + 1, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
+                c.px(13, headY + 1, WolfPalette.shade(WolfPalette.STEEL, 1));
+                c.px(19, headY + 1, WolfPalette.shade(WolfPalette.STEEL, 1));
+                break;
+            }
+            case CAP:
+            default: {
+                int[] wool = WolfPalette.LEATHER;
+                c.ellipse(16, headY + 2, 6, 4, WolfPalette.shade(wool, 2));
+                c.ellipse(15, headY + 1, 5, 3, WolfPalette.shade(wool, 1));
+                c.hLine(11, 21, headY + 4, WolfPalette.shade(wool, 3));
+                c.hLine(12, 20, headY + 5, WolfPalette.shade(wool, 4));
+                c.px(11, headY + 2, WolfPalette.shade(wool, 0));
+                break;
+            }
         }
     }
 
-    /** Weapons are drawn from the hand outwards, so they always point where the unit looks. */
+    /** Weapons are drawn from the hand outwards    /** Weapons are drawn from the hand outwards, so they always point where the unit looks. */
     private static void drawWeapon(PixelCanvas c, Kit kit, float dx, float dy, int top,
                                    boolean regime) {
         int handX = 16;
@@ -274,38 +463,98 @@ public final class UnitSprites {
 
         switch (kit) {
             case ROCKET: {
-                // A launch tube: thick, long, with a blast shield and a loaded rocket.
-                int tipX = Math.round(handX + dx * 15f);
-                int tipY = Math.round(handY + dy * 15f);
-                int backX = Math.round(handX - dx * 6f);
-                int backY = Math.round(handY - dy * 6f);
+                // A Panzerschreck: a thin grey tube on the shoulder, a flared venturi at the
+                // back, a dark bulged warhead at the front and a small square blast shield.
+                // Two earlier passes failed here — first a fat even-width bar that read as a
+                // toy blaster, then a scarlet warhead that read as a red stripe across the
+                // whole figure. The tube is two pixels wide and the only red is one band.
+                float perpX = -dy;
+                float perpY = dx;
+                int shoulderX = Math.round(handX - dx * 3f);
+                int shoulderY = Math.round(handY - dy * 3f) - 2;
+                int tipX = Math.round(shoulderX + dx * 17f);
+                int tipY = Math.round(shoulderY + dy * 17f);
+                int backX = Math.round(shoulderX - dx * 6f);
+                int backY = Math.round(shoulderY - dy * 6f);
 
-                c.line(backX, backY - 1, tipX, tipY - 1, WolfPalette.shade(metal, 1));
-                c.line(backX, backY, tipX, tipY, WolfPalette.shade(metal, 2));
-                c.line(backX, backY + 1, tipX, tipY + 1, WolfPalette.shade(metal, 3));
-                c.line(backX, backY + 2, tipX, tipY + 2, WolfPalette.shade(metal, 4));
-                // Blast shield over the firer's head.
-                int shieldX = Math.round(handX + dx * 5f);
-                int shieldY = Math.round(handY + dy * 5f);
+                // Tube: exactly two pixels across, lit on one side.
+                c.line(backX, backY, tipX, tipY, WolfPalette.shade(metal, 1));
+                c.line(Math.round(backX + perpX), Math.round(backY + perpY),
+                        Math.round(tipX + perpX), Math.round(tipY + perpY),
+                        WolfPalette.shade(metal, 3));
+
+                // Flared venturi at the tail: a short wedge, wider than the tube.
+                c.thickLine(backX, backY, Math.round(backX - dx * 2f),
+                        Math.round(backY - dy * 2f), 2, WolfPalette.shade(metal, 3));
+                c.px(Math.round(backX - dx * 2f), Math.round(backY - dy * 2f),
+                        WolfPalette.shade(metal, 4));
+
+                // Warhead: a dark bulge with one red band round it.
+                int warheadX = Math.round(shoulderX + dx * 14f);
+                int warheadY = Math.round(shoulderY + dy * 14f);
+                c.thickLine(warheadX, warheadY, tipX, tipY, 1, WolfPalette.shade(metal, 3));
+                c.px(warheadX, warheadY, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                c.px(Math.round(warheadX + perpX), Math.round(warheadY + perpY),
+                        WolfPalette.shade(WolfPalette.BLOOD, 2));
+                c.px(tipX, tipY, WolfPalette.shade(WolfPalette.NIGHT, 0));
+
+                // Blast shield, square and small, mid-tube.
+                int shieldX = Math.round(shoulderX + dx * 5f);
+                int shieldY = Math.round(shoulderY + dy * 5f);
                 c.rect(shieldX - 2, shieldY - 4, 4, 4, WolfPalette.shade(metal, 2));
-                c.hLine(shieldX - 2, shieldX + 1, shieldY - 4, WolfPalette.shade(metal, 1));
-                // Warhead.
-                c.px(tipX, tipY, WolfPalette.shade(WolfPalette.BLOOD, 1));
-                c.px(tipX, tipY + 1, WolfPalette.shade(WolfPalette.BLOOD, 2));
+                c.hLine(shieldX - 2, shieldX + 1, shieldY - 4, WolfPalette.shade(metal, 0));
+                c.px(shieldX, shieldY - 2, WolfPalette.shade(metal, 4));
                 break;
             }
-            case SMG: {
-                int tipX = Math.round(handX + dx * 10f);
-                int tipY = Math.round(handY + dy * 10f);
-                c.line(handX - 1, handY, tipX, tipY, WolfPalette.shade(metal, 1));
-                c.line(handX - 1, handY + 1, tipX, tipY + 1, WolfPalette.shade(metal, 3));
+            case SNIPER: {
+                // Long barrel, wooden furniture, and a scope standing proud of the receiver.
+                int tipX = Math.round(handX + dx * 16f);
+                int tipY = Math.round(handY + dy * 16f);
+                int buttX = Math.round(handX - dx * 6f);
+                int buttY = Math.round(handY - dy * 6f);
+                c.line(buttX, buttY, handX, handY, WolfPalette.shade(stock, 1));
+                c.line(buttX, buttY + 1, handX, handY + 1, WolfPalette.shade(stock, 3));
+                c.line(handX, handY, tipX, tipY, WolfPalette.shade(metal, 1));
+                c.line(handX, handY + 1, tipX, tipY + 1, WolfPalette.shade(metal, 3));
+                int scopeX = Math.round(handX + dx * 3f);
+                int scopeY = Math.round(handY + dy * 3f) - 2;
+                c.thickLine(scopeX, scopeY, Math.round(scopeX + dx * 5f),
+                        Math.round(scopeY + dy * 5f), 1, WolfPalette.shade(metal, 0));
                 c.px(tipX, tipY, WolfPalette.shade(metal, 0));
-                // Stick magazine and folding stock.
-                int magX = Math.round(handX + dx * 3f);
-                int magY = Math.round(handY + dy * 3f);
-                c.rect(magX - 1, magY + 2, 2, 4, WolfPalette.shade(metal, 2));
-                c.line(handX - 1, handY, Math.round(handX - dx * 5f),
-                        Math.round(handY - dy * 5f), WolfPalette.shade(metal, 3));
+                break;
+            }
+            case GRENADE: {
+                // A bundled charge, held back ready to throw: a stick with a head on it.
+                int throwX = Math.round(handX + dx * 6f);
+                int throwY = Math.round(handY + dy * 6f) - 3;
+                c.line(handX, handY - 1, throwX, throwY, WolfPalette.shade(stock, 2));
+                c.ellipse(throwX, throwY, 2, 2, WolfPalette.shade(metal, 2));
+                c.px(throwX, throwY - 2, WolfPalette.shade(WolfPalette.BONE, 2));
+                // Spare charges on the belt.
+                c.px(13, top + 9, WolfPalette.shade(metal, 2));
+                c.px(19, top + 9, WolfPalette.shade(metal, 2));
+                break;
+            }
+            case FLAMER: {
+                // A wand on a hose, with a pilot light burning at the tip.
+                int tipX = Math.round(handX + dx * 11f);
+                int tipY = Math.round(handY + dy * 11f);
+                c.thickLine(handX, handY, tipX, tipY, 1, WolfPalette.shade(metal, 2));
+                c.line(handX, handY, tipX, tipY, WolfPalette.shade(metal, 1));
+                c.rect(tipX - 1, tipY - 1, 3, 3, WolfPalette.shade(metal, 3));
+                c.px(tipX + 1, tipY, WolfPalette.shade(WolfPalette.FIRE, 0));
+                c.px(tipX + 1, tipY - 1, WolfPalette.shade(WolfPalette.FIRE, 2));
+                // Hose looping back to the tanks.
+                c.line(handX - 2, handY + 2, 20, top + 4, WolfPalette.shade(metal, 3));
+                break;
+            }
+            case NONE: {
+                // No weapon: wire cutters in one hand, held low.
+                int toolX = Math.round(handX + dx * 5f);
+                int toolY = Math.round(handY + dy * 5f);
+                c.line(handX, handY, toolX, toolY, WolfPalette.shade(metal, 2));
+                c.px(toolX, toolY, WolfPalette.shade(metal, 0));
+                c.px(toolX, toolY + 1, WolfPalette.shade(metal, 0));
                 break;
             }
             case RIFLE:
@@ -664,6 +913,78 @@ public final class UnitSprites {
             c.hLine(cx - 6, cx + 2, cy + 8, WolfPalette.shade(WolfPalette.BONE, 1));
             c.hLine(cx - 6, cx + 2, cy + 9, WolfPalette.shade(WolfPalette.BONE, 3));
         }
+        return c;
+    }
+
+    /**
+     * Sturmpanzer: the heaviest thing in the game. Wider tracks with side skirts, a boxier
+     * turret set further back, a longer gun, and a red band across the engine deck. It has to
+     * read as bigger than the Captured Panzer at a glance, or stealing one means nothing.
+     */
+    private static PixelCanvas sturmpanzer(int frame) {
+        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        int[] hull = WolfPalette.NIGHT;
+        int[] metal = WolfPalette.GUNMETAL;
+        int cx = 24;
+        int cy = 24;
+        int roll = frame == 1 ? 1 : 0;
+
+        // Wide tracks with skirt plates hanging over them.
+        for (int side = 0; side < 2; side++) {
+            int ty = side == 0 ? cy - 18 : cy + 11;
+            c.rect(cx - 19, ty, 38, 7, WolfPalette.shade(metal, 4));
+            for (int i = 0; i < 6; i++) {
+                c.ellipse(cx - 15 + i * 6, ty + 3, 3, 3, WolfPalette.shade(metal, 3));
+                c.px(cx - 15 + i * 6, ty + 3, WolfPalette.shade(metal, 2));
+            }
+            for (int x = cx - 19 + roll; x < cx + 19; x += 3) {
+                c.vLine(x, ty, ty + 1, WolfPalette.shade(metal, 1));
+                c.vLine(x, ty + 5, ty + 6, WolfPalette.shade(metal, 1));
+            }
+            // Skirt: a plate bolted along the track run.
+            int sy = side == 0 ? ty + 5 : ty - 2;
+            c.rect(cx - 17, sy, 34, 2, WolfPalette.shade(hull, 1));
+            c.rivets(cx - 16, sy, 32, 2, 6, WolfPalette.shade(hull, 0),
+                    WolfPalette.shade(hull, 4));
+        }
+
+        // Hull: longer and squarer than the medium tank, with a heavy bow plate.
+        c.panel(cx - 18, cy - 12, 36, 24, hull, 1);
+        c.rivets(cx - 16, cy - 10, 32, 20, 7, WolfPalette.shade(hull, 0),
+                WolfPalette.shade(hull, 4));
+        for (int i = 0; i < 7; i++) {
+            c.vLine(cx + 12 + i, cy - 11 + i, cy + 11 - i, WolfPalette.shade(hull, 0));
+        }
+        // Engine deck: louvres and twin exhausts at the tail.
+        c.rect(cx - 17, cy - 8, 7, 16, WolfPalette.shade(hull, 3));
+        for (int i = 0; i < 6; i++) {
+            c.hLine(cx - 17, cx - 11, cy - 7 + i * 3, WolfPalette.shade(metal, 4));
+        }
+        c.rect(cx - 20, cy - 5, 3, 3, WolfPalette.shade(metal, 2));
+        c.rect(cx - 20, cy + 3, 3, 3, WolfPalette.shade(metal, 2));
+
+        // Turret: a slab, set back, with a commander's cupola and a stowage bin.
+        c.rect(cx - 8, cy - 10, 18, 20, WolfPalette.shade(hull, 2));
+        c.bevel(cx - 8, cy - 10, 18, 20, WolfPalette.shade(hull, 0),
+                WolfPalette.shade(hull, 4));
+        c.rivets(cx - 6, cy - 8, 14, 16, 6, WolfPalette.shade(hull, 0),
+                WolfPalette.shade(hull, 4));
+        c.ellipse(cx - 4, cy - 5, 4, 4, WolfPalette.shade(metal, 2));
+        c.ellipse(cx - 4, cy - 5, 3, 3, WolfPalette.shade(metal, 4));
+        c.panel(cx - 7, cy + 5, 8, 5, WolfPalette.LEATHER, 2);
+
+        // Main gun: longer and fatter than anything else on the field.
+        c.rect(cx + 9, cy - 4, 6, 8, WolfPalette.shade(hull, 3));
+        c.rect(cx + 13, cy - 3, 14, 6, WolfPalette.shade(metal, 2));
+        c.hLine(cx + 13, cx + 26, cy - 3, WolfPalette.shade(metal, 1));
+        c.hLine(cx + 13, cx + 26, cy + 2, WolfPalette.shade(metal, 4));
+        c.rect(cx + 24, cy - 4, 5, 8, WolfPalette.shade(metal, 3));
+        c.px(cx + 28, cy - 1, WolfPalette.shade(metal, 0));
+
+        // The band.
+        c.hLine(cx - 17, cx - 11, cy - 11, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.hLine(cx - 17, cx - 11, cy - 10, WolfPalette.shade(WolfPalette.BLOOD, 2));
+
         return c;
     }
 

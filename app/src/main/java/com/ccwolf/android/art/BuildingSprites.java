@@ -50,6 +50,12 @@ public final class BuildingSprites {
             case WAR_WORKS:
                 warWorks(c, regime, w, h);
                 break;
+            case MG_NEST:
+                mgNest(c, regime, w, h);
+                break;
+            case PAK_GUN:
+                pakGun(c, regime, w, h);
+                break;
             case FLAK_TURRET:
             default:
                 flakTurret(c, regime, w, h);
@@ -606,6 +612,96 @@ public final class BuildingSprites {
 
         if (regime) {
             redBand(c, cx - 8, 2, 16);
+        }
+    }
+
+    /**
+     * MG Nest: a low sandbagged or concreted position with a slit and a gun poking out of it.
+     * Deliberately squat — it should read as the cheap thing next to the flak tower's mass.
+     */
+    private static void mgNest(PixelCanvas c, boolean regime, int w, int h) {
+        int[] metal = WolfPalette.GUNMETAL;
+        int cx = w / 2;
+        int cy = h / 2 + 2;
+
+        if (regime) {
+            // A poured pillbox: hexagonal-ish slab with a firing slit.
+            c.ellipse(cx, cy + 2, 13, 10, WolfPalette.shade(WolfPalette.CONCRETE, 4));
+            c.ellipse(cx, cy, 13, 10, WolfPalette.shade(WolfPalette.CONCRETE, 2));
+            c.ellipse(cx - 1, cy - 1, 11, 8, WolfPalette.shade(WolfPalette.CONCRETE, 1));
+            c.rect(cx - 7, cy - 3, 14, 4, 0xFF0E0F0B);
+            c.hLine(cx - 7, cx + 6, cy - 4, WolfPalette.shade(WolfPalette.CONCRETE, 0));
+        } else {
+            // Sandbags heaped into a horseshoe, open at the back.
+            c.ellipse(cx, cy + 2, 13, 10, 0x44000000);
+            for (int a = 0; a < 8; a++) {
+                double t = Math.PI * 0.15 + a * Math.PI * 0.95 / 7;
+                int bx = (int) (cx + Math.cos(t) * 11);
+                int by = (int) (cy + Math.sin(t) * 8);
+                c.ellipse(bx, by, 4, 3, WolfPalette.shade(WolfPalette.BONE, 3));
+                c.ellipse(bx, by - 1, 3, 2, WolfPalette.shade(WolfPalette.BONE, 2));
+                c.hLine(bx - 3, bx + 3, by + 2, WolfPalette.shade(WolfPalette.BONE, 4));
+            }
+            c.ellipse(cx, cy, 8, 6, WolfPalette.shade(WolfPalette.DIRT, 3));
+        }
+
+        // The gun itself: a machine gun on a low mount, plus an ammunition box.
+        c.rect(cx - 2, cy - 2, 12, 3, WolfPalette.shade(metal, 2));
+        c.hLine(cx - 2, cx + 9, cy - 2, WolfPalette.shade(metal, 1));
+        c.rect(cx + 8, cy - 3, 3, 5, WolfPalette.shade(metal, 3));
+        c.ellipse(cx - 3, cy, 4, 3, WolfPalette.shade(metal, 3));
+        c.panel(cx - 10, cy + 4, 7, 5, WolfPalette.LEATHER, 2);
+        c.speckle(cx, cy + 5, 10, 4, WolfPalette.shade(WolfPalette.BRASS, 1), 17, 4);
+
+        if (regime) {
+            redBand(c, cx - 6, 3, 12);
+        }
+    }
+
+    /**
+     * Pak Gun: a long anti-tank barrel behind a shield, in a revetment. All the visual weight
+     * is in the gun rather than the position — the opposite of the nest.
+     */
+    private static void pakGun(PixelCanvas c, boolean regime, int w, int h) {
+        int[] metal = WolfPalette.GUNMETAL;
+        int cx = w / 2;
+        int cy = h / 2 + 3;
+
+        // Revetment: a low earth bank rather than a ring.
+        c.ellipse(cx, cy + 3, 14, 7, WolfPalette.shade(WolfPalette.DIRT, 4));
+        c.ellipse(cx, cy + 2, 13, 6, WolfPalette.shade(WolfPalette.DIRT, 2));
+        c.speckle(cx - 13, cy - 4, 26, 10, WolfPalette.shade(WolfPalette.DIRT, 1), 23, 5);
+
+        // Split trail legs braced into the ground.
+        c.line(cx - 2, cy, cx - 11, cy - 6, WolfPalette.shade(metal, 3));
+        c.line(cx - 2, cy + 1, cx - 11, cy + 7, WolfPalette.shade(metal, 3));
+        c.px(cx - 11, cy - 6, WolfPalette.shade(metal, 1));
+        c.px(cx - 11, cy + 7, WolfPalette.shade(metal, 1));
+
+        // Wheels either side of the carriage.
+        c.ellipse(cx - 3, cy - 7, 4, 4, WolfPalette.shade(metal, 4));
+        c.ellipse(cx - 3, cy + 7, 4, 4, WolfPalette.shade(metal, 4));
+        c.ellipse(cx - 3, cy - 7, 2, 2, WolfPalette.shade(metal, 2));
+        c.ellipse(cx - 3, cy + 7, 2, 2, WolfPalette.shade(metal, 2));
+
+        // Gun shield: an angled plate with a sight aperture.
+        c.panel(cx - 1, cy - 8, 6, 17, regime ? WolfPalette.CONCRETE : WolfPalette.OLIVE, 2);
+        c.rivets(cx, cy - 7, 4, 15, 5, WolfPalette.shade(metal, 1),
+                WolfPalette.shade(metal, 4));
+        c.rect(cx + 1, cy - 2, 3, 3, 0xFF0E0F0B);
+
+        // The barrel: long, thin, with a muzzle brake.
+        c.rect(cx + 4, cy - 1, 16, 3, WolfPalette.shade(metal, 2));
+        c.hLine(cx + 4, cx + 19, cy - 1, WolfPalette.shade(metal, 1));
+        c.hLine(cx + 4, cx + 19, cy + 1, WolfPalette.shade(metal, 4));
+        c.rect(cx + 18, cy - 2, 4, 5, WolfPalette.shade(metal, 3));
+        c.px(cx + 21, cy, WolfPalette.shade(metal, 0));
+
+        // Shell cases stacked behind the gun.
+        c.speckle(cx - 12, cy - 2, 8, 6, WolfPalette.shade(WolfPalette.BRASS, 1), 31, 3);
+
+        if (regime) {
+            redBand(c, cx - 5, 2, 10);
         }
     }
 

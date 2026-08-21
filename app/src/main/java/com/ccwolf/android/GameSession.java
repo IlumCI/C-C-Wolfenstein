@@ -431,6 +431,15 @@ public final class GameSession {
 
         int[] ids = selectedIds();
         if (hostile) {
+            // Specialists act on a target rather than shooting it, so tapping an enemy with a
+            // Saboteur or Infiltrator selected means "go and do your job to that".
+            if (anySelectedIsSpecialist()) {
+                if (report(commands.submit(playerId,
+                        new PlayerCommand.Infiltrate(ids, target.id())))) {
+                    addPing(tileX, tileY, true);
+                }
+                return;
+            }
             if (report(commands.submit(playerId, new PlayerCommand.Attack(ids, target.id())))) {
                 addPing(tileX, tileY, true);
             }
@@ -450,6 +459,17 @@ public final class GameSession {
         if (report(commands.submit(playerId, order))) {
             addPing(tileX, tileY, attackMove);
         }
+    }
+
+    /** Whether the selection contains anything that infiltrates rather than shoots. */
+    private boolean anySelectedIsSpecialist() {
+        for (int i = 0; i < selection.size(); i++) {
+            Entity e = world.entity(selection.get(i).intValue());
+            if (e instanceof Unit && ((Unit) e).type().isInfiltrator()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean anySelectedIsHarvester() {

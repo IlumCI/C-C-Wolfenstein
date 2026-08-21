@@ -31,8 +31,13 @@ import java.util.Locale;
  */
 public final class Hud {
 
-    /** Which build list the sidebar is showing. */
-    public enum Tab { STRUCTURES, INFANTRY, VEHICLES }
+    /**
+     * Which build list the sidebar is showing.
+     *
+     * <p>Defences were split out of the structures tab when the roster grew: eight structures
+     * do not fit six slots, and paging a build list is worse than naming the two groups.
+     */
+    public enum Tab { BASE, DEFENCE, INFANTRY, VEHICLES }
 
     /** One build button: either a structure or a unit, never both. */
     private static final class Slot {
@@ -52,13 +57,13 @@ public final class Hud {
     private final Rect dst = new Rect();
 
     private final List<Slot> slots = new ArrayList<Slot>();
-    private final RectF[] tabRects = {new RectF(), new RectF(), new RectF()};
+    private final RectF[] tabRects = {new RectF(), new RectF(), new RectF(), new RectF()};
     private final RectF stopButton = new RectF();
     private final RectF sellButton = new RectF();
     private final RectF repairButton = new RectF();
     private final RectF pauseButton = new RectF();
 
-    private Tab tab = Tab.STRUCTURES;
+    private Tab tab = Tab.BASE;
     private float left;
     private float width;
     private int screenWidth;
@@ -87,7 +92,7 @@ public final class Hud {
 
         y += 22f * scale + pad; // resource strip
 
-        float tabWidth = (width - pad * 4) / 3f;
+        float tabWidth = (width - pad * 5) / 4f;
         for (int i = 0; i < tabRects.length; i++) {
             tabRects[i].set(left + pad + i * (tabWidth + pad), y,
                     left + pad + i * (tabWidth + pad) + tabWidth, y + 26f * scale);
@@ -247,8 +252,8 @@ public final class Hud {
     }
 
     private void drawTabs(Canvas canvas) {
-        String[] labels = {"BUILD", "INF", "VEH"};
-        paint.setTextSize(12f * scale);
+        String[] labels = {"BASE", "DEF", "INF", "VEH"};
+        paint.setTextSize(10.5f * scale);
         paint.setTextAlign(Paint.Align.CENTER);
         for (int i = 0; i < tabRects.length; i++) {
             boolean active = tab.ordinal() == i;
@@ -555,13 +560,18 @@ public final class Hud {
             slots.get(i).unit = null;
         }
 
-        if (tab == Tab.STRUCTURES) {
+        if (tab == Tab.BASE || tab == Tab.DEFENCE) {
             BuildingType[] all = BuildingType.values();
             for (int i = 0; i < all.length && index < slots.size(); i++) {
-                if (all[i] == BuildingType.COMMAND_POST) {
+                BuildingType type = all[i];
+                if (type == BuildingType.COMMAND_POST) {
                     continue; // Pre-placed; you never build another.
                 }
-                slots.get(index++).building = all[i];
+                boolean defence = type.weapon() != null;
+                if (defence != (tab == Tab.DEFENCE)) {
+                    continue;
+                }
+                slots.get(index++).building = type;
             }
         } else {
             BuildingType producer = tab == Tab.INFANTRY

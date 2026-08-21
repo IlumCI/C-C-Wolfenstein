@@ -8,6 +8,7 @@ import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
 import com.ccwolf.core.order.AttackMoveOrder;
 import com.ccwolf.core.order.HarvestOrder;
+import com.ccwolf.core.order.SabotageOrder;
 import com.ccwolf.core.sim.GameWorld;
 import com.ccwolf.core.sim.Player;
 import java.util.ArrayList;
@@ -29,6 +30,9 @@ public final class SkirmishAi {
     /** Ticks between attack waves once the army is big enough. */
     private static final int WAVE_COOLDOWN = 25 * GameWorld.TICKS_PER_SECOND;
 
+    /** Ticks between sabotage runs, so the AI does not spend its whole economy on charges. */
+    private static final int SABOTAGE_INTERVAL = 50 * GameWorld.TICKS_PER_SECOND;
+
     /** A structure hit within this many ticks counts as "under attack" for the defence check. */
     private static final int RECENT_DAMAGE_TICKS = 5 * GameWorld.TICKS_PER_SECOND;
 
@@ -39,6 +43,7 @@ public final class SkirmishAi {
     private int nextWaveTick;
     private int placementFailures;
     private final int rallyJitter;
+    private int nextSabotageTick = 90 * GameWorld.TICKS_PER_SECOND;
 
     private final List<Unit> scratch = new ArrayList<Unit>();
 
@@ -80,6 +85,7 @@ public final class SkirmishAi {
         manageRepairs(world, me);
         manageConstruction(world, me);
         manageArmy(world, me);
+        manageSpecialOperations(world, me);
         defendBase(world);
         launchWave(world);
     }
@@ -155,8 +161,16 @@ public final class SkirmishAi {
         if (countBuildings(world, BuildingType.WAR_WORKS) == 0) {
             return BuildingType.WAR_WORKS;
         }
-        if (countBuildings(world, BuildingType.FLAK_TURRET) < 2) {
+        // An MG nest is a third the price of a turret and stops an infantry rush cold, so it
+        // comes first; the Pak gun follows once the enemy can field armour.
+        if (countBuildings(world, BuildingType.MG_NEST) < 2) {
+            return BuildingType.MG_NEST;
+        }
+        if (countBuildings(world, BuildingType.FLAK_TURRET) < 1) {
             return BuildingType.FLAK_TURRET;
+        }
+        if (countBuildings(world, BuildingType.PAK_GUN) < 1) {
+            return BuildingType.PAK_GUN;
         }
         if (countBuildings(world, BuildingType.REFINERY) < 2) {
             return BuildingType.REFINERY;
@@ -252,12 +266,7 @@ public final class SkirmishAi {
                 : UnitType.CAPTURED_PANZER;
 
         if (me.infantryQueue().size() < 2) {
-            // Mix the roster up so waves are not all one unit; the roll comes from the world's
-            // seeded RNG, which keeps a given seed reproducible while making seeds differ.
-            boolean rich = me.credits() > difficulty.creditReserve() + heavy.cost() * 2;
-            boolean wantHeavy = rich && world.random().nextInt(100) < 35
-                    && world.canProduce(playerId, heavy);
-            world.enqueueUnit(playerId, wantHeavy ? heavy : line);
+            world.enqueueUnit(playerId, pickInfantry(world, me, faction, line, heavy));
         }
         if (me.vehicleQueue().isEmpty()) {
             // Buy armour when the bank allows it, otherwise something cheap and fast.
@@ -268,6 +277,65 @@ public final class SkirmishAi {
                 world.enqueueUnit(playerId, pick);
             }
         }
+    }
+
+    /**
+     * Chooses the next infantryman.
+     *
+     * <p>Weighted rather than round-robin: the line unit is always the backbone, and the
+     * specialists appear once there is money spare for them. The rolls come from the world's
+     * seeded RNG, so a given seed still replays identically.
+     */
+    private UnitType pickInfantry(GameWorld world, Player me, Faction faction, UnitType line,
+                                  UnitType heavy) {
+        boolean rich = me.credits() > difficulty.creditReserve() + heavy.cost() * 2;
+        int roll = world.random().nextInt(100);
+
+        UnitType marksman = faction == Faction.REGIME
+                ? UnitType.SCHARFSCHUTZE : UnitType.MARKSMAN;
+        UnitType specialist = faction == Faction.REGIME
+                ? UnitType.STURMPIONIER : UnitType.GRENADIER;
+
+        if (rich && roll < 30 && world.canProduce(playerId, heavy)) {
+            return heavy;
+        }
+        if (roll < 50 && world.canProduce(playerId, specialist)) {
+            return specialist;
+        }
+        if (rich && roll < 65 && world.canProduce(playerId, marksman)) {
+            return marksman;
+        }
+        return line;
+    }
+
+    /**
+     * The Resistance's cheapest way to hurt a base it cannot storm: send a saboteur at
+     * whatever is shooting, and switch it off.
+     */
+    private void manageSpecialOperations(GameWorld world, Player me) {
+        if (me.faction() != Faction.RESISTANCE || world.tick() < nextSabotageTick) {
+            return;
+        }
+        if (!world.canProduce(playerId, UnitType.SABOTEUR)
+                || me.credits() < difficulty.creditReserve() + UnitType.SABOTEUR.cost()) {
+            return;
+        }
+
+        // Send any saboteur already standing about before paying for another.
+        for (int i = 0; i < world.units().size(); i++) {
+            Unit u = world.units().get(i);
+            if (u.ownerId() != playerId || u.type() != UnitType.SABOTEUR || !u.isIdle()) {
+                continue;
+            }
+            Entity target = world.findNearestEnemyAnywhere(playerId, u.x(), u.y(), true);
+            if (target != null) {
+                u.setOrder(new SabotageOrder(target.id()));
+                nextSabotageTick = world.tick() + SABOTAGE_INTERVAL;
+                return;
+            }
+        }
+        world.enqueueUnit(playerId, UnitType.SABOTEUR);
+        nextSabotageTick = world.tick() + SABOTAGE_INTERVAL / 2;
     }
 
     /** Anything shooting at our base pulls every idle defender towards it. */
