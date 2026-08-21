@@ -1,0 +1,30 @@
+package com.ccwolf.core.map;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+/**
+ * Loads the maps bundled with the core module from the classpath, so the Android app, the
+ * tests and the headless harness all read exactly the same files.
+ */
+public final class MapCatalog {
+
+    /** The 1v1 skirmish map shipped with the game. */
+    public static final String KREISAU_VALLEY = "kreisau";
+
+    private MapCatalog() {
+    }
+
+    public static TileMap load(String name) {
+        String path = "/maps/" + name + ".map";
+        InputStream in = MapCatalog.class.getResourceAsStream(path);
+        if (in == null) {
+            throw new IllegalArgumentException("No bundled map named '" + name + "'");
+        }
+        try {
+            return MapLoader.load(in);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read " + path, e);
+        }
+    }
+}
