@@ -65,6 +65,16 @@ public final class Squad {
     private int pathDestX = -1;
     private int pathDestY = -1;
 
+    /**
+     * How long the squad has been standing still waiting for stragglers.
+     *
+     * <p>Exists because waiting for cohesion has to be able to give up. A member whose slot
+     * falls inside a building can never reach it, and without a limit the squad waits for him
+     * forever — which is exactly what happened: every AI squad sat at its factory door for the
+     * whole match, three waypoints into a fifty-waypoint route, while the credits piled up.
+     */
+    private int waitTicks;
+
     /** The one target the whole squad is working on, or -1. */
     private int engagedTargetId = -1;
 
@@ -335,6 +345,15 @@ public final class Squad {
 
     public int anchorTileY() {
         return (int) anchorY;
+    }
+
+    /** @return how many consecutive ticks the squad has been held up */
+    public int noteWaiting() {
+        return ++waitTicks;
+    }
+
+    public void clearWaiting() {
+        waitTicks = 0;
     }
 
     public int engagedTargetId() {

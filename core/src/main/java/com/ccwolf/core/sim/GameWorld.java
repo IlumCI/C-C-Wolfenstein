@@ -107,6 +107,9 @@ public final class GameWorld {
     /** How far a member may be from its slot before the squad waits for it. */
     private static final float SQUAD_COHESION = 3.5f;
 
+    /** How long a squad will wait for a straggler before marching without him. */
+    private static final int MAX_COHESION_WAIT = 40;
+
     /**
      * How fast the anchor walks, as a fraction of what its members can manage.
      *
@@ -1341,8 +1344,17 @@ public final class GameWorld {
             squad.setPath(route, destX, destY);
         }
 
+        // Waiting for stragglers has to be able to give up. A member whose slot falls inside a
+        // building can never reach it, so an unconditional wait is a deadlock - and was one:
+        // every AI squad stood at its factory door for a whole match. Past the limit the squad
+        // marches and the laggard catches up on his own, pathing properly once he is far
+        // enough behind to need to.
         if (isSquadStrungOut(squad)) {
-            return;
+            if (squad.noteWaiting() < MAX_COHESION_WAIT) {
+                return;
+            }
+        } else {
+            squad.clearWaiting();
         }
 
         float step = squad.type().speed() * ANCHOR_SPEED_FRACTION * TICK_SECONDS;

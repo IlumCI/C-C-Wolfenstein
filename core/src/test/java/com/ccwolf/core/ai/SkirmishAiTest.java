@@ -36,7 +36,11 @@ class SkirmishAiTest {
         for (int playerId = 0; playerId < 2; playerId++) {
             assertTrue(world.hasCompletedBuilding(playerId, BuildingType.BARRACKS),
                     "player " + playerId + " should have built a barracks");
-            assertTrue(countFighters(world, playerId) >= 3,
+            // Asks what the AI produced, not what it still has standing. A side that is losing
+            // badly can legitimately be at zero units five minutes in, and asserting on the
+            // living count made this a test of who won rather than of whether both sides can
+            // build.
+            assertTrue(world.player(playerId).unitsBuilt() >= 3,
                     "player " + playerId + " should have trained an army");
             assertTrue(world.player(playerId).creditsEarned() > 0,
                     "player " + playerId + " should be harvesting");

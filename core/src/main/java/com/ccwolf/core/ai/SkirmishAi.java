@@ -10,6 +10,8 @@ import com.ccwolf.core.order.AttackMoveOrder;
 import com.ccwolf.core.order.HarvestOrder;
 import com.ccwolf.core.order.SabotageOrder;
 import com.ccwolf.core.sim.GameWorld;
+import com.ccwolf.core.squad.Squad;
+import com.ccwolf.core.squad.SquadOrder;
 import com.ccwolf.core.sim.Player;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +48,9 @@ public final class SkirmishAi {
     private int nextSabotageTick = 90 * GameWorld.TICKS_PER_SECOND;
 
     private final List<Unit> scratch = new ArrayList<Unit>();
+
+    /** Refilled and discarded each decision, like {@link #scratch}, so nothing accumulates. */
+    private final List<Squad> squadScratch = new ArrayList<Squad>();
 
     public SkirmishAi(int playerId, Difficulty difficulty) {
         this.playerId = playerId;
@@ -85,8 +90,10 @@ public final class SkirmishAi {
         manageRepairs(world, me);
         manageConstruction(world, me);
         manageArmy(world, me);
+        reinforceWornSquads(world, me);
         manageSpecialOperations(world, me);
         defendBase(world);
+        pressAdvantage(world);
         launchWave(world);
     }
 
@@ -266,7 +273,15 @@ public final class SkirmishAi {
                 : UnitType.CAPTURED_PANZER;
 
         if (me.infantryQueue().size() < 2) {
-            world.enqueueUnit(playerId, pickInfantry(world, me, faction, line, heavy));
+            UnitType pick = pickInfantry(world, me, faction, line, heavy);
+            // Infantry come as squads now, but a squad is eight men's worth of credits in one
+            // go. A player who has just lost an army and is scraping along cannot afford one at
+            // all - and would never rebuild, which is exactly what happened: a beaten AI sat on
+            // six hundred credits with no units for the rest of the match. Falling back to one
+            // man keeps a losing side in the game.
+            if (!world.enqueueSquad(playerId, pick)) {
+                world.enqueueUnit(playerId, pick);
+            }
         }
         if (me.vehicleQueue().isEmpty()) {
             // Buy armour when the bank allows it, otherwise something cheap and fast.
@@ -354,32 +369,101 @@ public final class SkirmishAi {
         if (victim == null) {
             return;
         }
+        collectIdleSquads(world, squadScratch);
+        for (int i = 0; i < squadScratch.size(); i++) {
+            world.orderSquadTo(playerId, squadScratch.get(i), SquadOrder.ATTACK_MOVE,
+                    victim.tileX(), victim.tileY());
+        }
         collectIdleFighters(world, scratch);
         for (int i = 0; i < scratch.size(); i++) {
             scratch.get(i).setOrder(new AttackMoveOrder(victim.tileX(), victim.tileY()));
         }
     }
 
-    private void launchWave(GameWorld world) {
-        if (world.tick() < nextWaveTick) {
+    /**
+     * Throws everything at the enemy once their army is broken.
+     *
+     * <p>Without this the AI has no finishing blow. It attacks on a cooldown with whatever
+     * happens to be standing idle, so an opponent reduced to nothing but buildings is left
+     * alone long enough to rebuild — matches turned into forty-minute grinds where one side
+     * hit zero units and was never followed up. Squads made this worse, because a squad that
+     * stops to fight stays committed to that fight and never returns to the idle pool.
+     */
+    private void pressAdvantage(GameWorld world) {
+        int mine = countUnits(world, false);
+        if (mine < difficulty.firstWaveSize()) {
             return;
         }
-        collectIdleFighters(world, scratch);
-        if (scratch.size() < waveSize) {
+        int theirs = countEnemyFighters(world);
+        if (theirs * BREAKTHROUGH_RATIO > mine) {
             return;
         }
 
         Building post = world.findBuilding(playerId, BuildingType.COMMAND_POST);
-        float fromX = post != null ? post.x() : scratch.get(0).x();
-        float fromY = post != null ? post.y() : scratch.get(0).y();
+        float fromX = post != null ? post.x() : 0f;
+        float fromY = post != null ? post.y() : 0f;
         Entity target = world.findNearestEnemyAnywhere(playerId, fromX, fromY, true);
         if (target == null) {
             return;
         }
 
+        // Everything, not just what is idle.
+        List<Squad> all = world.squads().all();
+        for (int i = 0; i < all.size(); i++) {
+            Squad squad = all.get(i);
+            if (squad.ownerId() == playerId && !squad.isWipedOut()) {
+                world.orderSquadTo(playerId, squad, SquadOrder.ATTACK_MOVE,
+                        target.tileX() + (i % 3) * 2 - 2, target.tileY() + (i / 3 % 3) * 2 - 2);
+            }
+        }
+        collectIdleFighters(world, scratch);
         for (int i = 0; i < scratch.size(); i++) {
-            // Spread the wave's aim points a little so twenty units do not all converge on one
-            // tile and shove each other off it.
+            scratch.get(i).setOrder(new AttackMoveOrder(target.tileX(), target.tileY()));
+        }
+    }
+
+    /** Armed, mobile enemies - what actually stands between us and their base. */
+    private int countEnemyFighters(GameWorld world) {
+        int count = 0;
+        for (int i = 0; i < world.units().size(); i++) {
+            Unit u = world.units().get(i);
+            if (u.ownerId() != playerId && u.isAlive() && u.weapon() != null
+                    && !u.type().isHarvester()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void launchWave(GameWorld world) {
+        if (world.tick() < nextWaveTick) {
+            return;
+        }
+        collectIdleSquads(world, squadScratch);
+        collectIdleFighters(world, scratch);
+        // Counted in men rather than in units of command, so the difficulty tuning that was
+        // written against individuals still means what it meant.
+        if (idleStrength() < waveSize) {
+            return;
+        }
+
+        Building post = world.findBuilding(playerId, BuildingType.COMMAND_POST);
+        float fromX = post != null ? post.x() : anyAttackerX();
+        float fromY = post != null ? post.y() : anyAttackerY();
+        Entity target = world.findNearestEnemyAnywhere(playerId, fromX, fromY, true);
+        if (target == null) {
+            return;
+        }
+
+        // Spread the aim points so the wave arrives across a frontage rather than piling onto
+        // one tile. A squad already spreads its own men, so this is per squad, not per man.
+        for (int i = 0; i < squadScratch.size(); i++) {
+            int spreadX = target.tileX() + (i % 3) * 2 - 2 + rallyJitter % 2;
+            int spreadY = target.tileY() + (i / 3 % 3) * 2 - 2;
+            world.orderSquadTo(playerId, squadScratch.get(i), SquadOrder.ATTACK_MOVE,
+                    spreadX, spreadY);
+        }
+        for (int i = 0; i < scratch.size(); i++) {
             int spreadX = target.tileX() + (i % 3) - 1 + rallyJitter % 2;
             int spreadY = target.tileY() + (i / 3 % 3) - 1;
             scratch.get(i).setOrder(new AttackMoveOrder(spreadX, spreadY));
@@ -392,13 +476,86 @@ public final class SkirmishAi {
 
     // --- helpers --------------------------------------------------------------------------
 
+    /**
+     * Armed units of ours that are not doing anything and not in a squad.
+     *
+     * <p>Squad members are excluded because a squad is commanded as one thing — ordering its
+     * members individually would break them out of it, one man at a time, and quietly undo the
+     * whole feature.
+     */
+    /** How far ahead in fighting men we must be before committing everything. */
+    private static final int BREAKTHROUGH_RATIO = 3;
+
+    /** Below this fraction of strength, a squad is worth topping up rather than leaving. */
+    private static final float REINFORCE_BELOW = 0.7f;
+
+    /** Where a wave is measured from when the command post has been lost. */
+    private float anyAttackerX() {
+        if (!squadScratch.isEmpty()) {
+            return squadScratch.get(0).anchorX();
+        }
+        return scratch.isEmpty() ? 0f : scratch.get(0).x();
+    }
+
+    private float anyAttackerY() {
+        if (!squadScratch.isEmpty()) {
+            return squadScratch.get(0).anchorY();
+        }
+        return scratch.isEmpty() ? 0f : scratch.get(0).y();
+    }
+
     private void collectIdleFighters(GameWorld world, List<Unit> out) {
         out.clear();
         for (int i = 0; i < world.units().size(); i++) {
             Unit u = world.units().get(i);
             if (u.ownerId() == playerId && !u.type().isHarvester() && u.weapon() != null
-                    && u.isIdle()) {
+                    && u.isIdle() && !u.isInSquad()) {
                 out.add(u);
+            }
+        }
+    }
+
+    /** Our squads that have finished what they were doing and are standing about. */
+    private void collectIdleSquads(GameWorld world, List<Squad> out) {
+        out.clear();
+        List<Squad> all = world.squads().all();
+        for (int i = 0; i < all.size(); i++) {
+            Squad squad = all.get(i);
+            if (squad.ownerId() == playerId && !squad.isWipedOut()
+                    && squad.order() == SquadOrder.HOLD) {
+                out.add(squad);
+            }
+        }
+    }
+
+    /** Men available to attack, counting squad members - so wave sizing keeps its old meaning. */
+    private int idleStrength() {
+        int total = squadScratch.size();
+        for (int i = 0; i < squadScratch.size(); i++) {
+            total += squadScratch.get(i).strength() - 1;
+        }
+        return total + scratch.size();
+    }
+
+    /**
+     * Tops up squads that have taken losses.
+     *
+     * <p>Rebuilding a worn squad is usually better value than training a fresh one, and it is
+     * what stops an AI army slowly turning into a crowd of three-man remnants.
+     */
+    private void reinforceWornSquads(GameWorld world, Player me) {
+        if (me.credits() < difficulty.creditReserve()) {
+            return;
+        }
+        List<Squad> all = world.squads().all();
+        for (int i = 0; i < all.size(); i++) {
+            Squad squad = all.get(i);
+            if (squad.ownerId() != playerId || squad.isWipedOut()) {
+                continue;
+            }
+            if (squad.strengthFraction() <= REINFORCE_BELOW && me.infantryQueue().size() < 3) {
+                world.reinforceSquad(playerId, squad);
+                return; // One at a time, so replacements are not all queued at once.
             }
         }
     }

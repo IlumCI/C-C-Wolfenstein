@@ -4,12 +4,16 @@ package com.ccwolf.core.ai;
 public enum Difficulty {
 
     /** Small waves, a lazy build order, keeps a big cash cushion. */
-    RECRUIT(3, 12, 1500, 40),
+    RECRUIT(8, 40, 1500, 40),
     /** The default skirmish opponent. */
-    VETERAN(5, 20, 900, 25),
+    VETERAN(16, 72, 900, 25),
     /** Bigger waves, faster decisions, spends nearly everything it earns. */
-    OBERST(7, 30, 400, 15);
+    OBERST(24, 112, 400, 15);
 
+    // Wave sizes and army caps are counted in men, and were tripled when infantry started
+    // arriving eight at a time. A cap of twenty was two and a half squads, which is not an
+    // army: both sides ground each other down without either being able to mass enough to
+    // break a defended base, and matches stopped resolving.
     private final int firstWaveSize;
     private final int armyCap;
     private final int creditReserve;
