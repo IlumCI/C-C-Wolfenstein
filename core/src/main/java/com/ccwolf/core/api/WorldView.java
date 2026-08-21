@@ -28,6 +28,8 @@ public final class WorldView {
     private final GameWorld world;
     private final int playerId;
 
+    private final List<Integer> selectedSquadIds = new ArrayList<Integer>();
+
     public WorldView(GameWorld world, int playerId) {
         this.world = world;
         this.playerId = playerId;
@@ -134,6 +136,23 @@ public final class WorldView {
     /** Where a squad member should be standing, for drawing its place in the line. */
     public void slotPosition(Squad squad, int slot, float[] out) {
         squad.slotPosition(slot, out);
+    }
+
+    /**
+     * Whether a unit is part of a squad the interface currently has selected.
+     *
+     * <p>Set by the interface each frame rather than derived here: the view knows what exists,
+     * not what the player has picked up.
+     */
+    public boolean isInSelectedSquad(Unit unit) {
+        return unit != null && unit.isInSquad() && selectedSquadIds.contains(
+                Integer.valueOf(unit.squadId()));
+    }
+
+    /** Told to the view by the interface so the renderer can ask a simple question. */
+    public void setSelectedSquads(List<Integer> squadIds) {
+        selectedSquadIds.clear();
+        selectedSquadIds.addAll(squadIds);
     }
 
     public boolean isDiscovered(Entity e) {

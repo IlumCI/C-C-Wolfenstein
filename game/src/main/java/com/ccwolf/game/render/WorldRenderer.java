@@ -9,6 +9,7 @@ import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.fog.FogGrid;
 import com.ccwolf.core.map.Terrain;
 import com.ccwolf.core.map.TileMap;
+import com.ccwolf.core.squad.Squad;
 import com.ccwolf.game.GameSession;
 import com.ccwolf.game.art.SpriteAtlas;
 import com.ccwolf.game.art.UnitSprites;
@@ -154,6 +155,7 @@ public final class WorldRenderer {
         profiler.end(RenderProfiler.Pass.FOG);
 
         profiler.begin(RenderProfiler.Pass.SELECTION);
+        drawSquadBrackets(surface, session);
         drawSelectionBox(surface);
         profiler.end(RenderProfiler.Pass.SELECTION);
 
@@ -352,7 +354,10 @@ public final class WorldRenderer {
             drawDisabledArcs(surface, view.tick(), u.id(), centreX - half, centreY - half,
                     centreX + half, centreY + half, px);
         }
-        if (isSelected(session, u)) {
+        // A selected squad gets one bracket round the whole formation, drawn once by
+        // drawSquadBrackets. Ringing all eight men individually is unreadable at any zoom
+        // where a squad fits on screen.
+        if (isSelected(session, u) && !view.isInSelectedSquad(u)) {
             float r = px * 0.5f;
             drawBrackets(surface, Math.round(cx - r), Math.round(cy - r), Math.round(cx + r),
                     Math.round(cy + r), false);
@@ -591,6 +596,58 @@ public final class WorldRenderer {
             }
         }
         profiler.countDraws(RenderProfiler.Pass.FOG, drawn);
+    }
+
+    /**
+     * One bracket round each selected squad, and a bar showing what is left of it.
+     *
+     * <p>Drawn from the members' actual positions rather than the anchor, so a squad that has
+     * been shot to pieces or spread round a building is bracketed where its men are and not
+     * where they ought to be.
+     */
+    private void drawSquadBrackets(Surface surface, GameSession session) {
+        List<Integer> selected = session.selectedSquads();
+        if (selected.isEmpty()) {
+            return;
+        }
+        Camera camera = session.camera();
+        WorldView view = session.view();
+        float px = camera.tilePx();
+
+        for (int i = 0; i < selected.size(); i++) {
+            Squad squad = view.squad(selected.get(i).intValue());
+            if (squad == null || squad.isWipedOut()) {
+                continue;
+            }
+            float minX = Float.MAX_VALUE;
+            float minY = Float.MAX_VALUE;
+            float maxX = -Float.MAX_VALUE;
+            float maxY = -Float.MAX_VALUE;
+            for (int slot = 0; slot < squad.slotCount(); slot++) {
+                int memberId = squad.memberAt(slot);
+                if (memberId < 0) {
+                    continue;
+                }
+                Entity member = view.world().entity(memberId);
+                if (member == null) {
+                    continue;
+                }
+                minX = Math.min(minX, camera.screenX(member.x()));
+                minY = Math.min(minY, camera.screenY(member.y()));
+                maxX = Math.max(maxX, camera.screenX(member.x()));
+                maxY = Math.max(maxY, camera.screenY(member.y()));
+            }
+            if (minX > maxX) {
+                continue;
+            }
+            float pad = px * 0.55f;
+            int left = Math.round(minX - pad);
+            int top = Math.round(minY - pad);
+            int right = Math.round(maxX + pad);
+            int bottom = Math.round(maxY + pad);
+            drawBrackets(surface, left, top, right, bottom, false);
+            drawHealthBar(surface, left, top - px * 0.2f, right - left, squad.strengthFraction());
+        }
     }
 
     private void drawSelectionBox(Surface surface) {

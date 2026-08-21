@@ -12,6 +12,8 @@ import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
+import com.ccwolf.core.squad.Formation;
+import com.ccwolf.core.squad.Squad;
 import com.ccwolf.core.entity.UnitType;
 import com.ccwolf.core.event.GameEvent;
 import com.ccwolf.core.map.MapCatalog;
@@ -84,6 +86,15 @@ public final class GameSession {
 
     private final FxDirector fx;
     private final List<Integer> selection = new ArrayList<Integer>();
+
+    /**
+     * Squads currently selected.
+     *
+     * <p>Held alongside the unit selection rather than instead of it: the members are in
+     * {@link #selection} too, so everything that draws or counts a selection keeps working,
+     * while orders can be routed to the squad as one thing.
+     */
+    private final List<Integer> selectedSquads = new ArrayList<Integer>();
     private final List<Effect> effects = new ArrayList<Effect>();
     private final List<GameEvent> eventScratch = new ArrayList<GameEvent>();
 
@@ -231,6 +242,7 @@ public final class GameSession {
         }
         collectEffects();
         pruneSelection();
+        syncSelectionToView();
     }
 
     private void collectEffects() {
@@ -294,6 +306,11 @@ public final class GameSession {
         }
     }
 
+    /** Keeps the view's copy of the squad selection current, for the renderer to read. */
+    private void syncSelectionToView() {
+        view.setSelectedSquads(selectedSquads);
+    }
+
     private void pruneSelection() {
         for (int i = selection.size() - 1; i >= 0; i--) {
             Entity e = world.entity(selection.get(i).intValue());
@@ -301,16 +318,88 @@ public final class GameSession {
                 selection.remove(i);
             }
         }
+        for (int i = selectedSquads.size() - 1; i >= 0; i--) {
+            Squad squad = view.squad(selectedSquads.get(i).intValue());
+            if (squad == null || squad.isWipedOut()) {
+                selectedSquads.remove(i);
+            }
+        }
     }
 
     // --- selection ------------------------------------------------------------------------
 
+    /**
+     * Selects whatever is under the tap.
+     *
+     * <p>Tapping a squad member selects the whole squad. That is the point of squads: they are
+     * the unit of command, and picking one man out of a line is a deliberate act, not something
+     * that should happen because you tapped near him.
+     */
     public void selectAt(float worldX, float worldY) {
         Entity hit = entityAt(worldX, worldY);
-        selection.clear();
+        clearSelection();
+        if (hit == null || !view.isMine(hit)) {
+            return;
+        }
+        Squad squad = hit.isBuilding() ? null : view.squadOf((Unit) hit);
+        if (squad != null) {
+            selectSquad(squad);
+        } else {
+            selection.add(Integer.valueOf(hit.id()));
+        }
+    }
+
+    /**
+     * Selects one man out of his squad without breaking him out of it.
+     *
+     * <p>He only leaves the squad if he is then given an order of his own, which is where the
+     * break-up rule lives. Selecting him is how you look at him; ordering him is how you take
+     * him.
+     */
+    public void selectIndividualAt(float worldX, float worldY) {
+        Entity hit = entityAt(worldX, worldY);
+        clearSelection();
         if (hit != null && view.isMine(hit)) {
             selection.add(Integer.valueOf(hit.id()));
         }
+    }
+
+    private void selectSquad(Squad squad) {
+        selectedSquads.add(Integer.valueOf(squad.id()));
+        for (int slot = 0; slot < squad.slotCount(); slot++) {
+            int memberId = squad.memberAt(slot);
+            if (memberId >= 0) {
+                selection.add(Integer.valueOf(memberId));
+            }
+        }
+    }
+
+    public void clearSelection() {
+        selection.clear();
+        selectedSquads.clear();
+    }
+
+    /** Ids of the squads currently selected, in the order they were picked up. */
+    public List<Integer> selectedSquads() {
+        return selectedSquads;
+    }
+
+    public boolean hasSquadSelection() {
+        return !selectedSquads.isEmpty();
+    }
+
+    /** The one squad selected, or null if none or several. */
+    public Squad singleSelectedSquad() {
+        return selectedSquads.size() == 1
+                ? view.squad(selectedSquads.get(0).intValue()) : null;
+    }
+
+    private int[] selectedSquadIds() {
+        int[] ids = new int[selectedSquads.size()];
+        for (int i = 0; i < ids.length; i++) {
+            ids[i] = selectedSquads.get(i).intValue();
+        }
+        return ids;
     }
 
     /** Box-selects the player's units; falls back to a structure under the box's centre. */
@@ -320,13 +409,20 @@ public final class GameSession {
         float minY = Math.min(y0, y1);
         float maxY = Math.max(y0, y1);
 
-        selection.clear();
+        clearSelection();
         for (Unit u : world.units()) {
             if (u.ownerId() != playerId) {
                 continue;
             }
             if (u.x() >= minX && u.x() <= maxX && u.y() >= minY && u.y() <= maxY) {
-                selection.add(Integer.valueOf(u.id()));
+                Squad squad = view.squadOf(u);
+                if (squad == null) {
+                    selection.add(Integer.valueOf(u.id()));
+                } else if (!selectedSquads.contains(Integer.valueOf(squad.id()))) {
+                    // Catching one man in the box takes his whole squad: a marquee that
+                    // half-selected formations would break them up by accident.
+                    selectSquad(squad);
+                }
             }
         }
         if (selection.isEmpty()) {
@@ -447,6 +543,25 @@ public final class GameSession {
             return;
         }
 
+        // Squads take squad orders. Sending the members individual ones would work, and would
+        // also break every one of them out of his squad on the way - which is the opposite of
+        // what tapping the ground with a formation selected should mean.
+        if (hasSquadSelection()) {
+            int[] squadIds = selectedSquadIds();
+            PlayerCommand squadOrder;
+            if (hostile) {
+                squadOrder = new PlayerCommand.SquadAttack(squadIds, target.id());
+            } else if (attackMove) {
+                squadOrder = new PlayerCommand.SquadAttackMove(squadIds, tileX, tileY);
+            } else {
+                squadOrder = new PlayerCommand.SquadMove(squadIds, tileX, tileY);
+            }
+            if (report(commands.submit(playerId, squadOrder))) {
+                addPing(tileX, tileY, hostile || attackMove);
+            }
+            return;
+        }
+
         int[] ids = selectedIds();
         if (hostile) {
             // Specialists act on a target rather than shooting it, so tapping an enemy with a
@@ -506,13 +621,70 @@ public final class GameSession {
     }
 
     public void stopSelection() {
+        if (hasSquadSelection()) {
+            if (report(commands.submit(playerId,
+                    new PlayerCommand.SquadStop(selectedSquadIds())))) {
+                showMessage("Holding position");
+            }
+            return;
+        }
         if (report(commands.submit(playerId, new PlayerCommand.Stop(selectedIds())))) {
             showMessage("Holding position");
         }
     }
 
+    /** Cycles the selected squads through the formation shapes. */
+    public void cycleFormation() {
+        Squad squad = singleSelectedSquad();
+        if (squad == null) {
+            return;
+        }
+        Formation next = squad.formation().next();
+        if (report(commands.submit(playerId,
+                new PlayerCommand.SetFormation(selectedSquadIds(), next)))) {
+            showMessage(next.name().charAt(0) + next.name().substring(1).toLowerCase(
+                    java.util.Locale.ROOT) + " formation");
+        }
+    }
+
+    /** Queues replacements for the selected squad. */
+    public void reinforceSelection() {
+        Squad squad = singleSelectedSquad();
+        if (squad == null) {
+            return;
+        }
+        if (report(commands.submit(playerId, new PlayerCommand.Reinforce(squad.id())))) {
+            showMessage("Replacements on the way");
+        }
+    }
+
+    /** Breaks the selected squad up into individuals. */
+    public void breakUpSelection() {
+        Squad squad = singleSelectedSquad();
+        if (squad == null) {
+            return;
+        }
+        List<Integer> members = new ArrayList<Integer>();
+        for (int slot = 0; slot < squad.slotCount(); slot++) {
+            int id = squad.memberAt(slot);
+            if (id >= 0) {
+                members.add(Integer.valueOf(id));
+            }
+        }
+        int[] ids = new int[members.size()];
+        for (int i = 0; i < ids.length; i++) {
+            ids[i] = members.get(i).intValue();
+        }
+        if (report(commands.submit(playerId, new PlayerCommand.SplitSquad(squad.id(), ids)))) {
+            showMessage("Squad broken up");
+            clearSelection();
+        }
+    }
+
     public void queueUnit(UnitType type) {
-        report(commands.submit(playerId, new PlayerCommand.QueueUnit(type)));
+        // Infantry are trained by the section. QueueSquad falls through to a single man for the
+        // types that fight alone, so the sidebar does not need to know which is which.
+        report(commands.submit(playerId, new PlayerCommand.QueueSquad(type)));
     }
 
     public void queueBuilding(BuildingType type) {

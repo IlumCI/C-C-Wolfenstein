@@ -5,6 +5,7 @@ import com.ccwolf.core.api.WorldView;
 import com.ccwolf.core.economy.ProductionItem;
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.Building;
+import com.ccwolf.core.squad.Squad;
 import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
@@ -426,6 +427,13 @@ public final class Hud {
                     textLine += "  REPAIRING";
                 }
             }
+        } else if (session.hasSquadSelection()) {
+            Squad squad = session.singleSelectedSquad();
+            if (squad != null) {
+                drawSquadCard(surface, squad, left, y, width);
+                return;
+            }
+            textLine = session.selectedSquads().size() + " squads selected";
         } else if (session.hasSelection()) {
             textLine = session.selection().size() + " units selected";
         } else {
@@ -435,10 +443,57 @@ public final class Hud {
         surface.drawText(ellipsize(surface, textLine, width - 12f * scale), left + 6f * scale, y, paint);
     }
 
+    /**
+     * What is left of a squad, at a glance.
+     *
+     * <p>Strength as pips rather than a number: a glance at a row of lamps says "five of eight"
+     * faster than reading it does, and a squad that has been chewed up should be obvious
+     * without counting.
+     */
+    private void drawSquadCard(Surface surface, Squad squad, float left, float y, float width) {
+        // Everything sits at or above the baseline the single-line version used. Below it is
+        // the button row, and the first attempt drew the strength line straight through it.
+        paint.setColor(Palette.HUD_TEXT);
+        paint.setTextSize(11f * scale);
+        surface.drawText(ellipsize(surface, squad.type().displayName() + " Squad",
+                width - 12f * scale), left + 6f * scale, y - 24f * scale, paint);
+
+        // One pip per slot: lit for a man still standing, dark for a gap.
+        float pipSize = 5f * scale;
+        float gap = 2f * scale;
+        float pipY = y - 18f * scale;
+        for (int slot = 0; slot < squad.slotCount(); slot++) {
+            float px = left + 6f * scale + slot * (pipSize + gap);
+            paint.setColor(squad.memberAt(slot) >= 0
+                    ? Palette.HEALTH_GOOD : WolfPalette.shade(WolfPalette.GUNMETAL, 3));
+            surface.fillRect(px, pipY, px + pipSize, pipY + pipSize, paint);
+        }
+
+        paint.setColor(Palette.HUD_TEXT_DIM);
+        paint.setTextSize(10f * scale);
+        String state = squad.strength() + "/" + squad.initialStrength()
+                + "   " + squad.formation().name();
+        if (squad.shortfall() > 0) {
+            state += "   -" + squad.shortfall();
+        }
+        surface.drawText(ellipsize(surface, state, width - 12f * scale),
+                left + 6f * scale, y, paint);
+    }
+
     private void drawControls(Surface surface, GameSession session) {
         GameSession.PointerMode mode = session.pointerMode();
         drawButton(surface, stopButton, "STOP", session.hasSelection(), false);
         drawButton(surface, pauseButton, session.isPaused() ? "RESUME" : "PAUSE", true, false);
+        // With a squad up, the two structure controls give way to the two that act on it.
+        // There is no room on a phone for both sets, and they are never wanted at once.
+        if (session.hasSquadSelection()) {
+            Squad squad = session.singleSelectedSquad();
+            drawButton(surface, sellButton, "FORM", squad != null, false);
+            drawButton(surface, repairButton,
+                    squad != null && squad.shortfall() > 0 ? "REINFORCE" : "BREAK UP",
+                    squad != null, false);
+            return;
+        }
         drawButton(surface, sellButton, "SELL", true,
                 mode == GameSession.PointerMode.SELL);
         drawButton(surface, repairButton, "REPAIR", true,
@@ -501,13 +556,31 @@ public final class Hud {
             session.setPaused(!session.isPaused());
             return true;
         }
-        if (sellButton.contains(x, y)) {
-            session.togglePointerMode(GameSession.PointerMode.SELL);
-            return true;
-        }
-        if (repairButton.contains(x, y)) {
-            session.togglePointerMode(GameSession.PointerMode.REPAIR);
-            return true;
+        // The same two plates carry the squad controls when a squad is up, matching what
+        // drawControls put there.
+        if (session.hasSquadSelection()) {
+            if (sellButton.contains(x, y)) {
+                session.cycleFormation();
+                return true;
+            }
+            if (repairButton.contains(x, y)) {
+                Squad squad = session.singleSelectedSquad();
+                if (squad != null && squad.shortfall() > 0) {
+                    session.reinforceSelection();
+                } else {
+                    session.breakUpSelection();
+                }
+                return true;
+            }
+        } else {
+            if (sellButton.contains(x, y)) {
+                session.togglePointerMode(GameSession.PointerMode.SELL);
+                return true;
+            }
+            if (repairButton.contains(x, y)) {
+                session.togglePointerMode(GameSession.PointerMode.REPAIR);
+                return true;
+            }
         }
 
         assignSlots(session);
