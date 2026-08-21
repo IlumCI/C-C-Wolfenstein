@@ -481,7 +481,8 @@ public final class GameWorld {
         if (tick % ORE_REGROW_INTERVAL == 0) {
             map.regrowOre(ORE_REGROW_AMOUNT);
         }
-        if (tick % FOG_INTERVAL == 0) {
+        // Also on tick 1: waiting for the first interval leaves the opening frames black.
+        if (tick == 1 || tick % FOG_INTERVAL == 0) {
             updateFog();
         }
         checkVictory();
