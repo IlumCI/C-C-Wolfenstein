@@ -1,0 +1,70 @@
+# Golden state digests for the deterministic simulation.
+#
+# A change to these is a change to how the game plays. A commit
+# that claimed to be a pure optimisation must not move this file.
+#
+# Regenerate deliberately, when a change is MEANT to alter play:
+#   gradle :core:testClasses
+#   java -cp core/build/classes/java/main:core/build/classes/java/test:core/build/resources/main \
+#     com.ccwolf.core.diag.GoldenDigests \
+#     > core/src/test/resources/determinism/golden-digests.txt
+seed=1 tick=500 stable=32374d086591d0d4 exact=da2cd8610ab7ca49
+seed=1 tick=2000 stable=c4c104f5460e260e exact=20c6034a09903a71
+seed=1 tick=6000 stable=4da2dbd711e34b82 exact=8783d38a67564eb5
+seed=2 tick=500 stable=c174fa8c3666a2f0 exact=583868ba5ccdcc74
+seed=2 tick=2000 stable=c477ea76a5cdcd9d exact=1ad4c2320d293c0c
+seed=2 tick=6000 stable=a2d4849cf39d3f26 exact=17f103dda4dca7ce
+seed=3 tick=500 stable=3cd76aaeb0d13a4e exact=8c6550c16aa5cf9a
+seed=3 tick=2000 stable=8648d632bddf177c exact=1a530aec215c97a6
+seed=3 tick=6000 stable=baa035cb0a50da48 exact=a87a1c7e2fe4ef93
+seed=4 tick=500 stable=d70864d58d834ad4 exact=6ffdd1c37df06e58
+seed=4 tick=2000 stable=022537bc5cb43f47 exact=f50ac3782d914cae
+seed=4 tick=6000 stable=e5cb09a83d2a2b5d exact=0dc479dcb6876e51
+seed=5 tick=500 stable=90e4a48208322c2d exact=daa172abf60d2b61
+seed=5 tick=2000 stable=d9ce124ba08c7310 exact=422254742f135d43
+seed=5 tick=6000 stable=d13ab0c31e44c269 exact=21a870faa238b9c4
+seed=6 tick=500 stable=74e04573cde1bc5f exact=da1b700958703f16
+seed=6 tick=2000 stable=1e9252a7493cd6cd exact=7153885bab1fdbbd
+seed=6 tick=6000 stable=64618a305e35b79d exact=df9e6aa5cdf7b6d8
+seed=7 tick=500 stable=e2bf178ff24c0462 exact=02e715b23c106944
+seed=7 tick=2000 stable=13a0a3fee2109cb0 exact=19867d513588c52a
+seed=7 tick=6000 stable=e03c1556a5e4334d exact=65e62360896a1146
+seed=8 tick=500 stable=35316d9041f0e487 exact=9788a89aedc6de62
+seed=8 tick=2000 stable=15d83ac2a6175252 exact=c16eb29432d35783
+seed=8 tick=6000 stable=77c6b08db4eb2e14 exact=69b415f488ce6b73
+seed=9 tick=500 stable=b797e834115f901e exact=3e04b78703c128c5
+seed=9 tick=2000 stable=37e9bdc7028465d9 exact=11d9130cd3fedd1a
+seed=9 tick=6000 stable=3f8fc954ded29e49 exact=10e05148f4c9d6fa
+seed=10 tick=500 stable=6d4c0a8035183c66 exact=177a1fe3b44d9622
+seed=10 tick=2000 stable=7acc29bf3f340840 exact=c90c82840f7673c5
+seed=10 tick=6000 stable=c3531d5f97aa74a8 exact=3526c4ede49ebcc5
+seed=11 tick=500 stable=283c2229a3b93ddb exact=96a997e88ded12ee
+seed=11 tick=2000 stable=60d232ef9483518a exact=889e31c2c52254ad
+seed=11 tick=6000 stable=715dcfd5e9dfe545 exact=1284886e1a52dd97
+seed=12 tick=500 stable=bd50e8c869a04744 exact=b9769ee220790440
+seed=12 tick=2000 stable=4138745331c8d6e4 exact=c19dea922b5cf818
+seed=12 tick=6000 stable=77a86606faecec39 exact=d304941d2083e899
+seed=13 tick=500 stable=32f2a35386eb13a0 exact=565520847786065c
+seed=13 tick=2000 stable=040bf5ab9470fe5d exact=89408fb94f4f9663
+seed=13 tick=6000 stable=f0fe5e44137f45c8 exact=3fa81160c4c5071c
+seed=14 tick=500 stable=906c2f4cf558022b exact=e74f029e0a3f47ec
+seed=14 tick=2000 stable=fed38df171b75eec exact=1092d162fe8c7ac6
+seed=14 tick=6000 stable=1160670ca8ff152f exact=7b49d23a5e8f70c1
+seed=15 tick=500 stable=01d856e0f288127f exact=5ec14095018fce8c
+seed=15 tick=2000 stable=34992032aa4a9971 exact=251021364899a242
+seed=15 tick=6000 stable=6cc5690264f2efc4 exact=1e761bff80375efb
+seed=16 tick=500 stable=d1740f04e15421a9 exact=c2b5cc0f47268b56
+seed=16 tick=2000 stable=5d4694fc93e119e6 exact=ac97b785ddaceff5
+seed=16 tick=6000 stable=00a094b0c13b7704 exact=c012283406a474b1
+seed=17 tick=500 stable=1a326673b4426450 exact=fcec01b2b35de394
+seed=17 tick=2000 stable=2e84d87f8fd56bee exact=353a258423163a86
+seed=17 tick=6000 stable=322145e6d7011dcd exact=7a7b469984f34740
+seed=18 tick=500 stable=1c5af26724d539d7 exact=ae521d199d3999c2
+seed=18 tick=2000 stable=a0b74e93f3a2a929 exact=618db75e6a3f730e
+seed=18 tick=6000 stable=339639dfabea34d3 exact=64a9051938669082
+seed=19 tick=500 stable=0ba3f1dc1c8d3a93 exact=5f3efcfc0c78450a
+seed=19 tick=2000 stable=a0ea996344fa09f4 exact=3e42f79f63f7ba2d
+seed=19 tick=6000 stable=64c008fb75d63ce2 exact=9484d1027d158243
+seed=20 tick=500 stable=2c41ccd95ed47d24 exact=ec5055933ca12345
+seed=20 tick=2000 stable=814a9f3e416ac1b2 exact=e8c3acb01a903096
+seed=20 tick=6000 stable=250d8e0d7496852d exact=926f23755d1c66a3
