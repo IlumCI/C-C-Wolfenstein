@@ -99,7 +99,7 @@ public final class Minimap {
             if (!mine && world.isFogEnabled() && !fog.isVisible(u.tileX(), u.tileY())) {
                 continue;
             }
-            paint.setColor(mine ? Palette.faction(session.player().faction())
+            paint.setColor(mine ? Palette.faction(session.view().faction())
                     : Palette.faction(world.player(u.ownerId()).faction()));
             float px = bounds.left + u.x() * sx;
             float py = bounds.top + u.y() * sy;

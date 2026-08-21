@@ -12,7 +12,8 @@ import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
-import com.ccwolf.core.sim.GameWorld;
+import com.ccwolf.core.api.PlayerCommand;
+import com.ccwolf.core.api.WorldView;
 import com.ccwolf.core.sim.Player;
 import java.util.ArrayList;
 import java.util.List;
@@ -155,7 +156,7 @@ public final class Hud {
     // --- drawing --------------------------------------------------------------------------
 
     public void draw(Canvas canvas, GameSession session, long nowMs) {
-        Player me = session.player();
+        Player me = session.view().player();
 
         paint.setColor(Palette.HUD_BG);
         canvas.drawRect(left, 0, screenWidth, screenHeight, paint);
@@ -220,8 +221,8 @@ public final class Hud {
 
     private void drawSlots(Canvas canvas, GameSession session) {
         assignSlots(session);
-        GameWorld world = session.world();
-        Player me = session.player();
+        WorldView view = session.view();
+        Player me = view.player();
         Faction faction = me.faction();
 
         for (int i = 0; i < slots.size(); i++) {
@@ -230,9 +231,10 @@ public final class Hud {
                 continue;
             }
 
-            boolean available = slot.building != null
-                    ? world.canProduce(me.id(), slot.building)
-                    : world.canProduce(me.id(), slot.unit);
+            // One source of truth for "can I build this, and if not, why not".
+            String blocker = slot.building != null ? view.blockerFor(slot.building)
+                    : view.blockerFor(slot.unit);
+            boolean available = blocker == null;
             int cost = slot.building != null ? slot.building.cost() : slot.unit.cost();
             boolean affordable = me.canAfford(cost);
 
@@ -282,7 +284,7 @@ public final class Hud {
 
     /** Shows queue depth, build progress, and the "ready to place" state on a slot. */
     private void drawSlotProgress(Canvas canvas, GameSession session, Slot slot) {
-        Player me = session.player();
+        Player me = session.view().player();
         ProductionQueue queue = slot.building != null ? me.structureQueue()
                 : me.queueFor(slot.unit.producedBy());
 
@@ -408,13 +410,7 @@ public final class Hud {
         }
 
         if (stopButton.contains(x, y)) {
-            for (int i = 0; i < session.selection().size(); i++) {
-                Entity e = session.world().entity(session.selection().get(i).intValue());
-                if (e instanceof Unit) {
-                    ((Unit) e).clearOrders();
-                }
-            }
-            session.showMessage("Holding position");
+            session.stopSelection();
             return true;
         }
         if (pauseButton.contains(x, y)) {
@@ -432,8 +428,8 @@ public final class Hud {
                 handleStructureSlot(session, slot.building, longPress);
             } else if (slot.unit != null) {
                 if (longPress) {
-                    session.world().cancelLast(session.playerId(),
-                            session.player().queueFor(slot.unit.producedBy()));
+                    session.cancelLast(slot.unit.producedBy() == BuildingType.WAR_WORKS
+                            ? PlayerCommand.Line.VEHICLE : PlayerCommand.Line.INFANTRY);
                 } else {
                     session.queueUnit(slot.unit);
                 }
@@ -445,7 +441,7 @@ public final class Hud {
 
     private void handleStructureSlot(GameSession session, BuildingType type, boolean longPress) {
         if (longPress) {
-            session.world().cancelLast(session.playerId(), session.player().structureQueue());
+            session.cancelLast(PlayerCommand.Line.STRUCTURE);
             session.setPlacing(null);
             return;
         }
@@ -460,7 +456,7 @@ public final class Hud {
 
     /** Fills the slot list for the active tab. */
     private void assignSlots(GameSession session) {
-        Faction faction = session.player().faction();
+        Faction faction = session.view().faction();
         int index = 0;
 
         for (int i = 0; i < slots.size(); i++) {

@@ -6,7 +6,6 @@ import com.ccwolf.android.render.Camera;
 import com.ccwolf.android.render.Hud;
 import com.ccwolf.android.render.Minimap;
 import com.ccwolf.android.render.WorldRenderer;
-import com.ccwolf.core.entity.BuildingType;
 
 /**
  * Touch handling for the battlefield.
@@ -208,25 +207,9 @@ public final class InputController {
         float worldX = camera.worldX(x);
         float worldY = camera.worldY(y);
 
-        BuildingType placing = session.placing();
-        if (placing != null) {
-            session.placeAt((int) worldX, (int) worldY);
-            return true;
-        }
-
-        // With something selected, a tap is an order; on empty ground with nothing selected it
-        // is a selection attempt.
-        if (session.hasSelection()) {
-            com.ccwolf.core.entity.Entity hit = session.entityAt(worldX, worldY);
-            boolean ownEntity = hit != null && hit.ownerId() == session.playerId();
-            if (ownEntity && !longPress) {
-                session.selectAt(worldX, worldY);
-            } else {
-                session.commandAt(worldX, worldY, longPress);
-            }
-        } else {
-            session.selectAt(worldX, worldY);
-        }
+        // What a tap means depends on the pointer mode and the selection; the session owns
+        // that decision so the same rules apply however the tap arrived.
+        session.tapWorld(worldX, worldY, longPress);
         return true;
     }
 

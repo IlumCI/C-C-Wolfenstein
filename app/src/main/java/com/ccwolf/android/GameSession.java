@@ -2,6 +2,10 @@ package com.ccwolf.android;
 
 import com.ccwolf.android.render.Camera;
 import com.ccwolf.core.ai.Difficulty;
+import com.ccwolf.core.api.CommandBus;
+import com.ccwolf.core.api.CommandResult;
+import com.ccwolf.core.api.PlayerCommand;
+import com.ccwolf.core.api.WorldView;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Entity;
@@ -10,63 +14,70 @@ import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
 import com.ccwolf.core.event.GameEvent;
 import com.ccwolf.core.map.MapCatalog;
-import com.ccwolf.core.order.AttackMoveOrder;
-import com.ccwolf.core.order.AttackOrder;
-import com.ccwolf.core.order.HarvestOrder;
-import com.ccwolf.core.order.MoveOrder;
 import com.ccwolf.core.sim.GameWorld;
-import com.ccwolf.core.sim.Player;
 import com.ccwolf.core.sim.Skirmish;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Everything the on-screen game needs on top of the simulation: the camera, the player's
- * selection, what they are currently placing, and the short-lived visual effects that shots
- * and explosions leave behind.
+ * The interface layer's state: the camera, what is selected, what is being placed, which
+ * pointer mode is active, and the short-lived effects a frame needs.
  *
- * <p>The simulation itself is stepped here at a fixed rate, decoupled from the frame rate.
+ * <p>It owns no game rules. Every change to the match goes out as a {@link PlayerCommand}
+ * through the {@link CommandBus}, and everything it reads comes back through {@link WorldView}.
+ * Anything that looks like a rule living here is a bug.
  */
 public final class GameSession {
 
     /** Never simulate more than this many ticks in one frame, or a stall becomes a freeze. */
     private static final int MAX_CATCHUP_TICKS = 6;
 
-    /** A tracer stays on screen for this long. */
     private static final long TRACER_MS = 90;
+    private static final long EXPLOSION_MS = 480;
+    private static final long WRECK_MS = 9000;
+    private static final long PING_MS = 550;
 
-    /** An explosion animates over this long. */
-    private static final long EXPLOSION_MS = 420;
+    /** What a tap on the battlefield currently means. */
+    public enum PointerMode { COMMAND, SELL, REPAIR }
 
-    /** One short-lived thing to draw: a tracer line or an explosion. */
+    /** One short-lived thing to draw on top of the world. */
     public static final class Effect {
-        public final boolean tracer;
+
+        public enum Kind { TRACER, EXPLOSION, WRECK, MOVE_PING, ATTACK_PING }
+
+        public final Kind kind;
         public final float x;
         public final float y;
         public final float toX;
         public final float toY;
         public final int ownerId;
+        public final int variant;
         public long remainingMs;
         public final long totalMs;
 
-        Effect(boolean tracer, float x, float y, float toX, float toY, int ownerId, long ms) {
-            this.tracer = tracer;
+        Effect(Kind kind, float x, float y, float toX, float toY, int ownerId, int variant,
+               long ms) {
+            this.kind = kind;
             this.x = x;
             this.y = y;
             this.toX = toX;
             this.toY = toY;
             this.ownerId = ownerId;
+            this.variant = variant;
             this.remainingMs = ms;
             this.totalMs = ms;
         }
 
+        /** 0 at birth, 1 at expiry. */
         public float progress() {
-            return 1f - Math.max(0f, remainingMs / (float) totalMs);
+            return 1f - Math.max(0f, Math.min(1f, remainingMs / (float) totalMs));
         }
     }
 
     private final Skirmish skirmish;
     private final GameWorld world;
+    private final CommandBus commands;
+    private final WorldView view;
     private final Camera camera = new Camera();
     private final int playerId;
 
@@ -74,9 +85,11 @@ public final class GameSession {
     private final List<Effect> effects = new ArrayList<Effect>();
     private final List<GameEvent> eventScratch = new ArrayList<GameEvent>();
 
+    private PointerMode pointerMode = PointerMode.COMMAND;
     private BuildingType placing;
     private int placeTileX = -1;
     private int placeTileY = -1;
+
     private float accumulator;
     private boolean paused;
 
@@ -87,12 +100,21 @@ public final class GameSession {
         this.skirmish = Skirmish.createVersusAi(MapCatalog.load(MapCatalog.KREISAU_VALLEY),
                 faction, difficulty, seed);
         this.world = skirmish.world();
+        this.commands = skirmish.commands();
         this.playerId = skirmish.humanPlayerId();
+        this.view = skirmish.viewFor(playerId);
         camera.setMap(world.map());
         int[] spawn = world.map().spawnPoint(playerId);
         camera.centerOn(spawn[0] + 3f, spawn[1] + 3f);
     }
 
+    // --- accessors ------------------------------------------------------------------------
+
+    public WorldView view() {
+        return view;
+    }
+
+    /** Kept for the renderer, which needs entity lists and the map; it never mutates them. */
     public GameWorld world() {
         return world;
     }
@@ -103,10 +125,6 @@ public final class GameSession {
 
     public int playerId() {
         return playerId;
-    }
-
-    public Player player() {
-        return world.player(playerId);
     }
 
     public List<Integer> selection() {
@@ -125,6 +143,21 @@ public final class GameSession {
         this.paused = paused;
     }
 
+    public PointerMode pointerMode() {
+        return pointerMode;
+    }
+
+    public void setPointerMode(PointerMode mode) {
+        this.pointerMode = mode;
+        this.placing = null;
+        showMessage(mode == PointerMode.SELL ? "Sell: tap one of your structures"
+                : mode == PointerMode.REPAIR ? "Repair: tap one of your structures" : "");
+    }
+
+    public void togglePointerMode(PointerMode mode) {
+        setPointerMode(pointerMode == mode ? PointerMode.COMMAND : mode);
+    }
+
     public BuildingType placing() {
         return placing;
     }
@@ -133,7 +166,6 @@ public final class GameSession {
         this.placing = type;
     }
 
-    /** Where the build ghost currently sits; follows the finger while placing. */
     public int placeTileX() {
         return placeTileX;
     }
@@ -160,9 +192,16 @@ public final class GameSession {
         this.messageUntilMs = System.currentTimeMillis() + 2500;
     }
 
-    // --- simulation -----------------------------------------------------------------------
+    /**
+     * How far the renderer should blend between the last simulation tick and this one.
+     * 0 means draw the previous positions, 1 means draw the current ones.
+     */
+    public float interpolation() {
+        return Math.max(0f, Math.min(1f, accumulator / GameWorld.TICK_SECONDS));
+    }
 
-    /** Advances the simulation by real elapsed time, in fixed ticks. */
+    // --- simulation clock -----------------------------------------------------------------
+
     public void update(float deltaSeconds) {
         ageEffects((long) (deltaSeconds * 1000f));
         if (paused || world.isGameOver()) {
@@ -178,7 +217,7 @@ public final class GameSession {
             ticks++;
         }
         if (ticks == MAX_CATCHUP_TICKS) {
-            accumulator = 0f; // Dropped frames: give up on catching up rather than spiralling.
+            accumulator = 0f; // Dropped frames: stop trying to catch up rather than spiral.
         }
         collectEffects();
         pruneSelection();
@@ -189,16 +228,40 @@ public final class GameSession {
         world.drainEvents(eventScratch);
         for (int i = 0; i < eventScratch.size(); i++) {
             GameEvent e = eventScratch.get(i);
-            if (e.type() == GameEvent.Type.SHOT_FIRED) {
-                effects.add(new Effect(true, e.x(), e.y(), e.toX(), e.toY(), e.ownerId(),
-                        TRACER_MS));
-            } else if (e.type() == GameEvent.Type.ENTITY_DESTROYED) {
-                effects.add(new Effect(false, e.x(), e.y(), e.x(), e.y(), e.ownerId(),
-                        EXPLOSION_MS));
-            } else if (e.type() == GameEvent.Type.PLACEMENT_READY && e.ownerId() == playerId) {
-                showMessage("Structure ready - tap the map to place it");
-            } else if (e.type() == GameEvent.Type.INSUFFICIENT_FUNDS && e.ownerId() == playerId) {
-                showMessage("Insufficient funds");
+            switch (e.type()) {
+                case SHOT_FIRED:
+                    effects.add(new Effect(Effect.Kind.TRACER, e.x(), e.y(), e.toX(), e.toY(),
+                            e.ownerId(), 0, TRACER_MS));
+                    break;
+                case ENTITY_DESTROYED:
+                    effects.add(new Effect(Effect.Kind.EXPLOSION, e.x(), e.y(), e.x(), e.y(),
+                            e.ownerId(), 0, EXPLOSION_MS));
+                    // Wrecks and craters linger, so a battlefield looks fought over.
+                    effects.add(new Effect(Effect.Kind.WRECK, e.x(), e.y(), e.x(), e.y(),
+                            e.ownerId(), e.entityId() & 3, WRECK_MS));
+                    break;
+                case PLACEMENT_READY:
+                    if (e.ownerId() == playerId) {
+                        showMessage("Structure ready - tap the ground to place it");
+                    }
+                    break;
+                case INSUFFICIENT_FUNDS:
+                    if (e.ownerId() == playerId) {
+                        showMessage("Insufficient funds");
+                    }
+                    break;
+                case POWER_LOST:
+                    if (e.ownerId() == playerId) {
+                        showMessage("Low power - defences offline");
+                    }
+                    break;
+                case BUILDING_SOLD:
+                    if (e.ownerId() == playerId) {
+                        showMessage("Sold for " + e.amount() + " credits");
+                    }
+                    break;
+                default:
+                    break;
             }
         }
     }
@@ -224,16 +287,15 @@ public final class GameSession {
 
     // --- selection ------------------------------------------------------------------------
 
-    /** Selects whatever is under a world point, or clears the selection if that is nothing. */
     public void selectAt(float worldX, float worldY) {
         Entity hit = entityAt(worldX, worldY);
         selection.clear();
-        if (hit != null && hit.ownerId() == playerId) {
+        if (hit != null && view.isMine(hit)) {
             selection.add(Integer.valueOf(hit.id()));
         }
     }
 
-    /** Box-selects the player's units inside a world-space rectangle. Structures are excluded. */
+    /** Box-selects the player's units; falls back to a structure under the box's centre. */
     public void selectInBox(float x0, float y0, float x1, float y1) {
         float minX = Math.min(x0, x1);
         float maxX = Math.max(x0, x1);
@@ -249,11 +311,9 @@ public final class GameSession {
                 selection.add(Integer.valueOf(u.id()));
             }
         }
-        // A drag that catches nothing but happens to sit on one of our structures selects it,
-        // which is how you get at a factory's rally point.
         if (selection.isEmpty()) {
             Entity hit = entityAt((minX + maxX) / 2f, (minY + maxY) / 2f);
-            if (hit != null && hit.ownerId() == playerId) {
+            if (hit != null && view.isMine(hit)) {
                 selection.add(Integer.valueOf(hit.id()));
             }
         }
@@ -261,12 +321,15 @@ public final class GameSession {
 
     public Entity entityAt(float worldX, float worldY) {
         for (Unit u : world.units()) {
+            if (!view.isDiscovered(u)) {
+                continue;
+            }
             if (u.distanceTo(worldX, worldY) <= Math.max(0.45f, u.radius() + 0.15f)) {
                 return u;
             }
         }
         for (Building b : world.buildings()) {
-            if (b.covers((int) worldX, (int) worldY)) {
+            if (b.covers((int) worldX, (int) worldY) && view.isDiscovered(b)) {
                 return b;
             }
         }
@@ -277,17 +340,76 @@ public final class GameSession {
         return !selection.isEmpty();
     }
 
-    /** The single selected entity, or null when nothing or several things are selected. */
     public Entity singleSelection() {
         return selection.size() == 1 ? world.entity(selection.get(0).intValue()) : null;
     }
 
-    // --- orders ---------------------------------------------------------------------------
+    private int[] selectedIds() {
+        int[] ids = new int[selection.size()];
+        for (int i = 0; i < ids.length; i++) {
+            ids[i] = selection.get(i).intValue();
+        }
+        return ids;
+    }
+
+    // --- issuing commands -----------------------------------------------------------------
+
+    /** Reports a rejection to the player; accepted commands say nothing. */
+    private boolean report(CommandResult result) {
+        if (!result.isAccepted() && result.reason() != null) {
+            showMessage(result.reason());
+        }
+        return result.isAccepted();
+    }
 
     /**
-     * Issues the natural order for a tap: attack what is hostile, harvest an ore tile with a
-     * harvester, otherwise move. A long press turns a move into an attack-move.
+     * Handles a tap on the battlefield according to the current pointer mode: sell it, repair
+     * it, or give the selection the order that fits what was tapped.
      */
+    public void tapWorld(float worldX, float worldY, boolean longPress) {
+        int tileX = (int) worldX;
+        int tileY = (int) worldY;
+        Entity target = entityAt(worldX, worldY);
+
+        if (pointerMode == PointerMode.SELL || pointerMode == PointerMode.REPAIR) {
+            if (target == null || !target.isBuilding() || !view.isMine(target)) {
+                showMessage("Tap one of your own structures");
+                return;
+            }
+            if (pointerMode == PointerMode.SELL) {
+                report(commands.submit(playerId, new PlayerCommand.Sell(target.id())));
+            } else {
+                Building b = (Building) target;
+                boolean turnOn = !b.isRepairing();
+                if (report(commands.submit(playerId,
+                        new PlayerCommand.Repair(target.id(), turnOn)))) {
+                    showMessage(turnOn ? "Repairing " + b.displayName() : "Repairs stopped");
+                }
+            }
+            setPointerMode(PointerMode.COMMAND);
+            return;
+        }
+
+        if (placing != null) {
+            placeAt(tileX, tileY);
+            return;
+        }
+
+        if (!hasSelection()) {
+            selectAt(worldX, worldY);
+            return;
+        }
+
+        // Tapping our own thing with a selection re-selects it, unless it is a long press,
+        // which always means "give the current selection an order about this spot".
+        if (target != null && view.isMine(target) && !longPress) {
+            selectAt(worldX, worldY);
+            return;
+        }
+        commandAt(worldX, worldY, longPress);
+    }
+
+    /** Issues the order that fits the target: attack, harvest, rally or move. */
     public void commandAt(float worldX, float worldY, boolean attackMove) {
         if (selection.isEmpty()) {
             return;
@@ -295,87 +417,100 @@ public final class GameSession {
         int tileX = (int) worldX;
         int tileY = (int) worldY;
         Entity target = entityAt(worldX, worldY);
-        boolean hostile = target != null && world.areEnemies(playerId, target.ownerId());
+        boolean hostile = view.isHostile(target);
 
-        for (int i = 0; i < selection.size(); i++) {
-            Entity e = world.entity(selection.get(i).intValue());
-            if (e == null || !e.isAlive()) {
-                continue;
+        // A selected structure has no legs; a tap sets its rally point instead.
+        Entity single = singleSelection();
+        if (single != null && single.isBuilding()) {
+            if (report(commands.submit(playerId,
+                    new PlayerCommand.SetRally(single.id(), tileX, tileY)))) {
+                addPing(tileX, tileY, false);
             }
-            if (e.isBuilding()) {
-                // Structures cannot move; a tap sets the rally point instead.
-                ((Building) e).setRally(tileX, tileY);
-                continue;
-            }
-            Unit u = (Unit) e;
-            if (hostile) {
-                world.issueOrder(playerId, u, new AttackOrder(target.id()));
-            } else if (u.type().isHarvester() && world.map().ore(tileX, tileY) > 0) {
-                world.issueOrder(playerId, u, new HarvestOrder());
-            } else if (attackMove) {
-                world.issueOrder(playerId, u, new AttackMoveOrder(tileX, tileY));
-            } else {
-                world.issueOrder(playerId, u, new MoveOrder(tileX, tileY));
-            }
-        }
-        showMessage(hostile ? "Attacking" : (attackMove ? "Attack-move" : "Moving out"));
-    }
-
-    // --- production -----------------------------------------------------------------------
-
-    public void queueUnit(UnitType type) {
-        if (!world.canProduce(playerId, type)) {
-            showMessage("Requires " + type.producedBy().displayName());
             return;
         }
-        if (!world.enqueueUnit(playerId, type)) {
-            showMessage("Cannot build " + type.displayName());
+
+        int[] ids = selectedIds();
+        if (hostile) {
+            if (report(commands.submit(playerId, new PlayerCommand.Attack(ids, target.id())))) {
+                addPing(tileX, tileY, true);
+            }
+            return;
         }
+
+        // Harvesters told to go to an ore seam should mine it, not just stand on it.
+        if (world.map().ore(tileX, tileY) > 0 && anySelectedIsHarvester()) {
+            if (report(commands.submit(playerId, new PlayerCommand.Harvest(ids)))) {
+                addPing(tileX, tileY, false);
+                return;
+            }
+        }
+
+        PlayerCommand order = attackMove ? new PlayerCommand.AttackMove(ids, tileX, tileY)
+                : new PlayerCommand.Move(ids, tileX, tileY, false);
+        if (report(commands.submit(playerId, order))) {
+            addPing(tileX, tileY, attackMove);
+        }
+    }
+
+    private boolean anySelectedIsHarvester() {
+        for (int i = 0; i < selection.size(); i++) {
+            Entity e = world.entity(selection.get(i).intValue());
+            if (e instanceof Unit && ((Unit) e).type().isHarvester()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void addPing(int tileX, int tileY, boolean hostile) {
+        effects.add(new Effect(hostile ? Effect.Kind.ATTACK_PING : Effect.Kind.MOVE_PING,
+                tileX + 0.5f, tileY + 0.5f, tileX + 0.5f, tileY + 0.5f, playerId, 0, PING_MS));
+    }
+
+    public void stopSelection() {
+        if (report(commands.submit(playerId, new PlayerCommand.Stop(selectedIds())))) {
+            showMessage("Holding position");
+        }
+    }
+
+    public void queueUnit(UnitType type) {
+        report(commands.submit(playerId, new PlayerCommand.QueueUnit(type)));
     }
 
     public void queueBuilding(BuildingType type) {
-        if (!world.canProduce(playerId, type)) {
-            showMessage("Requires " + (type.prerequisite() == null
-                    ? BuildingType.COMMAND_POST.displayName() : type.prerequisite().displayName()));
-            return;
-        }
-        if (!world.enqueueBuilding(playerId, type)) {
-            showMessage("Cannot build " + type.displayName());
+        report(commands.submit(playerId, new PlayerCommand.QueueBuilding(type)));
+    }
+
+    public void cancelLast(PlayerCommand.Line line) {
+        report(commands.submit(playerId, new PlayerCommand.CancelQueue(line)));
+    }
+
+    public void setPrimary(int buildingId) {
+        if (report(commands.submit(playerId, new PlayerCommand.SetPrimary(buildingId)))) {
+            showMessage("Primary structure set");
         }
     }
 
-    /** True if the structure queue has something finished and waiting for a site. */
+    public boolean placeAt(int tileX, int tileY) {
+        boolean placed = report(commands.submit(playerId,
+                new PlayerCommand.PlaceBuilding(tileX, tileY)));
+        if (placed) {
+            placing = null;
+        }
+        return placed;
+    }
+
+    // --- placement helpers used by the renderer -------------------------------------------
+
     public boolean hasStructureReady() {
-        return player().structureQueue().isHeadReady();
+        return view.readyStructure() != null;
     }
 
     public BuildingType readyStructure() {
-        return hasStructureReady() ? player().structureQueue().head().buildingType() : null;
+        return view.readyStructure();
     }
 
-    /**
-     * Drops the finished structure at a tile.
-     *
-     * @return true if it went down
-     */
-    public boolean placeAt(int tileX, int tileY) {
-        BuildingType type = readyStructure();
-        if (type == null) {
-            return false;
-        }
-        int originX = tileX - type.tilesWide() / 2;
-        int originY = tileY - type.tilesHigh() / 2;
-        if (world.placeQueued(playerId, originX, originY) == null) {
-            showMessage("Cannot build there");
-            return false;
-        }
-        placing = null;
-        return true;
-    }
-
-    /** Whether a ghost at this tile would be a legal site, for the placement preview. */
     public boolean isPlacementValid(BuildingType type, int tileX, int tileY) {
-        return world.isValidPlacement(playerId, type,
-                tileX - type.tilesWide() / 2, tileY - type.tilesHigh() / 2);
+        return view.canPlaceCentred(type, tileX, tileY);
     }
 }

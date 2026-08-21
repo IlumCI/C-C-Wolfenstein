@@ -17,6 +17,16 @@ public final class Unit extends Entity {
 
     /** Facing in radians, 0 = east, growing clockwise (screen coordinates). */
     private float facing;
+
+    /**
+     * Position at the start of the current tick.
+     *
+     * <p>Presentation state, kept here because only the simulation knows when a tick begins:
+     * the renderer draws somewhere between this and the live position, which is what stops a
+     * 20 Hz simulation from looking like 20 fps on a 60 Hz screen.
+     */
+    private float previousX;
+    private float previousY;
     private int weaponCooldown;
 
     // --- movement scratch, owned by com.ccwolf.core.path.Mover -----------------------------
@@ -37,6 +47,8 @@ public final class Unit extends Entity {
     public Unit(int id, int ownerId, UnitType type, float x, float y) {
         super(id, ownerId, x, y, type.maxHp());
         this.type = type;
+        this.previousX = x;
+        this.previousY = y;
     }
 
     public UnitType type() {
@@ -81,6 +93,29 @@ public final class Unit extends Entity {
     public void setPosition(float nx, float ny) {
         this.x = nx;
         this.y = ny;
+    }
+
+    public float previousX() {
+        return previousX;
+    }
+
+    public float previousY() {
+        return previousY;
+    }
+
+    /** Called by the simulation at the top of each tick, before anything moves. */
+    public void snapshotPosition() {
+        this.previousX = x;
+        this.previousY = y;
+    }
+
+    /** Position to draw at, blended between the last tick and this one. */
+    public float renderX(float alpha) {
+        return previousX + (x - previousX) * alpha;
+    }
+
+    public float renderY(float alpha) {
+        return previousY + (y - previousY) * alpha;
     }
 
     public float facing() {

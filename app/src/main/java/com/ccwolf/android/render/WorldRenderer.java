@@ -171,13 +171,13 @@ public final class WorldRenderer {
             GameSession.Effect fx = effects.get(i);
             float x = camera.screenX(fx.x);
             float y = camera.screenY(fx.y);
-            if (fx.tracer) {
+            if (fx.kind == GameSession.Effect.Kind.TRACER) {
                 paint.setColor(Palette.TRACER);
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(Math.max(1.2f, camera.tilePx() * 0.05f));
                 canvas.drawLine(x, y, camera.screenX(fx.toX), camera.screenY(fx.toY), paint);
                 paint.setStyle(Paint.Style.FILL);
-            } else {
+            } else if (fx.kind == GameSession.Effect.Kind.EXPLOSION) {
                 float t = fx.progress();
                 float radius = camera.tilePx() * (0.2f + 0.5f * t);
                 int alpha = (int) (220 * (1f - t));
@@ -219,8 +219,8 @@ public final class WorldRenderer {
 
         canvas.saveLayerAlpha(left - px, top - px, left + w + px, top + h + px, 150);
         sprites.drawStructureShell(canvas, type, left, top, w, h, px,
-                Palette.faction(session.player().faction()),
-                Palette.factionDark(session.player().faction()));
+                Palette.faction(session.view().faction()),
+                Palette.factionDark(session.view().faction()));
         canvas.restore();
     }
 

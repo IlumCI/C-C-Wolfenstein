@@ -571,6 +571,10 @@ public final class GameWorld {
         }
         tick++;
 
+        // Remember where everything was before it moves, so the renderer can interpolate.
+        for (int i = 0; i < units.size(); i++) {
+            units.get(i).snapshotPosition();
+        }
         spatialIndex.rebuild(units);
         updatePower();
         updateProduction();
