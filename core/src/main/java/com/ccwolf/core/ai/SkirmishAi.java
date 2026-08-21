@@ -77,6 +77,7 @@ public final class SkirmishAi {
 
         placeReadyStructure(world);
         manageEconomy(world, me);
+        manageRepairs(world, me);
         manageConstruction(world, me);
         manageArmy(world, me);
         defendBase(world);
@@ -103,6 +104,29 @@ public final class SkirmishAi {
             world.enqueueUnit(playerId, UnitType.HARVESTER);
         }
     }
+
+    /**
+     * Keeps the crews working on anything badly knocked about, and stops paying once a
+     * structure is nearly whole again. The AI has to use the base-management tools the player
+     * has, or half the loop only exists on one side of the match.
+     */
+    private void manageRepairs(GameWorld world, Player me) {
+        boolean canAfford = me.credits() > difficulty.creditReserve();
+        for (int i = 0; i < world.buildings().size(); i++) {
+            Building b = world.buildings().get(i);
+            if (b.ownerId() != playerId || !b.isAlive()) {
+                continue;
+            }
+            if (!b.isRepairing() && canAfford && b.healthFraction() < REPAIR_THRESHOLD) {
+                world.setRepairing(playerId, b.id(), true);
+            } else if (b.isRepairing() && (!canAfford || b.healthFraction() > 0.97f)) {
+                world.setRepairing(playerId, b.id(), false);
+            }
+        }
+    }
+
+    /** Damage level at which the AI starts paying for repairs. */
+    private static final float REPAIR_THRESHOLD = 0.7f;
 
     // --- base building --------------------------------------------------------------------
 

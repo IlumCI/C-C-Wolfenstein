@@ -48,11 +48,17 @@ public final class GameWorld {
     /** Uranium added to each seam per regrowth pass. */
     private static final int ORE_REGROW_AMOUNT = 3;
 
-    /** Ticks between repair instalments. */
-    private static final int REPAIR_INTERVAL = 4;
+    /**
+     * Ticks between repair instalments, and hit points per instalment.
+     *
+     * <p>These were originally three times faster, and the result was that a base under
+     * sustained attack spent credits on repairs faster than four harvesters could bring
+     * uranium in — the AI simply went bankrupt patching walls. Repairs are meant to be a
+     * steady drain you choose to accept, not a race the economy loses.
+     */
+    private static final int REPAIR_INTERVAL = 10;
 
-    /** Hit points mended per instalment. */
-    private static final int REPAIR_HP_PER_STEP = 12;
+    private static final int REPAIR_HP_PER_STEP = 8;
 
     /** Repairing a structure from scrap costs this fraction of building it new. */
     private static final float REPAIR_COST_FACTOR = 0.5f;

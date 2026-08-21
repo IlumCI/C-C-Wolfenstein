@@ -107,7 +107,7 @@ class BaseManagementTest {
         int creditsBefore = me.credits();
 
         assertTrue(bus.submit(0, new PlayerCommand.Repair(barracks.id(), true)).isAccepted());
-        for (int i = 0; i < 400 && barracks.hp() < barracks.maxHp(); i++) {
+        for (int i = 0; i < 1500 && barracks.hp() < barracks.maxHp(); i++) {
             world.step();
         }
 
@@ -127,7 +127,7 @@ class BaseManagementTest {
 
         bus.submit(0, new PlayerCommand.Repair(barracks.id(), true));
         int hpBefore = barracks.hp();
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 200; i++) {
             world.step();
         }
 
