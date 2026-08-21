@@ -48,6 +48,18 @@ public final class GameWorld {
     /** Uranium added to each seam per regrowth pass. */
     private static final int ORE_REGROW_AMOUNT = 3;
 
+    /** How long sabotage keeps a structure off line. */
+    private static final int SABOTAGE_STRUCTURE_TICKS = 20 * TICKS_PER_SECOND;
+
+    /** How long a sabotaged walker stays frozen. */
+    private static final int SABOTAGE_UNIT_TICKS = 12 * TICKS_PER_SECOND;
+
+    /** How often concealment is re-checked against nearby enemies. */
+    private static final int STEALTH_CHECK_INTERVAL = 5;
+
+    /** How close an enemy must be to see a concealed unit, in tiles. */
+    public static final float STEALTH_REVEAL_RADIUS = 2.6f;
+
     /**
      * Ticks between repair instalments, and hit points per instalment.
      *
@@ -434,6 +446,67 @@ public final class GameWorld {
         return refund;
     }
 
+    /**
+     * Applies sabotage: the target is switched off for a while, and the saboteur walks away.
+     *
+     * <p>Heavier things shrug it off sooner — a walker reboots faster than a power station
+     * comes back on line.
+     */
+    public void sabotage(Unit saboteur, Entity target) {
+        int duration = target.isBuilding() ? SABOTAGE_STRUCTURE_TICKS : SABOTAGE_UNIT_TICKS;
+        target.disableUntil(tick + duration);
+        if (target.isBuilding()) {
+            ((Building) target).setSabotaged(true);
+        }
+        events.add(new GameEvent(GameEvent.Type.SABOTAGED, target.ownerId(), target.id(),
+                target.x(), target.y(), target.x(), target.y(), duration));
+    }
+
+    /**
+     * Transfers a vehicle to the infiltrator's side and consumes the infiltrator.
+     *
+     * <p>Ownership is not just a field: the captured unit has to forget its old orders, and
+     * anything the previous owner had pointed at it has to be cleaned up.
+     */
+    public void hijack(Unit infiltrator, Unit vehicle) {
+        int newOwner = infiltrator.ownerId();
+        events.add(GameEvent.at(GameEvent.Type.HIJACKED, newOwner, vehicle.id(),
+                vehicle.x(), vehicle.y()));
+        transferOwnership(vehicle, newOwner);
+        infiltrator.kill();
+    }
+
+    /**
+     * Moves an entity to another player.
+     *
+     * <p>Used by hijacking today and by anything else that changes sides later. Orders are
+     * cleared because a unit's queue refers to targets chosen for its old allegiance — a
+     * captured hound that kept its orders would drive straight back and attack its new owner.
+     */
+    public void transferOwnership(Entity entity, int newOwnerId) {
+        if (entity == null || !entity.isAlive() || entity.ownerId() == newOwnerId) {
+            return;
+        }
+        int previousOwner = entity.ownerId();
+        entity.setOwnerId(newOwnerId);
+
+        if (entity.isBuilding()) {
+            Building b = (Building) entity;
+            b.setRepairing(false);
+            if (b.type().isProducer()) {
+                player(previousOwner).clearPrimaryProducer(b.type());
+            }
+        } else {
+            Unit u = (Unit) entity;
+            u.clearOrders();
+            u.setVelocity(0f, 0f);
+            if (u.type().isHarvester()) {
+                // A stolen harvester should go back to work for its new owner, not stand idle.
+                u.setOrder(new HarvestOrder());
+            }
+        }
+    }
+
     /** Turns the repair crews on or off for one structure. */
     public boolean setRepairing(int playerId, int buildingId, boolean repairing) {
         Entity e = entity(buildingId);
@@ -584,6 +657,8 @@ public final class GameWorld {
         spatialIndex.rebuild(units);
         updatePower();
         updateProduction();
+        updateSabotage();
+        updateStealth();
         updateUnits();
         updateBuildings();
         updateRepairs();
@@ -712,6 +787,11 @@ public final class GameWorld {
             if (!u.isAlive()) {
                 continue;
             }
+            if (u.isDisabled(tick)) {
+                // Sabotage: the machine is dead where it stands until the charge burns out.
+                u.setVelocity(0f, 0f);
+                continue;
+            }
             u.tickCooldown();
 
             Order order = u.currentOrder();
@@ -761,6 +841,43 @@ public final class GameWorld {
                 if (target != null) {
                     tryAttack(b, target);
                 }
+            }
+        }
+    }
+
+    /**
+     * Refreshes the cached sabotage flag on structures.
+     *
+     * <p>{@code isOperational()} is called from a dozen places that have no idea what tick it
+     * is, so the tick-dependent state is resolved once here rather than threading the clock
+     * through all of them.
+     */
+    private void updateSabotage() {
+        for (int i = 0; i < buildings.size(); i++) {
+            Building b = buildings.get(i);
+            boolean off = b.isDisabled(tick);
+            if (off != b.isSabotaged()) {
+                b.setSabotaged(off);
+                events.add(GameEvent.at(off ? GameEvent.Type.SABOTAGED
+                        : GameEvent.Type.SABOTAGE_ENDED, b.ownerId(), b.id(), b.x(), b.y()));
+            }
+        }
+    }
+
+    /** Enemies standing close enough see through concealment, whatever the fog says. */
+    private void updateStealth() {
+        if (tick % STEALTH_CHECK_INTERVAL != 0) {
+            return;
+        }
+        for (int i = 0; i < units.size(); i++) {
+            Unit hidden = units.get(i);
+            if (!hidden.type().isStealthy() || !hidden.isAlive()) {
+                continue;
+            }
+            Entity spotter = findNearestEnemy(hidden.ownerId(), hidden.x(), hidden.y(),
+                    STEALTH_REVEAL_RADIUS, true);
+            if (spotter != null) {
+                hidden.markRevealed(tick + STEALTH_CHECK_INTERVAL * 2);
             }
         }
     }
@@ -951,7 +1068,14 @@ public final class GameWorld {
      * @return true if a shot went off
      */
     public boolean tryAttack(Entity attacker, Entity target) {
-        Weapon weapon = attacker.weapon();
+        return tryAttack(attacker, target, attacker.weapon());
+    }
+
+    /**
+     * Fires a specific weapon rather than the attacker's own — used by tests to exercise a
+     * weapon in isolation, and by anything that gives a unit a one-off attack.
+     */
+    public boolean tryAttack(Entity attacker, Entity target, Weapon weapon) {
         if (weapon == null || target == null || !target.isAlive()) {
             return false;
         }
@@ -966,10 +1090,14 @@ public final class GameWorld {
 
         int damage = weapon.damageAgainst(target.armor());
         boolean killed = target.applyDamage(damage, attacker.id(), tick);
+        if (weapon.hasBlast()) {
+            applyBlast(attacker, target, weapon);
+        }
         if (attacker.isBuilding()) {
             ((Building) attacker).startWeaponCooldown();
         } else {
             ((Unit) attacker).startWeaponCooldown();
+            ((Unit) attacker).noteFired(tick);
         }
 
         events.add(GameEvent.shot(attacker.ownerId(), attacker.id(), attacker.x(), attacker.y(),
@@ -981,6 +1109,59 @@ public final class GameWorld {
                     target.id(), target.x(), target.y()));
         }
         return true;
+    }
+
+    /**
+     * Splash: everything hostile inside the blast radius takes a share of the damage, falling
+     * off with distance from the point of impact.
+     *
+     * <p>Only enemies are hit. Friendly fire is the correct simulation and the wrong game — an
+     * AI that shells its own advancing infantry is an AI that loses to itself.
+     */
+    private void applyBlast(Entity attacker, Entity epicentre, Weapon weapon) {
+        float radius = weapon.blastRadius();
+
+        // Scans the unit list rather than the spatial index on purpose: the index is only
+        // rebuilt at the top of a tick, and tryAttack is public API that must not quietly
+        // depend on that having happened. Blasts are infrequent enough for a linear pass.
+        for (int i = 0; i < units.size(); i++) {
+            Unit other = units.get(i);
+            if (other == epicentre || !other.isAlive()
+                    || !areEnemies(attacker.ownerId(), other.ownerId())) {
+                continue;
+            }
+            if (Math.abs(other.x() - epicentre.x()) > radius + 1f
+                    || Math.abs(other.y() - epicentre.y()) > radius + 1f) {
+                continue;
+            }
+            splashOne(attacker, other, weapon, epicentre, radius);
+        }
+        for (int i = 0; i < buildings.size(); i++) {
+            Building other = buildings.get(i);
+            if (other == epicentre || !other.isAlive()
+                    || !areEnemies(attacker.ownerId(), other.ownerId())) {
+                continue;
+            }
+            splashOne(attacker, other, weapon, epicentre, radius);
+        }
+    }
+
+    private void splashOne(Entity attacker, Entity victim, Weapon weapon, Entity epicentre,
+                           float radius) {
+        float distance = victim.distanceTo(epicentre.x(), epicentre.y()) - victim.radius();
+        if (distance > radius) {
+            return;
+        }
+        float falloff = 1f - 0.75f * Math.max(0f, distance) / radius;
+        int damage = Math.max(1,
+                Math.round(weapon.damageAgainst(victim.armor()) * falloff));
+        boolean killed = victim.applyDamage(damage, attacker.id(), tick);
+        events.add(GameEvent.at(GameEvent.Type.UNDER_ATTACK, victim.ownerId(), victim.id(),
+                victim.x(), victim.y()));
+        if (killed) {
+            events.add(GameEvent.at(GameEvent.Type.ENTITY_DESTROYED, victim.ownerId(),
+                    victim.id(), victim.x(), victim.y()));
+        }
     }
 
     /** Range is measured to the target's edge, so big structures are hittable from outside. */
@@ -1012,6 +1193,10 @@ public final class GameWorld {
                 continue;
             }
             float d = u.distanceTo(x, y) - u.radius();
+            // You cannot shoot what you cannot see, unless you have walked into it.
+            if (u.isConcealed(tick) && d > STEALTH_REVEAL_RADIUS) {
+                continue;
+            }
             if (d <= radius && d < bestDist) {
                 bestDist = d;
                 best = u;

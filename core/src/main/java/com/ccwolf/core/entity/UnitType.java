@@ -25,6 +25,32 @@ public enum UnitType {
             ArmorClass.LIGHT, Weapon.JEEP_MG, true, 0, BuildingType.WAR_WORKS, null),
 
     /**
+     * Marksman: reaches further than anything else on foot and kills a man with one round,
+     * but cannot scratch a hull. Lies up when it holds still.
+     */
+    MARKSMAN("Marksman", Faction.RESISTANCE, 350, 130, 70, 1.6f, 8,
+            ArmorClass.FLESH, Weapon.HUNTING_RIFLE, false, 0, BuildingType.BARRACKS,
+            BuildingType.WAR_WORKS),
+
+    /** Grenadier: bundled charges, and the only Resistance answer to massed Soldaten. */
+    GRENADIER("Grenadier", Faction.RESISTANCE, 280, 110, 85, 1.8f, 5,
+            ArmorClass.FLESH, Weapon.GRENADE_BUNDLE, false, 0, BuildingType.BARRACKS, null),
+
+    /**
+     * Saboteur: carries charges, not a gun. Shuts a structure or a walker down long enough
+     * for the rest of the cell to do something about it.
+     */
+    SABOTEUR("Saboteur", Faction.RESISTANCE, 450, 150, 75, 2.1f, 5,
+            ArmorClass.FLESH, null, false, 0, BuildingType.BARRACKS, BuildingType.REFINERY),
+
+    /**
+     * Infiltrator: unarmed, hidden, and the reason the Resistance can field Regime armour at
+     * all. Boards an enemy vehicle and drives it home.
+     */
+    INFILTRATOR("Infiltrator", Faction.RESISTANCE, 600, 200, 65, 2.0f, 6,
+            ArmorClass.FLESH, null, false, 0, BuildingType.BARRACKS, BuildingType.WAR_WORKS),
+
+    /**
      * A Regime tank the Resistance stole, repainted and pressed into service. Their only
      * heavy armour, and their answer to the Ubersoldat.
      */
@@ -41,9 +67,29 @@ public enum UnitType {
             ArmorClass.HEAVY, Weapon.UBER_CANNON, false, 0, BuildingType.BARRACKS,
             BuildingType.WAR_WORKS),
 
+    /** Regime counter-sniper: everything the Marksman is, for rather more money. */
+    SCHARFSCHUTZE("Scharfschutze", Faction.REGIME, 420, 150, 75, 1.6f, 8,
+            ArmorClass.FLESH, Weapon.SCHARFSCHUTZE_RIFLE, false, 0, BuildingType.BARRACKS,
+            BuildingType.WAR_WORKS),
+
+    /**
+     * Sturmpionier: a flame projector on legs. Clears a trench or a building in seconds and
+     * dies to anything that can shoot back from range.
+     */
+    STURMPIONIER("Sturmpionier", Faction.REGIME, 500, 180, 140, 1.7f, 4,
+            ArmorClass.FLESH, Weapon.FLAMMENWERFER, false, 0, BuildingType.BARRACKS,
+            BuildingType.REFINERY),
+
     /** Mech-hound: the fastest thing on the map, murder on infantry, paper-thin. */
     PANZERHUND("Panzerhund", Faction.REGIME, 500, 160, 230, 5.0f, 6,
             ArmorClass.LIGHT, Weapon.HOUND_JAWS, true, 0, BuildingType.WAR_WORKS, null),
+
+    /**
+     * Sturmpanzer: the heaviest thing in the game and the Resistance's favourite thing to
+     * steal. They have no equivalent and cannot build one.
+     */
+    STURMPANZER("Sturmpanzer", Faction.REGIME, 900, 340, 620, 1.7f, 6,
+            ArmorClass.HEAVY, Weapon.STURM_CANNON, true, 0, BuildingType.WAR_WORKS, null),
 
     // --- Shared ---------------------------------------------------------------------------
     /** Mines uranium and hauls it back to a refinery. Unarmed and always a target. */
@@ -144,6 +190,19 @@ public enum UnitType {
     /** Extra structure that must be standing, beyond {@link #producedBy()}, or null. */
     public BuildingType prerequisite() {
         return prerequisite;
+    }
+
+    /**
+     * Whether this unit lies up rather than standing about: stealthy units are invisible to
+     * the enemy while they hold still and are not shooting.
+     */
+    public boolean isStealthy() {
+        return this == MARKSMAN || this == INFILTRATOR || this == SCHARFSCHUTZE;
+    }
+
+    /** Unarmed specialists that act on a target instead of shooting it. */
+    public boolean isInfiltrator() {
+        return this == INFILTRATOR || this == SABOTEUR;
     }
 
     /** Collision/selection radius in tiles. Vehicles are chunkier than infantry. */

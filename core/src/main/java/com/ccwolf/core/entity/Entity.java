@@ -12,13 +12,15 @@ import com.ccwolf.core.combat.Weapon;
 public abstract class Entity {
 
     private final int id;
-    private final int ownerId;
+    private int ownerId;
     protected float x;
     protected float y;
     protected int hp;
     private boolean alive = true;
     /** Tick this entity last took damage, or -1 if it never has. */
     private int lastDamagedTick = -1;
+    /** Tick at which sabotage wears off; anything at or before "now" means working again. */
+    private int disabledUntilTick = -1;
     private int lastAttackerId = -1;
 
     protected Entity(int id, int ownerId, float x, float y, int hp) {
@@ -35,6 +37,14 @@ public abstract class Entity {
 
     public int ownerId() {
         return ownerId;
+    }
+
+    /**
+     * Changes sides. Go through {@code GameWorld.transferOwnership} rather than calling this
+     * directly — there is bookkeeping either side of it.
+     */
+    public void setOwnerId(int ownerId) {
+        this.ownerId = ownerId;
     }
 
     public float x() {
@@ -140,6 +150,30 @@ public abstract class Entity {
 
     /** The entity's gun, or null if it is unarmed. */
     public abstract Weapon weapon();
+
+    /**
+     * Whether sabotage currently has this thing switched off. A disabled structure makes no
+     * power, builds nothing and cannot fire; a disabled unit cannot move or shoot.
+     */
+    public boolean isDisabled(int currentTick) {
+        return currentTick < disabledUntilTick;
+    }
+
+    /** Ticks of sabotage remaining, for the interface to draw a countdown. */
+    public int disabledTicksLeft(int currentTick) {
+        return Math.max(0, disabledUntilTick - currentTick);
+    }
+
+    /** Applies (or extends) sabotage. Never shortens an existing outage. */
+    public void disableUntil(int tick) {
+        if (tick > disabledUntilTick) {
+            disabledUntilTick = tick;
+        }
+    }
+
+    public void clearDisable() {
+        disabledUntilTick = -1;
+    }
 
     public abstract boolean isBuilding();
 

@@ -174,6 +174,42 @@ public final class Unit extends Entity {
         return orders.isEmpty();
     }
 
+    /** Tick this unit last pulled a trigger, which is what breaks concealment. */
+    private int lastFiredTick = -100;
+    /** Tick until which an enemy standing close enough has this unit spotted. */
+    private int revealedUntilTick = -1;
+
+    public int lastFiredTick() {
+        return lastFiredTick;
+    }
+
+    /**
+     * Whether the unit is currently hidden from the enemy.
+     *
+     * <p>Concealment is earned by holding still and holding fire: a marksman who has just shot,
+     * or who is walking, is visible like anyone else. That is what stops stealth being a
+     * permanent invisibility cloak and makes it a positioning decision.
+     */
+    public boolean isConcealed(int currentTick) {
+        if (!type.isStealthy() || !isAlive()) {
+            return false;
+        }
+        if (isMoving() || currentTick < revealedUntilTick) {
+            return false;
+        }
+        return currentTick - lastFiredTick > CONCEAL_DELAY_TICKS;
+    }
+
+    /** Called when an enemy gets close enough to see through the concealment. */
+    public void markRevealed(int untilTick) {
+        if (untilTick > revealedUntilTick) {
+            revealedUntilTick = untilTick;
+        }
+    }
+
+    /** How long after firing a stealthy unit stays exposed. */
+    public static final int CONCEAL_DELAY_TICKS = 40;
+
     // --- weapon ---------------------------------------------------------------------------
 
     public boolean weaponReady() {
@@ -183,6 +219,11 @@ public final class Unit extends Entity {
     public void startWeaponCooldown() {
         Weapon w = weapon();
         weaponCooldown = w == null ? 0 : w.cooldownTicks();
+    }
+
+    /** Called when the unit fires, so concealment knows to break. */
+    public void noteFired(int tick) {
+        this.lastFiredTick = tick;
     }
 
     public void tickCooldown() {

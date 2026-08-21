@@ -99,7 +99,21 @@ public final class Building extends Entity {
      */
     @Override
     public Weapon weapon() {
-        return complete && powered ? type.weapon() : null;
+        return complete && powered && !sabotaged ? type.weapon() : null;
+    }
+
+    /**
+     * Mirror of the sabotage state, kept here because {@link #isOperational()} has no access to
+     * the current tick. The simulation refreshes it once per tick.
+     */
+    private boolean sabotaged;
+
+    public boolean isSabotaged() {
+        return sabotaged;
+    }
+
+    public void setSabotaged(boolean sabotaged) {
+        this.sabotaged = sabotaged;
     }
 
     public boolean isPowered() {
@@ -155,7 +169,7 @@ public final class Building extends Entity {
 
     @Override
     public boolean isOperational() {
-        return isAlive() && complete;
+        return isAlive() && complete && !sabotaged;
     }
 
     public boolean isComplete() {

@@ -8,6 +8,8 @@ import com.ccwolf.core.entity.UnitType;
 import com.ccwolf.core.order.AttackMoveOrder;
 import com.ccwolf.core.order.AttackOrder;
 import com.ccwolf.core.order.HarvestOrder;
+import com.ccwolf.core.order.HijackOrder;
+import com.ccwolf.core.order.SabotageOrder;
 import com.ccwolf.core.order.MoveOrder;
 import com.ccwolf.core.order.Order;
 import com.ccwolf.core.sim.GameWorld;
@@ -213,6 +215,71 @@ public abstract class PlayerCommand {
         @Override
         public String describe() {
             return "Stop " + unitIds.length;
+        }
+    }
+
+    /**
+     * Send specialists at a target and let each one do what it does: an Infiltrator boards a
+     * vehicle and steals it, a Saboteur plants a charge and switches it off.
+     *
+     * <p>One command rather than two because the player never thinks in terms of "hijack" and
+     * "sabotage" — they tap the enemy thing with the specialist selected and expect the right
+     * thing to happen. Anything in the selection that cannot do either is left alone.
+     */
+    public static final class Infiltrate extends PlayerCommand {
+        private final int[] unitIds;
+        private final int targetId;
+
+        public Infiltrate(int[] unitIds, int targetId) {
+            this.unitIds = unitIds.clone();
+            this.targetId = targetId;
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            final Entity target = world.entity(targetId);
+            if (target == null || !target.isAlive()) {
+                return CommandResult.rejected("No such target");
+            }
+            if (!world.areEnemies(playerId, target.ownerId())) {
+                return CommandResult.rejected("That is one of ours");
+            }
+
+            CommandResult result = applyToUnits(world, playerId, unitIds, new OrderFactory() {
+                @Override
+                public Order create(GameWorld world, Unit unit) {
+                    UnitType type = unit.type();
+                    if (type == UnitType.INFILTRATOR) {
+                        // Vehicles can be driven away; a bunker cannot.
+                        return target.isBuilding() ? null : new HijackOrder(targetId);
+                    }
+                    if (type == UnitType.SABOTEUR) {
+                        return canBeSabotaged(target) ? new SabotageOrder(targetId) : null;
+                    }
+                    return null;
+                }
+            }, false);
+
+            if (!result.isAccepted()) {
+                return CommandResult.rejected(target.isBuilding()
+                        ? "Send a Saboteur to a structure"
+                        : "Send an Infiltrator after a vehicle");
+            }
+            return result;
+        }
+
+        /** Structures and heavy walkers have something to switch off; a rifleman does not. */
+        private static boolean canBeSabotaged(Entity target) {
+            if (target.isBuilding()) {
+                return true;
+            }
+            UnitType type = ((Unit) target).type();
+            return type.isVehicle() || type == UnitType.UBERSOLDAT;
+        }
+
+        @Override
+        public String describe() {
+            return "Infiltrate #" + targetId;
         }
     }
 

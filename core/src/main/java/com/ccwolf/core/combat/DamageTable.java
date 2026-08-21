@@ -15,6 +15,10 @@ public final class DamageTable {
 
     static {
         set(WeaponClass.SMALL_ARMS, 1.00f, 0.40f, 0.15f, 0.20f);
+        // A rifle round through the eye slit kills a man and does nothing to a tank.
+        set(WeaponClass.SNIPER, 1.60f, 0.25f, 0.08f, 0.10f);
+        // Fragmentation: good against troops in the open and against masonry, poor on plate.
+        set(WeaponClass.GRENADE, 1.15f, 0.70f, 0.35f, 1.10f);
         set(WeaponClass.ROCKET, 0.55f, 1.20f, 1.45f, 1.00f);
         set(WeaponClass.CANNON, 0.75f, 1.00f, 0.90f, 0.85f);
         set(WeaponClass.FLAME, 1.40f, 0.80f, 0.40f, 0.90f);

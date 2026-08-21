@@ -20,20 +20,49 @@ public enum Weapon {
     /** Ubersoldat arm cannon. */
     UBER_CANNON("Arm Cannon", 32, 4.2f, 26, WeaponClass.CANNON),
     /** Flak-turret style base defence. Long reach, no mobility. */
-    TURRET_GUN("Turret Cannon", 26, 6.0f, 22, WeaponClass.CANNON);
+    TURRET_GUN("Turret Cannon", 26, 6.0f, 22, WeaponClass.CANNON),
+
+    /** Resistance marksman: one shot, one man, a long wait for the next. */
+    HUNTING_RIFLE("Scoped Hunting Rifle", 55, 8.0f, 62, WeaponClass.SNIPER),
+
+    /** Regime counter-sniper: slightly further, slightly faster, much more expensive. */
+    SCHARFSCHUTZE_RIFLE("Zielfernrohr Rifle", 58, 8.5f, 56, WeaponClass.SNIPER),
+
+    /** A bundled charge, thrown. The Resistance answer to massed infantry. */
+    GRENADE_BUNDLE("Bundled Charge", 30, 4.2f, 44, WeaponClass.GRENADE, 1.7f),
+
+    /** Flame projector: short reach, and it catches everything standing together. */
+    FLAMMENWERFER("Flammenwerfer", 16, 3.0f, 9, WeaponClass.FLAME, 1.1f),
+
+    /** Sturmpanzer main gun: a heavier shell than anything the Resistance can field. */
+    STURM_CANNON("Sturm Cannon", 46, 5.2f, 34, WeaponClass.CANNON, 0.9f),
+
+    /** Nest gun: cheap, fast, and only dangerous to men on foot. */
+    NEST_MG("Nest MG", 11, 5.5f, 5, WeaponClass.SMALL_ARMS),
+
+    /** Anti-tank gun: devastating to armour, hopeless against a running man. */
+    PAK_GUN("Pak Gun", 44, 6.8f, 33, WeaponClass.CANNON);
 
     private final String displayName;
     private final int damage;
     private final float range;
     private final int cooldownTicks;
     private final WeaponClass weaponClass;
+    private final float blastRadius;
 
-    Weapon(String displayName, int damage, float range, int cooldownTicks, WeaponClass weaponClass) {
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass) {
+        this(displayName, damage, range, cooldownTicks, weaponClass, 0f);
+    }
+
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass, float blastRadius) {
         this.displayName = displayName;
         this.damage = damage;
         this.range = range;
         this.cooldownTicks = cooldownTicks;
         this.weaponClass = weaponClass;
+        this.blastRadius = blastRadius;
     }
 
     public String displayName() {
@@ -55,6 +84,19 @@ public enum Weapon {
 
     public WeaponClass weaponClass() {
         return weaponClass;
+    }
+
+    /**
+     * Radius in tiles over which this weapon also hurts everything else, 0 for single-target
+     * weapons. Damage falls off linearly to a quarter at the edge, and never touches the
+     * firer's own side — friendly fire would make the AI unusable and the player miserable.
+     */
+    public float blastRadius() {
+        return blastRadius;
+    }
+
+    public boolean hasBlast() {
+        return blastRadius > 0f;
     }
 
     public int damageAgainst(ArmorClass armor) {

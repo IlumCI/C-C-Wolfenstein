@@ -109,12 +109,30 @@ public final class WorldView {
         if (e == null) {
             return false;
         }
-        if (isMine(e) || !world.isFogEnabled()) {
+        if (isMine(e)) {
+            return true;
+        }
+        // Concealment beats fog: a marksman lying up in ground you can see is still not there
+        // as far as you are concerned.
+        if (!e.isBuilding() && ((Unit) e).isConcealed(world.tick())) {
+            return false;
+        }
+        if (!world.isFogEnabled()) {
             return true;
         }
         FogGrid fog = world.fogFor(playerId);
         return e.isBuilding() ? fog.isExplored(e.tileX(), e.tileY())
                 : fog.isVisible(e.tileX(), e.tileY());
+    }
+
+    /** True while one of our own stealthy units is hidden, so the interface can dim it. */
+    public boolean isHiddenAlly(Entity e) {
+        return isMine(e) && !e.isBuilding() && ((Unit) e).isConcealed(world.tick());
+    }
+
+    /** True while sabotage has this entity switched off. */
+    public boolean isDisabled(Entity e) {
+        return e != null && e.isDisabled(world.tick());
     }
 
     public boolean isVisible(int tileX, int tileY) {
