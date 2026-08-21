@@ -1,5 +1,6 @@
 package com.ccwolf.core.sim;
 
+import com.ccwolf.core.combat.Earthworks;
 import com.ccwolf.core.combat.Suppression;
 import com.ccwolf.core.combat.Weapon;
 import com.ccwolf.core.diag.TickProfiler;
@@ -24,7 +25,6 @@ import com.ccwolf.core.squad.Formation;
 import com.ccwolf.core.squad.Squad;
 import com.ccwolf.core.squad.SquadOrder;
 import com.ccwolf.core.squad.SquadRegistry;
-import com.ccwolf.core.path.AStar;
 import com.ccwolf.core.path.AStar;
 import com.ccwolf.core.path.Mover;
 import com.ccwolf.core.path.OccupancyGrid;
@@ -1429,7 +1429,16 @@ public final class GameWorld {
                     squad.anchorTileY(), destX, destY);
             profiler.countAstarSearch(mover.pathfinder().nodesExpanded());
             if (route == null || route.length == 0) {
-                squad.hold();
+                // No route, which for a squad already standing on the tile it was sent to
+                // means it has nothing left to walk. Digging in wants that read as arrival,
+                // not as a failed order: an entrench order onto your own position is "dig
+                // where you stand", and dropping it to HOLD would leave a squad ordered to
+                // dig standing about with a shovel it never gets out.
+                if (squad.order() == SquadOrder.ENTRENCH) {
+                    squad.arrivedToDig();
+                } else {
+                    squad.hold();
+                }
                 return;
             }
             squad.setPath(route, destX, destY);
@@ -1474,7 +1483,9 @@ public final class GameWorld {
 
         if (squad.pathComplete()) {
             squad.clearPath();
-            if (squad.order() != SquadOrder.ATTACK) {
+            if (squad.order() == SquadOrder.ENTRENCH) {
+                squad.arrivedToDig();
+            } else if (squad.order() != SquadOrder.ATTACK) {
                 squad.hold();
             }
         }
@@ -2058,6 +2069,7 @@ public final class GameWorld {
         int damage = resolveDamage(weapon, target);
         boolean killed = target.applyDamage(damage, attacker.id(), tick);
         suppress(target, Suppression.perShot(weapon.weaponClass()));
+        flattenGround(target, weapon);
         if (weapon.hasBlast()) {
             applyBlast(attacker, target, weapon);
         }
@@ -2101,6 +2113,64 @@ public final class GameWorld {
             }
         }
         return Math.max(1, Math.round(base * multiplier));
+    }
+
+    /**
+     * Books one tick of a man's digging, raising his tile's cover when he has done enough.
+     *
+     * <p>The one place earthworks are created, so the conditions on them are stated once. A
+     * vehicle has no shovel. A man with his head down is not using his. And a tile that is
+     * already as deep as tiles go takes no more work — checked before banking the tick, so a
+     * squad sitting on finished ground is not silently throwing away effort it could be
+     * spending a tile over.
+     */
+    public void digIn(Unit unit) {
+        if (unit == null || !unit.isAlive() || unit.type().isVehicle() || unit.isProne()) {
+            return;
+        }
+        int x = unit.tileX();
+        int y = unit.tileY();
+        if (map.cover(x, y) >= TileMap.MAX_COVER) {
+            return;
+        }
+        if (unit.dig(Earthworks.TICKS_PER_LEVEL)) {
+            map.addCover(x, y, 1);
+        }
+    }
+
+    /**
+     * Strips earth from the ground around a blast.
+     *
+     * <p>The counterplay that stops a front freezing. Infantry harden a line for free given
+     * time; high explosive is what takes it back down, and it does so far faster than men dig.
+     * A weapon that cannot move soil skips the sweep entirely, which is most of them.
+     *
+     * <p>Called from the shot rather than from the blast, because most of the things that churn
+     * ground in this game do not splash — a rocket and a tank shell are direct hits, and a
+     * direct hit is exactly what wrecks a hole. A weapon that does splash strips a wider patch,
+     * which is the whole of the answer to a dug-in line until the guns arrive.
+     */
+    private void flattenGround(Entity epicentre, Weapon weapon) {
+        int levels = Earthworks.flattening(weapon.weaponClass());
+        if (levels <= 0) {
+            return;
+        }
+        int radius = (int) weapon.blastRadius();
+        int cx = epicentre.tileX();
+        int cy = epicentre.tileY();
+        for (int y = cy - radius; y <= cy + radius; y++) {
+            for (int x = cx - radius; x <= cx + radius; x++) {
+                int dx = x - cx;
+                int dy = y - cy;
+                if (dx * dx + dy * dy > radius * radius) {
+                    continue;
+                }
+                // Full effect at the crater, half out at the edge: a near miss shakes a
+                // trench loose, a direct hit fills it in.
+                boolean atCentre = dx * dx + dy * dy <= 1;
+                map.addCover(x, y, -(atCentre ? levels : Math.max(1, levels / 2)));
+            }
+        }
     }
 
     /** Rattles a target. Structures and vehicles do not flinch; the men inside are not modelled. */

@@ -7,6 +7,7 @@ import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
 import com.ccwolf.core.order.AttackMoveOrder;
 import com.ccwolf.core.order.AttackOrder;
+import com.ccwolf.core.order.EntrenchOrder;
 import com.ccwolf.core.order.HarvestOrder;
 import com.ccwolf.core.order.HijackOrder;
 import com.ccwolf.core.order.SabotageOrder;
@@ -215,6 +216,64 @@ public abstract class PlayerCommand {
         }
     }
 
+    /**
+     * Take a piece of ground and hold it properly.
+     *
+     * <p>The one order in the game whose payoff is entirely in what the ground becomes rather
+     * than in what the men do. Given time and quiet, a squad turns a tile into somewhere that
+     * costs an attacker to cross and shelters whoever is in it.
+     */
+    public static final class SquadEntrench extends PlayerCommand {
+        private final int[] squadIds;
+        private final int tileX;
+        private final int tileY;
+        private final boolean inPlace;
+
+        /** Dig in on a named tile. */
+        public SquadEntrench(int[] squadIds, int tileX, int tileY) {
+            this.squadIds = squadIds.clone();
+            this.tileX = tileX;
+            this.tileY = tileY;
+            this.inPlace = false;
+        }
+
+        /**
+         * Dig in where each squad already is.
+         *
+         * <p>Its own constructor rather than a tile the caller works out, because with several
+         * squads selected there is no one tile that is right: sending them all to the first
+         * squad's position would gather the lot onto one spot, which is the opposite of what
+         * telling a line to dig in means.
+         */
+        public SquadEntrench(int[] squadIds) {
+            this.squadIds = squadIds.clone();
+            this.tileX = -1;
+            this.tileY = -1;
+            this.inPlace = true;
+        }
+
+        @Override
+        public String describe() {
+            return inPlace ? "Squad dig in where it stands"
+                    : "Squad dig in at " + tileX + "," + tileY;
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            if (!inPlace && !world.map().inBounds(tileX, tileY)) {
+                return CommandResult.rejected("Off the map");
+            }
+            return applyToSquads(world, playerId, squadIds, new SquadAction() {
+                @Override
+                public void apply(GameWorld w, int player, Squad squad) {
+                    int x = inPlace ? squad.anchorTileX() : tileX;
+                    int y = inPlace ? squad.anchorTileY() : tileY;
+                    w.orderSquadTo(player, squad, SquadOrder.ENTRENCH, x, y);
+                }
+            });
+        }
+    }
+
     /** Change the shape squads stand in. */
     public static final class SetFormation extends PlayerCommand {
         private final int[] squadIds;
@@ -358,6 +417,39 @@ public abstract class PlayerCommand {
         @Override
         public String describe() {
             return "Move " + unitIds.length + " to " + tileX + "," + tileY;
+        }
+    }
+
+    /** Dig one man in where he stands, or on a tile he is sent to. Vehicles refuse. */
+    public static final class Entrench extends PlayerCommand {
+        private final int[] unitIds;
+        private final int tileX;
+        private final int tileY;
+
+        public Entrench(int[] unitIds, int tileX, int tileY) {
+            this.unitIds = unitIds.clone();
+            this.tileX = tileX;
+            this.tileY = tileY;
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            if (!world.map().inBounds(tileX, tileY)) {
+                return CommandResult.rejected("Off the map");
+            }
+            return applyToUnits(world, playerId, unitIds, new OrderFactory() {
+                @Override
+                public Order create(GameWorld world, Unit unit) {
+                    // A tank crew has no shovel, and sending one to sit on a tile pretending
+                    // to dig would be a quiet way of losing a tank.
+                    return unit.type().isVehicle() ? null : new EntrenchOrder(tileX, tileY);
+                }
+            }, false);
+        }
+
+        @Override
+        public String describe() {
+            return "Dig in " + unitIds.length + " at " + tileX + "," + tileY;
         }
     }
 

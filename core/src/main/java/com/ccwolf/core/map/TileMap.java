@@ -1,5 +1,6 @@
 package com.ccwolf.core.map;
 
+import com.ccwolf.core.combat.Earthworks;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -84,8 +85,15 @@ public final class TileMap {
         return terrain(x, y).isPassable();
     }
 
+    /**
+     * What it costs to cross a tile: the ground, plus anything dug into it.
+     *
+     * <p>The single funnel every path cost goes through, which is why trenches hook in here and
+     * nowhere else — one expression decides both what the pathfinder routes around and how fast
+     * a man actually walks, so the two can never disagree.
+     */
     public float moveCost(int x, int y) {
-        return terrain(x, y).moveCost();
+        return terrain(x, y).moveCost() + Earthworks.moveCostFor(entrenchment(x, y));
     }
 
     /** Uranium remaining in this tile, 0 if it was never ore or has been mined out. */
@@ -113,6 +121,21 @@ public final class TileMap {
         if (contains(x, y)) {
             setCover(x, y, cover(x, y) + delta);
         }
+    }
+
+    /**
+     * How much of a tile's cover was dug rather than found — its entrenchment.
+     *
+     * <p>Derived rather than stored, so there is still exactly one number per tile and no way
+     * for the two to drift apart. It is what earthworks cost to cross: rubble is slow because
+     * it is rubble, and charging for that twice would make ruins nearly impassable for a reason
+     * nobody chose.
+     *
+     * <p>Shellfire can strip a tile below what the ground itself offered, which reads as no
+     * entrenchment rather than as negative earthworks — a flattened ruin is not a shortcut.
+     */
+    public int entrenchment(int x, int y) {
+        return Math.max(0, cover(x, y) - terrain(x, y).baseCover());
     }
 
     private boolean contains(int x, int y) {

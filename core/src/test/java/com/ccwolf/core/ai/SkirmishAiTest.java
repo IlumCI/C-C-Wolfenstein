@@ -28,13 +28,22 @@ class SkirmishAiTest {
         GameWorld world = skirmish.world();
         world.setFogEnabled(false);
 
+        // Recorded as the match runs, for the same reason the unit assertion below counts what
+        // was produced rather than what is alive. A side that is losing can have had its
+        // barracks shelled flat by the five-minute mark, and asking at the end whether one is
+        // standing turns a test of "can the AI build" into a test of who happened to win.
+        boolean[] everHadBarracks = new boolean[2];
         for (int i = 0; i < FIVE_MINUTES && !world.isGameOver(); i++) {
             skirmish.step();
             world.clearEvents();
+            for (int playerId = 0; playerId < 2; playerId++) {
+                everHadBarracks[playerId] |=
+                        world.hasCompletedBuilding(playerId, BuildingType.BARRACKS);
+            }
         }
 
         for (int playerId = 0; playerId < 2; playerId++) {
-            assertTrue(world.hasCompletedBuilding(playerId, BuildingType.BARRACKS),
+            assertTrue(everHadBarracks[playerId],
                     "player " + playerId + " should have built a barracks");
             // Asks what the AI produced, not what it still has standing. A side that is losing
             // badly can legitimately be at zero units five minutes in, and asserting on the

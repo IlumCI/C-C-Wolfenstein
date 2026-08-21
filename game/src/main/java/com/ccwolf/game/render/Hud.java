@@ -6,6 +6,7 @@ import com.ccwolf.core.economy.ProductionItem;
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.squad.Squad;
+import com.ccwolf.core.squad.SquadOrder;
 import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
@@ -521,7 +522,8 @@ public final class Hud {
         paint.setTextSize(10f * scale);
         String state = squad.isBroken() ? "BROKEN - falling back"
                 : squad.strength() + "/" + squad.initialStrength()
-                        + "   " + squad.formation().name();
+                        + "   " + (squad.order() == SquadOrder.ENTRENCH ? "DUG IN"
+                                : squad.formation().name());
         if (!squad.isBroken() && squad.shortfall() > 0) {
             state += "   -" + squad.shortfall();
         }
@@ -531,7 +533,9 @@ public final class Hud {
 
     private void drawControls(Surface surface, GameSession session) {
         GameSession.PointerMode mode = session.pointerMode();
-        drawButton(surface, stopButton, "STOP", session.hasSelection(), false);
+        // A squad told to stop digs in, so the plate says what it will actually do.
+        drawButton(surface, stopButton,
+                session.hasSquadSelection() ? "DIG IN" : "STOP", session.hasSelection(), false);
         drawButton(surface, pauseButton, session.isPaused() ? "RESUME" : "PAUSE", true, false);
         // With a squad up, the two structure controls give way to the two that act on it.
         // There is no room on a phone for both sets, and they are never wanted at once.

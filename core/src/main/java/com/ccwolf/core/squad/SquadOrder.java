@@ -5,8 +5,8 @@ package com.ccwolf.core.squad;
  *
  * <p>An enum and a few fields rather than the {@code Order} interface the units use. A squad has
  * four things it can be doing and the logic for all of them lives in one place, so a hierarchy
- * of classes would be ceremony around a switch. Routing and digging in will be added here when
- * they arrive.
+ * of classes would be ceremony around a switch. Routing is not one of them: a broken squad is
+ * not obeying an order, which is exactly why it is a flag on the squad and not a value here.
  */
 public enum SquadOrder {
 
@@ -20,5 +20,15 @@ public enum SquadOrder {
     ATTACK_MOVE,
 
     /** Kill one specific thing, and follow it to do so. */
-    ATTACK
+    ATTACK,
+
+    /**
+     * Take a piece of ground and dig into it.
+     *
+     * <p>Moves like an attack-move — it stops for what it meets on the way — and then does not
+     * move again. What makes it different is what the men do once they are standing still: they
+     * put the ground up around themselves, so a position held long enough becomes one that has
+     * to be shelled rather than walked into.
+     */
+    ENTRENCH
 }

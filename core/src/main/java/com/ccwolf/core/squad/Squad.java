@@ -321,6 +321,21 @@ public final class Squad {
         clearPath();
     }
 
+    /**
+     * Reached the ground it was sent to dig.
+     *
+     * <p>Unlike arriving on a move order, this does not put the squad back to HOLD: standing on
+     * the spot is not the end of an entrench order, it is the start of it. What is dropped is
+     * the destination, so that nothing tries to path to a tile the squad is already on — an
+     * arrived squad with a live destination it can never satisfy is a pathfinding search every
+     * tick, for as long as it holds the position.
+     */
+    public void arrivedToDig() {
+        this.destTileX = -1;
+        this.destTileY = -1;
+        clearPath();
+    }
+
     public void hold() {
         this.order = SquadOrder.HOLD;
         this.orderTargetId = -1;

@@ -620,11 +620,20 @@ public final class GameSession {
                 tileX + 0.5f, tileY + 0.5f, tileX + 0.5f, tileY + 0.5f, playerId, 0, PING_MS));
     }
 
+    /**
+     * Stop. For a squad that means dig in, not merely stand still.
+     *
+     * <p>There is no case where a squad parked on a piece of ground would rather not be
+     * improving it: digging costs nothing, stops the moment there is something to shoot at,
+     * and the hole stays behind when the squad moves on. Holding without digging would be a
+     * strictly worse option offered next to a strictly better one, so the button issues the
+     * better one and says so.
+     */
     public void stopSelection() {
         if (hasSquadSelection()) {
             if (report(commands.submit(playerId,
-                    new PlayerCommand.SquadStop(selectedSquadIds())))) {
-                showMessage("Holding position");
+                    new PlayerCommand.SquadEntrench(selectedSquadIds())))) {
+                showMessage("Digging in");
             }
             return;
         }

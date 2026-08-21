@@ -65,6 +65,19 @@ public final class Unit extends Entity {
      */
     private int suppression;
 
+    /**
+     * Ticks of digging banked towards the next level of cover on the tile underfoot.
+     *
+     * <p>Kept on the man rather than the tile because it is his effort, not the ground's state:
+     * two men digging the same tile should not inherit each other's work, and a man who is
+     * driven off takes his unfinished hole with him.
+     */
+    private int digProgress;
+
+    /** The tile the banked digging belongs to, so moving off it throws the work away. */
+    private int digTileX = -1;
+    private int digTileY = -1;
+
     private float separationPushX;
     private float separationPushY;
 
@@ -410,6 +423,38 @@ public final class Unit extends Entity {
     /** Cannot advance at all. Still shoots, which is what makes suppressing fire worth using. */
     public boolean isPinned() {
         return suppression >= Suppression.PINNED;
+    }
+
+    /**
+     * Books one tick of digging, and reports whether it finished a level of cover.
+     *
+     * <p>Moving to another tile abandons whatever was banked. That is deliberate: it stops a
+     * squad shuffling along a line and finishing a trench everywhere it paused, which would
+     * make entrenchment free for anyone who kept moving.
+     */
+    public boolean dig(int ticksPerLevel) {
+        if (tileX() != digTileX || tileY() != digTileY) {
+            digTileX = tileX();
+            digTileY = tileY();
+            digProgress = 0;
+        }
+        if (++digProgress < ticksPerLevel) {
+            return false;
+        }
+        digProgress = 0;
+        return true;
+    }
+
+    /** Throws away unfinished digging. Called when a man is sent somewhere else. */
+    public void resetDigging() {
+        digProgress = 0;
+        digTileX = -1;
+        digTileY = -1;
+    }
+
+    /** Ticks banked towards the next level. Presentation only — a man with a shovel out. */
+    public int digProgress() {
+        return digProgress;
     }
 
     public void addSeparationPush(float dx, float dy) {

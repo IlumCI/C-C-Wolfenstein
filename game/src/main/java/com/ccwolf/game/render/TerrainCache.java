@@ -28,10 +28,11 @@ import java.util.Map;
  *
  * <h2>What invalidates a block</h2>
  *
- * <p>Terrain does not change, but uranium does: a seam that is worked out has to stop looking
- * like a seam. Each block remembers the ore levels it was baked with and rebakes when they
- * move — which is rare, because the level is a coarse three-step reading of the tile, not its
- * exact amount.
+ * <p>Terrain does not change, but two things on top of it do. Uranium is mined out, and a seam
+ * that is worked out has to stop looking like a seam. And men dig, so ground that was open
+ * grows a trench across it. Each block remembers both readings it was baked with and rebakes
+ * when either moves — which stays cheap because both are coarse whole numbers, not the exact
+ * amounts underneath them, so most ticks of mining and most ticks of digging change nothing.
  */
 public final class TerrainCache {
 
@@ -58,6 +59,8 @@ public final class TerrainCache {
         Image image;
         /** Coarse ore level per tile at bake time; null for a block with no seams in it. */
         byte[] oreLevels;
+        /** Dug depth per tile at bake time; null for a block nobody has broken ground in. */
+        byte[] digLevels;
         long lastUsed;
     }
 
@@ -109,6 +112,7 @@ public final class TerrainCache {
 
         PixelCanvas canvas = new PixelCanvas(BLOCK_TILES * tile, BLOCK_TILES * tile);
         byte[] levels = null;
+        byte[] digs = null;
 
         for (int dy = 0; dy < BLOCK_TILES; dy++) {
             for (int dx = 0; dx < BLOCK_TILES; dx++) {
@@ -117,6 +121,7 @@ public final class TerrainCache {
                 Terrain terrain = map.terrain(x, y);
                 int variant = SpriteAtlas.variantFor(x, y);
 
+                PixelCanvas sprite;
                 if (terrain == Terrain.ORE && map.ore(x, y) > 0) {
                     int level = oreLevel(map.ore(x, y));
                     if (levels == null) {
@@ -125,15 +130,29 @@ public final class TerrainCache {
                         java.util.Arrays.fill(levels, (byte) -1);
                     }
                     levels[dy * BLOCK_TILES + dx] = (byte) level;
-                    canvas.blit(TerrainSprites.renderOre(variant, level), dx * tile, dy * tile);
+                    sprite = TerrainSprites.renderOre(variant, level);
                 } else {
-                    canvas.blit(TerrainSprites.render(terrain, variant), dx * tile, dy * tile);
+                    sprite = TerrainSprites.render(terrain, variant);
                 }
+
+                int dug = map.entrenchment(x, y);
+                if (dug > 0) {
+                    if (digs == null) {
+                        digs = new byte[BLOCK_TILES * BLOCK_TILES];
+                    }
+                    digs[dy * BLOCK_TILES + dx] = (byte) dug;
+                    // Safe to cut into directly: both branches above hand back a canvas they
+                    // just made. If either ever starts returning a shared atlas sprite this
+                    // needs a copy first, or one trench would appear on every grass tile.
+                    TerrainSprites.entrench(sprite, dug, variant);
+                }
+                canvas.blit(sprite, dx * tile, dy * tile);
             }
         }
 
         bakes++;
         Block block = new Block();
+        block.digLevels = digs;
         // Opaque by construction: every tile of a block is a full terrain sprite, so there is
         // no transparency to composite and the backend can copy instead.
         block.image = canvas.toOpaqueImage();
@@ -141,16 +160,26 @@ public final class TerrainCache {
         return block;
     }
 
-    /** A block is stale once any seam in it has visibly changed level. */
+    /** A block is stale once a seam in it has changed level, or somebody has moved earth. */
     private boolean isStale(TileMap map, Block block, int blockX, int blockY) {
-        if (block.oreLevels == null) {
-            return false;
-        }
         int originX = blockX * BLOCK_TILES;
         int originY = blockY * BLOCK_TILES;
+
+        // Digging has to be checked even on a block that had no earthworks when it was baked —
+        // unlike ore, which can only ever decrease from tiles that were already seams, ground
+        // is dug where there was nothing before. So the null case here means "was flat", not
+        // "cannot change", and a null array is compared against zero rather than skipped.
         for (int dy = 0; dy < BLOCK_TILES; dy++) {
             for (int dx = 0; dx < BLOCK_TILES; dx++) {
-                byte baked = block.oreLevels[dy * BLOCK_TILES + dx];
+                int index = dy * BLOCK_TILES + dx;
+                byte bakedDig = block.digLevels == null ? 0 : block.digLevels[index];
+                if (map.entrenchment(originX + dx, originY + dy) != bakedDig) {
+                    return true;
+                }
+                if (block.oreLevels == null) {
+                    continue;
+                }
+                byte baked = block.oreLevels[index];
                 if (baked < 0) {
                     continue;
                 }

@@ -46,6 +46,76 @@ public final class TerrainSprites {
         return c;
     }
 
+    /** How many depths of dug ground are drawn, matching TileMap.MAX_COVER. */
+    public static final int TRENCH_LEVELS = 4;
+
+    /**
+     * Digs a tile out, in place.
+     *
+     * <p>An overlay rather than its own tile set, because entrenchment can happen on any ground
+     * a man can stand on and there is no sense authoring a trench-in-grass, a trench-in-rubble
+     * and a trench-in-a-uranium-seam separately.
+     *
+     * <p>The four steps are meant to be readable at a glance from a long way out, because
+     * knowing which stretch of a line is properly dug and which is still a scrape is the whole
+     * tactical use of looking at it: a scratch in the soil, a hollow with spoil beside it, a
+     * proper trough with a parapet, and finally a revetted trench with timber in the walls. The
+     * spoil always goes on the north lip, so a whole line reads as facing one way.
+     *
+     * @param level dug depth above the ground's own, 1 to {@link #TRENCH_LEVELS}
+     */
+    public static void entrench(PixelCanvas c, int level, int variant) {
+        if (level <= 0) {
+            return;
+        }
+        int seed = variant * 331 + level * 17;
+        int[] dirt = WolfPalette.DIRT;
+        int depth = Math.min(TRENCH_LEVELS, level);
+
+        // Always cut clean across the tile, so that neighbouring dug tiles join into one
+        // trench rather than a row of separate pits. The inset narrows as the work goes on,
+        // which is what makes a scrape read as a scratch and a finished trench as a gap.
+        int left = Math.max(0, 4 - depth);
+        int right = TILE - left - 1;
+        int height = 3 + depth * 2;
+        int top = TILE / 2 - height / 2;
+        int bottom = top + height - 1;
+
+        // Spoil thrown up on the north lip. Bright, because this is the part that catches the
+        // light and it is what makes a trench visible from a long way out.
+        c.hLine(left, right, top - 1, WolfPalette.shade(dirt, 0));
+        c.speckle(left, top - 2, right - left + 1, 2,
+                WolfPalette.shade(dirt, 1), seed, 2);
+
+        // The cut. Walls one shade darker than the floor is the wrong way round physically and
+        // the right way round to look at: a dark rim against bright spoil is what reads as a
+        // hole, and the floor has to stay light enough for a man standing in it to be seen.
+        c.rect(left, top, right - left + 1, height, WolfPalette.shade(dirt, 3));
+        c.hLine(left, right, top, WolfPalette.shade(dirt, 4));
+        c.hLine(left, right, bottom, WolfPalette.shade(dirt, 4));
+        c.speckle(left + 1, top + 1, right - left - 1, height - 2,
+                WolfPalette.shade(dirt, 2), seed + 5, 5);
+
+        if (depth >= 3) {
+            // A parapet on the south lip: the thing an attacker has to come over.
+            c.hLine(left, right, bottom + 1, WolfPalette.shade(dirt, 1));
+            c.speckle(left, bottom + 1, right - left + 1, 2,
+                    WolfPalette.shade(dirt, 0), seed + 11, 3);
+        }
+        if (depth >= 4) {
+            // Revetment and sandbags — the marks of a position meant to be kept rather than
+            // occupied. Both run along the trench rather than across it: anything drawn across
+            // the cut at this size reads as a fence standing in it.
+            int[] timber = WolfPalette.LEATHER;
+            c.hLine(left + 1, right - 1, top + 1, WolfPalette.shade(timber, 2));
+            c.hLine(left + 1, right - 1, bottom - 1, WolfPalette.shade(timber, 3));
+            for (int x = left; x + 4 < right; x += 6) {
+                c.rect(x + 1, bottom + 1, 4, 2, WolfPalette.shade(WolfPalette.BONE, 3));
+                c.px(x + 1, bottom + 1, WolfPalette.shade(WolfPalette.BONE, 2));
+            }
+        }
+    }
+
     /** Ore is drawn as an overlay on grass so a mined-out seam fades back into the field. */
     public static PixelCanvas renderOre(int variant, int level) {
         PixelCanvas c = render(Terrain.GRASS, variant);

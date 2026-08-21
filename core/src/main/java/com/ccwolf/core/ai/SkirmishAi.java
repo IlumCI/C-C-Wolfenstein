@@ -38,6 +38,12 @@ public final class SkirmishAi {
     /** A structure hit within this many ticks counts as "under attack" for the defence check. */
     private static final int RECENT_DAMAGE_TICKS = 5 * GameWorld.TICKS_PER_SECOND;
 
+    /** How many squads are kept in the ground at once, out of the pool waves are drawn from. */
+    private static final int DUG_IN_SQUADS = 2;
+
+    /** How far out from the command post the line is dug, in tiles. */
+    private static final float TRENCH_LINE_DISTANCE = 9f;
+
     private final int playerId;
     private final Difficulty difficulty;
 
@@ -93,6 +99,7 @@ public final class SkirmishAi {
         reinforceWornSquads(world, me);
         manageSpecialOperations(world, me);
         defendBase(world);
+        digInTheGarrison(world);
         pressAdvantage(world);
         launchWave(world);
     }
@@ -381,6 +388,64 @@ public final class SkirmishAi {
     }
 
     /**
+     * Puts the squads that are standing about to work with a shovel.
+     *
+     * <p>An army waiting for the next wave used to stand in a heap by the factory doing
+     * nothing. Sending it to dig instead costs nothing — these are exactly the squads with no
+     * other job — and turns the approach to the base into ground an attacker has to pay for.
+     *
+     * <p>Only a couple of squads at a time, and always on the enemy's side of the base. Digging
+     * the whole army in would empty the pool that waves are drawn from, and a line dug behind
+     * the command post defends nothing, in exactly the way turrets built behind it defend
+     * nothing.
+     */
+    private void digInTheGarrison(GameWorld world) {
+        Building post = world.findBuilding(playerId, BuildingType.COMMAND_POST);
+        if (post == null) {
+            return;
+        }
+        Entity enemy = world.findNearestEnemyAnywhere(playerId, post.x(), post.y(), true);
+        if (enemy == null) {
+            return;
+        }
+
+        collectIdleSquads(world, squadScratch);
+        int dug = 0;
+        for (int i = 0; i < squadScratch.size(); i++) {
+            if (squadScratch.get(i).order() == SquadOrder.ENTRENCH) {
+                dug++;
+            }
+        }
+
+        // A frontage rather than a point: two squads on the same tile would be two squads
+        // fighting each other's separation, and one hole between them.
+        float dx = enemy.x() - post.x();
+        float dy = enemy.y() - post.y();
+        float length = (float) Math.sqrt(dx * dx + dy * dy);
+        if (length < 1f) {
+            return;
+        }
+        dx /= length;
+        dy /= length;
+
+        for (int i = 0; i < squadScratch.size() && dug < DUG_IN_SQUADS; i++) {
+            Squad squad = squadScratch.get(i);
+            if (squad.order() == SquadOrder.ENTRENCH) {
+                continue;
+            }
+            // Along the line to the enemy, then offset sideways so the squads sit abreast.
+            int spread = dug * 2 - 1;
+            int tileX = (int) (post.x() + dx * TRENCH_LINE_DISTANCE - dy * spread * 3f);
+            int tileY = (int) (post.y() + dy * TRENCH_LINE_DISTANCE + dx * spread * 3f);
+            if (!world.map().inBounds(tileX, tileY) || !world.map().isPassable(tileX, tileY)) {
+                continue;
+            }
+            world.orderSquadTo(playerId, squad, SquadOrder.ENTRENCH, tileX, tileY);
+            dug++;
+        }
+    }
+
+    /**
      * Throws everything at the enemy once their army is broken.
      *
      * <p>Without this the AI has no finishing blow. It attacks on a cooldown with whatever
@@ -521,8 +586,14 @@ public final class SkirmishAi {
         List<Squad> all = world.squads().all();
         for (int i = 0; i < all.size(); i++) {
             Squad squad = all.get(i);
+            // A dug-in squad counts as idle. Digging is what a formation does while it is
+            // waiting, not a commitment it has made: the hole stays in the ground when the
+            // squad leaves for a wave, so the next squad through inherits the work rather
+            // than starting again. Treating it as busy would give an AI that dug in once and
+            // never attacked again.
             if (squad.ownerId() == playerId && !squad.isWipedOut()
-                    && squad.order() == SquadOrder.HOLD) {
+                    && (squad.order() == SquadOrder.HOLD
+                        || squad.order() == SquadOrder.ENTRENCH)) {
                 out.add(squad);
             }
         }

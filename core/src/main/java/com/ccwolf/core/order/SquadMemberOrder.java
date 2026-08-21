@@ -4,6 +4,7 @@ import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.sim.GameWorld;
 import com.ccwolf.core.squad.Squad;
+import com.ccwolf.core.squad.SquadOrder;
 
 /**
  * Stand where the squad says, and shoot what the squad is shooting.
@@ -28,6 +29,14 @@ public final class SquadMemberOrder implements Order {
      * gives up on steering and paths like anything else.
      */
     private static final float SLOT_LEASH = 6f;
+
+    /**
+     * How near his slot a man has to be before he starts digging.
+     *
+     * <p>Tighter than the leash on purpose: a squad ordered to entrench should settle into its
+     * formation and then dig, not scatter a line of half-finished holes across the approach.
+     */
+    private static final float DIG_RADIUS = 0.75f;
 
     private final int squadId;
 
@@ -66,9 +75,18 @@ public final class SquadMemberOrder implements Order {
         float slotX = slot[0];
         float slotY = slot[1];
 
-        if (unit.distanceTo(slotX, slotY) > SLOT_LEASH) {
+        float fromSlot = unit.distanceTo(slotX, slotY);
+        if (fromSlot > SLOT_LEASH) {
             // Too far adrift to steer back; walk a real route to the slot's tile.
             world.mover().moveTowards(world.grid(), unit, (int) slotX, (int) slotY, dt);
+            return false;
+        }
+
+        if (squad.order() == SquadOrder.ENTRENCH && fromSlot <= DIG_RADIUS) {
+            // In position, and nothing to shoot at — the branch above would have returned.
+            // That exclusion is the whole cost of earthworks: a squad fighting is not digging.
+            world.mover().stop(unit);
+            world.digIn(unit);
             return false;
         }
 
