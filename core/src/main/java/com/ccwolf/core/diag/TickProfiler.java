@@ -50,6 +50,7 @@ public final class TickProfiler {
     private long astarNodes;
     private long separationPairs;
     private long stuckRepaths;
+    private long detours;
     private long indexResults;
     private long pathQueueDepth;
 
@@ -88,8 +89,21 @@ public final class TickProfiler {
     // Counters are recorded whether or not timing is on: they cost an add, and a test that
     // asserts on them should not have to remember to switch profiling on first.
 
+    /** A full search: no bound but the pathfinder's own, and the expensive kind. */
     public void countAstarSearch(int nodesExpanded) {
         astarSearches++;
+        astarNodes += nodesExpanded;
+    }
+
+    /**
+     * A bounded detour around an obstruction.
+     *
+     * <p>Counted apart from full searches because trading one for several is the whole point:
+     * the search count going up while the node count goes down is success, and one number
+     * covering both would hide that.
+     */
+    public void countDetourSearch(int nodesExpanded) {
+        detours++;
         astarNodes += nodesExpanded;
     }
 
@@ -99,6 +113,10 @@ public final class TickProfiler {
 
     public void countStuckRepath() {
         stuckRepaths++;
+    }
+
+    public long detours() {
+        return detours;
     }
 
     public void countIndexResults(long results) {
@@ -147,6 +165,7 @@ public final class TickProfiler {
         astarNodes = 0L;
         separationPairs = 0L;
         stuckRepaths = 0L;
+        detours = 0L;
         indexResults = 0L;
         pathQueueDepth = 0L;
     }
@@ -172,8 +191,10 @@ public final class TickProfiler {
                 total / (double) sampled / 1_000_000.0));
         out.append('\n');
         out.append("counters (deterministic - safe to assert on)\n");
-        out.append(String.format("  A* searches      %10d  (%.2f per tick)%n",
+        out.append(String.format("  A* full searches %10d  (%.2f per tick)%n",
                 Long.valueOf(astarSearches), Double.valueOf(astarSearches / (double) sampled)));
+        out.append(String.format("  A* detours       %10d  (%.2f per tick)%n",
+                Long.valueOf(detours), Double.valueOf(detours / (double) sampled)));
         out.append(String.format("  A* nodes         %10d  (%.1f per tick)%n",
                 Long.valueOf(astarNodes), Double.valueOf(astarNodes / (double) sampled)));
         out.append(String.format("  separation pairs %10d  (%.1f per tick)%n",

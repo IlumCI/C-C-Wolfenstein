@@ -279,6 +279,14 @@ public final class Unit extends Entity {
         return path != null && pathDestX == destX && pathDestY == destY && pathIndex < path.length;
     }
 
+    public int pathDestX() {
+        return pathDestX;
+    }
+
+    public int pathDestY() {
+        return pathDestY;
+    }
+
     public int pathIndex() {
         return pathIndex;
     }

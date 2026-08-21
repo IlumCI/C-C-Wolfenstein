@@ -13,11 +13,32 @@ public final class Mover {
     /** How close to a waypoint's centre counts as reaching it. */
     private static final float WAYPOINT_EPSILON = 0.08f;
 
-    /** Ticks of no progress before we assume we are stuck and ask for a new route. */
+    /**
+     * Ticks of no progress before a unit is treated as wedged.
+     *
+     * <p>Judging this over a fixed window instead was tried and is worse. It lowers the bar
+     * from fourteen consecutive bad ticks to one bad window, and the two are not equivalent
+     * across unit speeds: a fast unit reaches its next waypoint before a window can complete,
+     * while a slow one sits through two or three of them per waypoint and keeps declaring
+     * itself stuck. In a balance sweep that churned the heavier, slower side's routes badly
+     * enough to take it from four wins in ten to none.
+     */
     private static final int STUCK_TICKS = 14;
 
     /** Minimum ticks between repaths for one unit, so a jam cannot melt the CPU. */
     private static final int REPATH_COOLDOWN = 10;
+
+    /** How far ahead on the existing route a detour tries to rejoin it, in waypoints. */
+    private static final int DETOUR_LOOKAHEAD = 8;
+
+    /**
+     * Node budget for a detour.
+     *
+     * <p>A fifteenth of a full search. A detour is meant to get round whatever is immediately
+     * in the way, so if it cannot be found close by it is not a detour and the unit should have
+     * a proper route instead.
+     */
+    private static final int DETOUR_NODE_LIMIT = 400;
 
     private final AStar aStar = new AStar();
 
@@ -81,8 +102,15 @@ public final class Mover {
         int wy = AStar.packY(packed);
 
         if (grid.isBlocked(wx, wy)) {
-            // Something was built across the route; drop the path and try again next tick.
-            unit.clearPath();
+            // Something was built across the route. Try to step round it first: a wall going up
+            // mid-journey is the textbook case for a detour, and discarding the whole route
+            // means a full cross-map search to get past one building.
+            if (!tryLocalDetour(grid, unit)) {
+                unit.clearPath();
+                if (profiler != null) {
+                    profiler.countStuckRepath();
+                }
+            }
             return false;
         }
 
@@ -126,12 +154,12 @@ public final class Mover {
             unit.setVelocity(vx, vy);
             unit.faceToward(targetX, targetY);
 
-            // Separation from neighbours can shove a unit sideways or backwards. If the gap to
-            // the waypoint stops shrinking we are wedged in a crowd, so throw the route away and
-            // let the next tick path around whatever is in the way.
+            // Separation from neighbours can shove a unit sideways. If the gap to the waypoint
+            // stops shrinking for long enough, we are wedged - try to step round whatever it is
+            // before giving up a route that is otherwise still good.
             if (dist >= unit.lastWaypointDistance() - step * 0.25f) {
                 unit.noteBlocked();
-                if (unit.blockedTicks() > STUCK_TICKS) {
+                if (unit.blockedTicks() > STUCK_TICKS && !tryLocalDetour(grid, unit)) {
                     unit.clearPath();
                     if (profiler != null) {
                         profiler.countStuckRepath();
@@ -143,6 +171,60 @@ public final class Mover {
             unit.setLastWaypointDistance(dist);
         }
         return false;
+    }
+
+    /**
+     * Tries to get round an obstruction without throwing the whole route away.
+     *
+     * <p>A wedged unit used to drop its path, which meant a full search across the map on the
+     * next tick — six thousand nodes to solve a problem that is usually one building wide. This
+     * asks a much smaller question instead: can we reach a point a little further along the
+     * route we already have? If so, that stretch is replaced and the rest of the journey stands.
+     *
+     * @return true if a detour was found and spliced in
+     */
+    private boolean tryLocalDetour(PathGrid grid, Unit unit) {
+        int[] path = unit.path();
+        if (path == null || unit.repathCooldown() > 0) {
+            return false;
+        }
+        int rejoinIndex = Math.min(unit.pathIndex() + DETOUR_LOOKAHEAD, path.length - 1);
+        if (rejoinIndex <= unit.pathIndex()) {
+            // Nearly there anyway; a detour cannot help.
+            return false;
+        }
+
+        int rejoinX = AStar.packX(path[rejoinIndex]);
+        int rejoinY = AStar.packY(path[rejoinIndex]);
+
+        int[] detour = aStar.findPath(grid, unit.tileX(), unit.tileY(), rejoinX, rejoinY,
+                DETOUR_NODE_LIMIT);
+        if (profiler != null) {
+            profiler.countDetourSearch(aStar.nodesExpanded());
+        }
+        if (detour == null || detour.length == 0) {
+            return false;
+        }
+        // A* returns its best partial attempt when it cannot reach the goal. A detour that does
+        // not actually rejoin the route is not a detour.
+        int last = detour[detour.length - 1];
+        if (AStar.packX(last) != rejoinX || AStar.packY(last) != rejoinY) {
+            return false;
+        }
+
+        int tail = path.length - rejoinIndex - 1;
+        int[] spliced = new int[detour.length + tail];
+        System.arraycopy(detour, 0, spliced, 0, detour.length);
+        if (tail > 0) {
+            System.arraycopy(path, rejoinIndex + 1, spliced, detour.length, tail);
+        }
+        unit.setPath(spliced, unit.pathDestX(), unit.pathDestY());
+        // Only a detour that worked costs a cooldown. Charging for a failed one left the unit
+        // standing still for half a second before it could search properly, which is worse than
+        // never having tried - and cost the slower, heavier side enough matches to show up in a
+        // balance sweep as an eleven-to-one rout.
+        unit.startRepathCooldown(REPATH_COOLDOWN);
+        return true;
     }
 
     /** Abandons the current route; the next call will path afresh. */

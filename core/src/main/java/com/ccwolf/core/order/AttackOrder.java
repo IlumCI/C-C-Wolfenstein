@@ -14,6 +14,7 @@ import com.ccwolf.core.sim.GameWorld;
 public final class AttackOrder implements Order {
 
     private final int targetId;
+    private final ChaseTile chase = new ChaseTile();
 
     public AttackOrder(int targetId) {
         this.targetId = targetId;
@@ -42,8 +43,10 @@ public final class AttackOrder implements Order {
             return false;
         }
 
-        // Walk to the tile the target is standing on; range checks stop us short of it.
-        world.mover().moveTowards(world.grid(), unit, target.tileX(), target.tileY(), dt);
+        // Walk towards the tile the target is on, but do not re-aim every time it crosses a
+        // boundary: the range check above is what stops us, not arrival.
+        chase.follow(target);
+        world.mover().moveTowards(world.grid(), unit, chase.tileX(), chase.tileY(), dt);
         return false;
     }
 

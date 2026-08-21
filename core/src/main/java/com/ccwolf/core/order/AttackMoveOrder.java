@@ -17,6 +17,7 @@ public final class AttackMoveOrder implements Order {
     private final int tileX;
     private final int tileY;
     private int engagedTargetId = -1;
+    private final ChaseTile chase = new ChaseTile();
 
     public AttackMoveOrder(int tileX, int tileY) {
         this.tileX = tileX;
@@ -43,11 +44,15 @@ public final class AttackMoveOrder implements Order {
                 || unit.distanceTo(target) > weapon.range() + LEASH)) {
             target = null;
             engagedTargetId = -1;
+            chase.reset();
         }
 
         if (target == null && (world.tick() + unit.id()) % SCAN_INTERVAL == 0) {
             target = world.findNearestEnemy(unit.ownerId(), unit.x(), unit.y(),
                     unit.sight(), true);
+            if (target == null || target.id() != engagedTargetId) {
+                chase.reset();
+            }
             engagedTargetId = target == null ? -1 : target.id();
         }
 
@@ -57,7 +62,8 @@ public final class AttackMoveOrder implements Order {
                 unit.faceToward(target.x(), target.y());
                 world.tryAttack(unit, target);
             } else {
-                world.mover().moveTowards(world.grid(), unit, target.tileX(), target.tileY(), dt);
+                chase.follow(target);
+                world.mover().moveTowards(world.grid(), unit, chase.tileX(), chase.tileY(), dt);
             }
             return false;
         }
