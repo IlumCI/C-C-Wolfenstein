@@ -15,6 +15,7 @@ public final class RenderProfiler {
         TERRAIN,
         DECALS,
         GROUND_FX,
+        CONTROL,
         ENTITIES,
         OVERLAY_FX,
         AIR_FX,

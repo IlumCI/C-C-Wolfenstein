@@ -281,6 +281,9 @@ public final class GameWorld {
     /** What each cell's ground is worth from the earthworks on it. Shared: trenches have no owner. */
     private float[] groundBonus;
 
+    /** Bumped whenever the influence field is rebuilt, so a renderer knows when to rebake. */
+    private int controlVersion;
+
     /** Rounds in the air. Empty until something fires indirectly. */
     private final ShellLayer shells = new ShellLayer();
     private final List<GameEvent> events = new ArrayList<GameEvent>();
@@ -2243,6 +2246,12 @@ public final class GameWorld {
             influences.get(i).applyGroundBonus(groundBonus);
             influences.get(i).spread();
         }
+        controlVersion++;
+    }
+
+    /** Changes whenever the field has moved. Presentation only. */
+    public int controlVersion() {
+        return controlVersion;
     }
 
     /**

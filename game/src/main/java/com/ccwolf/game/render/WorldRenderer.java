@@ -50,6 +50,11 @@ public final class WorldRenderer {
     private final Brush text = new Brush().setAntiAlias(true);
     private final Rect dst = new Rect();
 
+    /** Reused: the whole map in screen space, for the control wash. */
+    private final Rect worldRect = new Rect();
+
+    private final ControlOverlay control = new ControlOverlay();
+
     /** Where the frame goes. Off unless something switches it on. */
     private final RenderProfiler profiler = new RenderProfiler();
 
@@ -133,6 +138,13 @@ public final class WorldRenderer {
         drawGroundEffects(surface, session);
         profiler.end(RenderProfiler.Pass.GROUND_FX);
 
+        // Ground the armies hold, washed under everything standing on it - and, critically,
+        // before the fog pass, because the field behind it counts every unit on the map
+        // whether or not this player has seen it.
+        profiler.begin(RenderProfiler.Pass.CONTROL);
+        drawControl(surface, session);
+        profiler.end(RenderProfiler.Pass.CONTROL);
+
         profiler.begin(RenderProfiler.Pass.ENTITIES);
         drawEntities(surface, session);
         profiler.end(RenderProfiler.Pass.ENTITIES);
@@ -207,6 +219,26 @@ public final class WorldRenderer {
     }
 
     // --- entities -------------------------------------------------------------------------
+
+    /**
+     * The control wash, drawn as one stretched image over the whole map.
+     *
+     * <p>Clipped to the viewport by the caller's pushClip, so drawing the whole map rather than
+     * the visible part costs nothing extra and saves working out which cells are on screen.
+     */
+    /** Development toggle: shows the control field at full strength instead of as a hint. */
+    public void toggleControlDetail() {
+        control.setRaw(!control.isRaw());
+    }
+
+    private void drawControl(Surface surface, GameSession session) {
+        WorldView view = session.view();
+        Camera camera = session.camera();
+        worldRect.set(camera.screenX(0f), camera.screenY(0f),
+                camera.screenX(view.map().width()), camera.screenY(view.map().height()));
+        control.draw(surface, view, worldRect, view.controlVersion());
+        profiler.countDraws(RenderProfiler.Pass.CONTROL, 1);
+    }
 
     private void drawEntities(Surface surface, GameSession session) {
         WorldView view = session.view();

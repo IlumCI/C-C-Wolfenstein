@@ -206,6 +206,35 @@ public final class WorldView {
         return world.isFogEnabled();
     }
 
+    /**
+     * Who holds this ground, from our side: positive is ours, negative is theirs.
+     *
+     * <p>Surfaced as a question rather than by handing out the grid, matching {@code isVisible}
+     * and {@code canObserve}. The renderer has no business reaching through {@code world()} for
+     * this — an overlay is exactly the sort of thing that would casually punch through the seam
+     * and start reading simulation internals per frame.
+     */
+    public float control(int tileX, int tileY) {
+        return world.control(playerId, tileX, tileY);
+    }
+
+    /** Cell dimensions of the control field, for anything that wants to walk it. */
+    public int controlCellsAcross() {
+        return world.controlCellsAcross();
+    }
+
+    public int controlCellsDown() {
+        return world.controlCellsDown();
+    }
+
+    public float controlAtCell(int cellX, int cellY) {
+        return world.controlAtCell(playerId, cellX, cellY);
+    }
+
+    public int controlVersion() {
+        return world.controlVersion();
+    }
+
     // --- production -----------------------------------------------------------------------
 
     public ProductionQueue queueFor(BuildingType producer) {

@@ -212,6 +212,11 @@ public final class DesktopMain {
                         case KeyEvent.VK_SPACE:
                             session.setPaused(!session.isPaused());
                             break;
+                        case KeyEvent.VK_F:
+                            // Desktop only, and deliberately: the plates are full at two rows,
+                            // and Android has no key path at all.
+                            renderer.toggleControlDetail();
+                            break;
                         default:
                             break;
                     }
