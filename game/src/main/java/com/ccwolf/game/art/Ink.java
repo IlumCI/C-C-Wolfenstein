@@ -59,15 +59,39 @@ public final class Ink {
     public static final byte SKIN_SHADE = 10;
     public static final byte KIT = 11;
     public static final byte KIT_DARK = 12;
-    public static final byte METAL = 13;
-    public static final byte METAL_DARK = 14;
-    public static final byte WOOD = 15;
-    /** A faction flash: an armband, a painted number, a unit's one spot of colour. */
-    public static final byte ACCENT = 16;
-    /** An eye, a lens, a visor slit. One pixel, and it is what makes a helmet a head. */
-    public static final byte EYE = 17;
+    /**
+     * A helmet gets three tones of its own, and its own ramp.
+     *
+     * <p>Two findings, both from the same close-up. It is the most identity-carrying shape on an
+     * overhead soldier — from straight above a man is a lid, a pair of shoulders and a weapon —
+     * so it cannot borrow a tone from something else and hope to separate. And it is <b>painted
+     * steel, not bare steel</b>: drawn in gunmetal, whose ramp is dark by design because it is
+     * for weapons and tracks, a helmet came out as a black hole in the middle of the man.
+     *
+     * <p>Three tones rather than two because it is the one thing here meant to read as hard. The
+     * lightest is the glint along the crown, and it is the difference between a lid and a hole.
+     */
+    public static final byte HELM_LIGHT = 13;
+    public static final byte HELM = 14;
+    public static final byte HELM_DARK = 15;
 
-    public static final int SLOTS = 18;
+    /** Bare steel: a barrel, a receiver, a blade. Dark on purpose. */
+    public static final byte METAL_LIGHT = 16;
+    public static final byte METAL = 17;
+    public static final byte METAL_DARK = 18;
+    public static final byte WOOD = 19;
+    /** A faction flash: an armband, a painted number, a unit's one spot of colour. */
+    public static final byte ACCENT = 20;
+    /**
+     * A lens, a lamp, a visor slit — anything that catches light on its own.
+     *
+     * <p>It was an eye until the camera came down flat. From straight above there are no eyes, and
+     * that is the point of the overhead camera rather than a loss: three attempts at a face failed
+     * at this size and the fourth would have too.
+     */
+    public static final byte EYE = 21;
+
+    public static final int SLOTS = 22;
 
     /**
      * One character per slot, for dumping and reloading a grid as text.
@@ -83,7 +107,8 @@ public final class Ink {
         'B', 'b',
         'S', 's',
         'K', 'k',
-        'M', 'm',
+        'J', 'H', 'h',
+        'N', 'M', 'm',
         'W',
         'A', 'E',
     };
@@ -198,20 +223,38 @@ public final class Ink {
 
     /** A rounded box: pouches, plates, the flat of a stock, a magazine. */
     public Ink box(float x, float y, float w, float h, float corner, byte tone) {
+        return plate(x + w / 2f, y + h / 2f, w, h, corner, 0f, tone);
+    }
+
+    /**
+     * A rounded box about a centre, turned.
+     *
+     * <p>Two things the corner-based version cannot do, both learned the same way. It has to turn,
+     * because everything on a person is aligned to the person and a pack drawn upright at a
+     * rotated position slides around his back as he faces about. And it has to be placed by its
+     * <b>centre</b>, because once it turns a corner is meaningless — offsetting by half a width
+     * along the grid's axes rather than the body's is what detached the pack from the man in the
+     * first overhead sheet.
+     */
+    public Ink plate(float cx, float cy, float w, float h, float corner, float rotation,
+                     byte tone) {
         if (w <= 0f || h <= 0f) {
             return this;
         }
         float halfW = w / 2f;
         float halfH = h / 2f;
-        float cx = x + halfW;
-        float cy = y + halfH;
         float r = Math.min(corner, Math.min(halfW, halfH));
-        for (int py = Math.max(0, (int) y - 1); py <= Math.min(height - 1, (int) (y + h) + 1);
-                py++) {
-            for (int px = Math.max(0, (int) x - 1); px <= Math.min(width - 1, (int) (x + w) + 1);
-                    px++) {
-                float dx = Math.abs(px + 0.5f - cx) - (halfW - r);
-                float dy = Math.abs(py + 0.5f - cy) - (halfH - r);
+        float cos = (float) Math.cos(-rotation);
+        float sin = (float) Math.sin(-rotation);
+        float reach = (float) Math.sqrt(halfW * halfW + halfH * halfH) + 1f;
+        for (int py = Math.max(0, (int) (cy - reach));
+                py <= Math.min(height - 1, (int) (cy + reach)); py++) {
+            for (int px = Math.max(0, (int) (cx - reach));
+                    px <= Math.min(width - 1, (int) (cx + reach)); px++) {
+                float ox = px + 0.5f - cx;
+                float oy = py + 0.5f - cy;
+                float dx = Math.abs(ox * cos - oy * sin) - (halfW - r);
+                float dy = Math.abs(ox * sin + oy * cos) - (halfH - r);
                 float outX = Math.max(dx, 0f);
                 float outY = Math.max(dy, 0f);
                 float outside = (float) Math.sqrt(outX * outX + outY * outY);
@@ -303,9 +346,19 @@ public final class Ink {
     /**
      * Darkens the band of a tone that lies along its turned-away edge.
      *
-     * <p>A pixel of {@code lit} takes {@code shadow} when the tone runs out within {@code depth}
+     * <p>A pixel of {@code lit} takes {@code shadow} when the figure runs out within {@code depth}
      * steps in the given direction — so the shaded band is as wide as the depth asked for, and it
      * follows the shape's own outline rather than a rectangle.
+     *
+     * <p><b>The boundary is the silhouette, not the tone.</b> An earlier version darkened wherever
+     * the tone itself ran out, and on a finished figure that is every internal edge: a rifle laid
+     * across a coat put a dark halo round the rifle, an arm put one round the arm, and the torso
+     * came out speckled. Same class of fault as the sculpted path's height compositing, which
+     * turned a rifle on a coat into a welt on the coat, and the same lesson — a thing lying on
+     * another thing is not a fold in it.
+     *
+     * <p>Which means this shades the outside of the figure. For form <em>inside</em> it, call this
+     * on a part before the next part is drawn over it: at that moment the part is the silhouette.
      *
      * <p>The depth is the whole point, and the shape card is what showed it: at one pixel this
      * darkens a rim so thin it may as well be part of the outline, which is not what a pixel
@@ -327,8 +380,7 @@ public final class Ink {
                 for (int step = 1; step <= depth; step++) {
                     int nx = x + dx * step;
                     int ny = y + dy * step;
-                    byte neighbour = inBounds(nx, ny) ? before[ny * width + nx] : EMPTY;
-                    if (neighbour != lit) {
+                    if (!solid(before, nx, ny)) {
                         slot[index] = shadow;
                         break;
                     }
@@ -445,7 +497,8 @@ public final class Ink {
      * invisible and on a bone sleeve is a sticker. Derived, it is always the same tone darker than
      * the thing it surrounds — and the floor stops a black uniform losing its edge entirely.
      */
-    public static int[] tones(int[] coat, int[] trouser, int[] kit, int[] skin, int accent) {
+    public static int[] tones(int[] coat, int[] trouser, int[] kit, int[] skin, int[] helmet,
+                              int accent) {
         int[] out = new int[SLOTS];
         out[OUTLINE] = WolfPalette.mix(WolfPalette.darken(coat[coat.length - 1], 0.55f),
                 0xFF1A1712, 0.35f);
@@ -460,6 +513,10 @@ public final class Ink {
         out[SKIN_SHADE] = WolfPalette.shade(skin, 3);
         out[KIT] = WolfPalette.shade(kit, 1);
         out[KIT_DARK] = WolfPalette.shade(kit, 3);
+        out[HELM_LIGHT] = WolfPalette.shade(helmet, 0);
+        out[HELM] = WolfPalette.shade(helmet, 1);
+        out[HELM_DARK] = WolfPalette.shade(helmet, 3);
+        out[METAL_LIGHT] = WolfPalette.shade(WolfPalette.GUNMETAL, 0);
         out[METAL] = WolfPalette.shade(WolfPalette.GUNMETAL, 1);
         out[METAL_DARK] = WolfPalette.shade(WolfPalette.GUNMETAL, 3);
         out[WOOD] = WolfPalette.shade(WolfPalette.LEATHER, 1);

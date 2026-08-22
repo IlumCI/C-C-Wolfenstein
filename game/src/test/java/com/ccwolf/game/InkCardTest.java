@@ -35,7 +35,8 @@ public class InkCardTest {
     private static final int DARK = 0xFF23251E;
 
     private static final int[] TONES = Ink.tones(WolfPalette.OLIVE, WolfPalette.LEATHER,
-            WolfPalette.LEATHER, WolfPalette.FLESH, WolfPalette.shade(WolfPalette.BLOOD, 1));
+            WolfPalette.LEATHER, WolfPalette.FLESH, WolfPalette.STONE,
+            WolfPalette.shade(WolfPalette.BLOOD, 1));
 
     @Test
     public void everyPrimitiveAtBothSizes() throws IOException {
@@ -145,7 +146,7 @@ public class InkCardTest {
     @Test
     public void slotsAreColouredLast() throws IOException {
         int[] regime = Ink.tones(WolfPalette.NIGHT, WolfPalette.NIGHT, WolfPalette.NIGHT,
-                WolfPalette.FLESH, WolfPalette.shade(WolfPalette.BLOOD, 1));
+                WolfPalette.FLESH, WolfPalette.NIGHT, WolfPalette.shade(WolfPalette.BLOOD, 1));
         int swatch = 20;
         int pad = 6;
         int cell = GRID * SHOWN;
