@@ -10,10 +10,27 @@ package com.ccwolf.core.combat;
  */
 public final class DamageTable {
 
+    /**
+     * Every cell starts as NaN and must be written before the class finishes loading.
+     *
+     * <p>A plain {@code float[][]} starts at zero, and a zero here is indistinguishable from a
+     * deliberate zero — so a weapon class added without a row would silently do 1 damage to
+     * everything (the floor in {@link #damage}) and nothing would ever say so. Even the test
+     * that looks like it guards this, {@code nothingIsEverFullyImmune}, passes for an all-zero
+     * row because of that same floor.
+     *
+     * <p>NaN is a value nobody can mean, so the static check below turns a missing row into a
+     * failure at class load — in the game, the harness and every test alike, rather than only
+     * where somebody remembered to assert.
+     */
     private static final float[][] MULTIPLIER =
             new float[WeaponClass.values().length][ArmorClass.values().length];
 
     static {
+        for (float[] row : MULTIPLIER) {
+            java.util.Arrays.fill(row, Float.NaN);
+        }
+
         set(WeaponClass.SMALL_ARMS, 1.00f, 0.40f, 0.15f, 0.20f);
         // A rifle round through the eye slit kills a man and does nothing to a tank.
         set(WeaponClass.SNIPER, 1.60f, 0.25f, 0.08f, 0.10f);
@@ -24,6 +41,16 @@ public final class DamageTable {
         set(WeaponClass.FLAME, 1.40f, 0.80f, 0.40f, 0.90f);
         set(WeaponClass.MELEE, 1.35f, 0.70f, 0.30f, 0.25f);
         set(WeaponClass.OCCULT, 1.00f, 1.00f, 1.00f, 1.00f);
+
+        for (WeaponClass w : WeaponClass.values()) {
+            for (ArmorClass a : ArmorClass.values()) {
+                if (Float.isNaN(MULTIPLIER[w.ordinal()][a.ordinal()])) {
+                    throw new IllegalStateException("DamageTable has no row for "
+                            + w + " against " + a + " - add one above, and decide what it "
+                            + "should be rather than letting it default");
+                }
+            }
+        }
     }
 
     private DamageTable() {

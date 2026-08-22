@@ -41,23 +41,44 @@ public final class Earthworks {
     public static final float MOVE_COST_PER_LEVEL = 0.45f;
 
     /**
-     * How many levels of earth one blast strips from the tiles it lands on.
+     * How many levels of earth one blast strips from the tiles it lands on, by weapon class.
      *
      * <p>Nil for anything that cannot move soil, whatever it does to men. Rifle fire does not
      * fill in a trench and a flamethrower does not either — it makes a trench a bad place to be
      * for as long as it burns, which is what the suppression table already says.
+     *
+     * <p>A table rather than a switch for the same reason as the suppression tables: a
+     * {@code default:} of zero is exactly the wrong answer for anything meant to break a line,
+     * and it would have been given silently.
      */
-    public static int flattening(WeaponClass weapon) {
-        switch (weapon) {
-            case CANNON:
-                return 1;
-            case ROCKET:
-                return 2;
-            case GRENADE:
-                return 1;
-            default:
-                return 0;
+    private static final int[] FLATTENING = new int[WeaponClass.values().length];
+
+    /** Not a possible number of levels, so a missing entry cannot look like a real one. */
+    private static final int UNSET = Integer.MIN_VALUE;
+
+    static {
+        java.util.Arrays.fill(FLATTENING, UNSET);
+
+        FLATTENING[WeaponClass.SMALL_ARMS.ordinal()] = 0;
+        FLATTENING[WeaponClass.SNIPER.ordinal()] = 0;
+        FLATTENING[WeaponClass.CANNON.ordinal()] = 1;
+        FLATTENING[WeaponClass.ROCKET.ordinal()] = 2;
+        FLATTENING[WeaponClass.GRENADE.ordinal()] = 1;
+        FLATTENING[WeaponClass.FLAME.ordinal()] = 0;
+        FLATTENING[WeaponClass.MELEE.ordinal()] = 0;
+        FLATTENING[WeaponClass.OCCULT.ordinal()] = 0;
+
+        for (WeaponClass w : WeaponClass.values()) {
+            if (FLATTENING[w.ordinal()] == UNSET) {
+                throw new IllegalStateException("Earthworks has no flattening entry for " + w
+                        + " - add one above, and decide what it should be rather than "
+                        + "letting it default");
+            }
         }
+    }
+
+    public static int flattening(WeaponClass weapon) {
+        return FLATTENING[weapon.ordinal()];
     }
 
     /** True if this weapon is worth even asking the map about. Saves a tile sweep per shot. */

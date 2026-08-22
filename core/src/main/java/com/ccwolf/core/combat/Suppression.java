@@ -40,37 +40,25 @@ public final class Suppression {
 
     public static final int RECOVERY_IN_COVER = 6;
 
+    /** No sane suppression value, so a missing table entry cannot look like a real one. */
+    private static final int UNSET = Integer.MIN_VALUE;
+
     private Suppression() {
     }
 
     /**
-     * How much one shot of a weapon rattles whoever it was aimed at.
+     * How much one shot of a weapon rattles whoever it was aimed at, by weapon class.
      *
      * <p>Not proportional to damage. A sniper round does far more harm than a burst of rifle
      * fire and is far less use at pinning a line, because the thing that keeps heads down is
      * volume. A flamethrower is terrifying out of all proportion to what it does to armour.
+     *
+     * <p>A table rather than a switch, because a switch needs a {@code default:} and a
+     * {@code default:} that returns a legal number is a silent wrong answer: a weapon class
+     * added without a line here would have got whatever the fall-through happened to be, and
+     * nothing would have complained. The sentinel below makes that a failure at class load.
      */
-    public static int perShot(WeaponClass weapon) {
-        switch (weapon) {
-            case SMALL_ARMS:
-                return 6;
-            case SNIPER:
-                return 4;
-            case CANNON:
-                return 15;
-            case ROCKET:
-                return 16;
-            case GRENADE:
-                return 20;
-            case FLAME:
-                return 24;
-            case MELEE:
-                return 9;
-            case OCCULT:
-            default:
-                return 14;
-        }
-    }
+    private static final int[] PER_SHOT = new int[WeaponClass.values().length];
 
     /**
      * How much of a weapon's damage cover takes away, at full cover.
@@ -79,25 +67,44 @@ public final class Suppression {
      * rifles and does almost nothing against a grenade dropped into it, which is why artillery
      * and grenadiers exist and why a dug-in line is a problem to be solved rather than a wall.
      */
-    private static float coverEffect(WeaponClass weapon) {
-        switch (weapon) {
-            case SMALL_ARMS:
-            case SNIPER:
-                // Aimed fire at a man behind masonry mostly hits masonry.
-                return 0.65f;
-            case CANNON:
-            case ROCKET:
-            case OCCULT:
-                return 0.30f;
-            case GRENADE:
-            case FLAME:
-                // Both go over and around. Cover barely helps.
-                return 0.15f;
-            case MELEE:
-            default:
-                // Nothing to hide behind when it is already on top of you.
-                return 0f;
+    private static final float[] COVER_EFFECT = new float[WeaponClass.values().length];
+
+    static {
+        java.util.Arrays.fill(PER_SHOT, UNSET);
+        java.util.Arrays.fill(COVER_EFFECT, Float.NaN);
+
+        // Aimed fire at a man behind masonry mostly hits masonry.
+        set(WeaponClass.SMALL_ARMS, 6, 0.65f);
+        set(WeaponClass.SNIPER, 4, 0.65f);
+        set(WeaponClass.CANNON, 15, 0.30f);
+        set(WeaponClass.ROCKET, 16, 0.30f);
+        // Grenades and flame go over and around. Cover barely helps.
+        set(WeaponClass.GRENADE, 20, 0.15f);
+        set(WeaponClass.FLAME, 24, 0.15f);
+        // Nothing to hide behind when it is already on top of you.
+        set(WeaponClass.MELEE, 9, 0f);
+        set(WeaponClass.OCCULT, 14, 0.30f);
+
+        for (WeaponClass w : WeaponClass.values()) {
+            if (PER_SHOT[w.ordinal()] == UNSET || Float.isNaN(COVER_EFFECT[w.ordinal()])) {
+                throw new IllegalStateException("Suppression has no entry for " + w
+                        + " - add one above, and decide what it should be rather than "
+                        + "letting it default");
+            }
         }
+    }
+
+    private static void set(WeaponClass weapon, int perShot, float coverEffect) {
+        PER_SHOT[weapon.ordinal()] = perShot;
+        COVER_EFFECT[weapon.ordinal()] = coverEffect;
+    }
+
+    public static int perShot(WeaponClass weapon) {
+        return PER_SHOT[weapon.ordinal()];
+    }
+
+    private static float coverEffect(WeaponClass weapon) {
+        return COVER_EFFECT[weapon.ordinal()];
     }
 
     /**
