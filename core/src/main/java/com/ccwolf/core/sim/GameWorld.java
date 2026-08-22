@@ -63,6 +63,24 @@ public final class GameWorld {
     private static final int SPOTTING_INTERVAL = 5;
 
     /**
+     * How often the influence field is rebuilt.
+     *
+     * <p>The same cadence as spotting, and independent of it — in particular this is not a
+     * divisor of MORALE_INTERVAL and nothing should be built on the assumption that it is. One
+     * consequence worth knowing: a squad's broken flag only refreshes every morale tick, so
+     * three influence passes in four see a stale one. Harmless at this resolution.
+     */
+    private static final int CONTROL_INTERVAL = 5;
+
+    /**
+     * What an artillery piece is worth as an occupier of ground.
+     *
+     * <p>Very little. A battery holds nothing where it stands — that is the whole premise of
+     * counter-battery, and of it being kept out of the AI's idle-fighter list.
+     */
+    private static final float ARTILLERY_HOLD = 0.2f;
+
+    /**
      * How long a piece of ground stays worth shelling after the last man saw it.
      *
      * <p>Fifteen seconds: long enough that a spotter can look, duck back and still call the
@@ -251,6 +269,17 @@ public final class GameWorld {
      * deliberately not part of them — see {@link SightMemory} for why.
      */
     private final List<SightMemory> sightMemories = new ArrayList<SightMemory>();
+
+    /**
+     * How much of the map each side holds. One per player, parallel to the fog and sight lists.
+     *
+     * <p>Recomputed from scratch every pass — nothing here carries over between ticks, so it
+     * cannot drift independently of the units and buildings it is derived from.
+     */
+    private final List<InfluenceGrid> influences = new ArrayList<InfluenceGrid>();
+
+    /** What each cell's ground is worth from the earthworks on it. Shared: trenches have no owner. */
+    private float[] groundBonus;
 
     /** Rounds in the air. Empty until something fires indirectly. */
     private final ShellLayer shells = new ShellLayer();
@@ -605,6 +634,7 @@ public final class GameWorld {
         players.add(p);
         fogGrids.add(new FogGrid(map.width(), map.height()));
         sightMemories.add(new SightMemory(map.width(), map.height()));
+        influences.add(new InfluenceGrid(map.width(), map.height()));
         return p;
     }
 
@@ -1183,6 +1213,14 @@ public final class GameWorld {
             map.regrowOre(ORE_REGROW_AMOUNT);
         }
         profiler.end(TickProfiler.Phase.ORE);
+
+        // After removeDead, so the dead hold nothing, and before spotting, with the other
+        // derived-knowledge phases.
+        profiler.begin(TickProfiler.Phase.CONTROL);
+        if (tick == 1 || tick % CONTROL_INTERVAL == 0) {
+            updateInfluence();
+        }
+        profiler.end(TickProfiler.Phase.CONTROL);
 
         profiler.begin(TickProfiler.Phase.SPOTTING);
         if (tick == 1 || tick % SPOTTING_INTERVAL == 0) {
@@ -2166,6 +2204,128 @@ public final class GameWorld {
             Building b = buildings.get(i);
             sightMemories.get(b.ownerId()).see(b.x(), b.y(), tick);
         }
+    }
+
+    /**
+     * Rebuilds every side's picture of what it holds.
+     *
+     * <p>Scatter, amplify by the ground, then spread. The order matters: the earthworks bonus
+     * multiplies what is actually standing in a cell before that weight is spread outward, so a
+     * dug-in position projects its amplified strength rather than amplifying whatever drifts in.
+     *
+     * <p>Iterates the unit and building lists in order, which makes list order part of the
+     * result — the same rule the state digest already documents for itself.
+     */
+    private void updateInfluence() {
+        if (groundBonus == null) {
+            InfluenceGrid first = influences.get(0);
+            groundBonus = new float[first.cellsAcross() * first.cellsDown()];
+        }
+        InfluenceGrid shape = influences.get(0);
+        InfluenceGrid.groundBonus(map, groundBonus, shape.cellsAcross(), shape.cellsDown());
+
+        for (int i = 0; i < influences.size(); i++) {
+            influences.get(i).clear();
+        }
+        for (int i = 0; i < units.size(); i++) {
+            Unit u = units.get(i);
+            if (u.isAlive()) {
+                influences.get(u.ownerId()).add(u.x(), u.y(), holdWeight(u));
+            }
+        }
+        for (int i = 0; i < buildings.size(); i++) {
+            Building b = buildings.get(i);
+            if (b.isAlive() && b.isComplete()) {
+                influences.get(b.ownerId()).add(b.x(), b.y(), b.hp());
+            }
+        }
+        for (int i = 0; i < influences.size(); i++) {
+            influences.get(i).applyGroundBonus(groundBonus);
+            influences.get(i).spread();
+        }
+    }
+
+    /**
+     * What one unit is worth as an occupier of ground.
+     *
+     * <p>Hit points rather than cost, and the difference is not academic: the Command Post costs
+     * nothing to build, so a cost-weighted field would read the most important building on the
+     * map as neutral ground and the tank factory as the strongpoint. Hit points are what it
+     * costs to remove a thing from a piece of ground, which is what holding it means.
+     *
+     * <p>Anything unarmed holds nothing — that covers harvesters, saboteurs and infiltrators
+     * without naming any of them. Artillery holds almost nothing, tested on the same dead-zone
+     * predicate the AI's idle-fighter list uses, so the two definitions cannot drift apart. Men
+     * who are running hold nothing at all.
+     */
+    private float holdWeight(Unit u) {
+        Weapon weapon = u.weapon();
+        if (weapon == null) {
+            return 0f;
+        }
+        Squad squad = squadOf(u);
+        if (squad != null && squad.isBroken()) {
+            return 0f;
+        }
+        float weight = u.hp();
+        return weapon.hasMinRange() ? weight * ARTILLERY_HOLD : weight;
+    }
+
+    /** One side's raw influence over a tile. */
+    public float influence(int playerId, int tileX, int tileY) {
+        return influences.get(playerId).atTile(tileX, tileY);
+    }
+
+    /**
+     * Who holds a tile and by how much: mine, less whichever enemy has the most there.
+     *
+     * <p>The strongest enemy rather than the sum of them. With two players the two are the same
+     * number, but nothing enforces two, and summing would make a side surrounded by two weak
+     * enemies read as more thoroughly beaten than one facing a single strong enemy — which
+     * inverts what a front means.
+     */
+    public float control(int playerId, int tileX, int tileY) {
+        return controlAtCell(playerId, tileX / InfluenceGrid.CELL_TILES,
+                tileY / InfluenceGrid.CELL_TILES);
+    }
+
+    public float controlAtCell(int playerId, int cellX, int cellY) {
+        float mine = influences.get(playerId).atCell(cellX, cellY);
+        float worst = 0f;
+        for (int i = 0; i < influences.size(); i++) {
+            if (!areEnemies(playerId, i)) {
+                continue;
+            }
+            float theirs = influences.get(i).atCell(cellX, cellY);
+            if (theirs > worst) {
+                worst = theirs;
+            }
+        }
+        return mine - worst;
+    }
+
+    /**
+     * True where this player's ground touches the enemy's.
+     *
+     * <p>Strict signs on both sides, so a cell of exactly zero belongs to nobody and is not a
+     * front by itself. No epsilon, and no float equality anywhere.
+     */
+    public boolean isFrontCell(int playerId, int cellX, int cellY) {
+        if (controlAtCell(playerId, cellX, cellY) <= 0f) {
+            return false;
+        }
+        return controlAtCell(playerId, cellX - 1, cellY) < 0f
+                || controlAtCell(playerId, cellX + 1, cellY) < 0f
+                || controlAtCell(playerId, cellX, cellY - 1) < 0f
+                || controlAtCell(playerId, cellX, cellY + 1) < 0f;
+    }
+
+    public int controlCellsAcross() {
+        return influences.get(0).cellsAcross();
+    }
+
+    public int controlCellsDown() {
+        return influences.get(0).cellsDown();
     }
 
     /** What this player has seen, and when. */

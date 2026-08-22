@@ -32,6 +32,7 @@ public final class TickProfiler {
         SEPARATION,
         REMOVE_DEAD,
         ORE,
+        CONTROL,
         SPOTTING,
         FOG,
         VICTORY
