@@ -5,21 +5,19 @@ import com.ccwolf.game.art.PixelCanvas;
 import com.ccwolf.game.art.WolfPalette;
 import java.io.IOException;
 import org.junit.Test;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
  * The drawn pipeline's shape card.
  *
- * <p>Same job the sculpt card does for {@link com.ccwolf.game.art.Sculptor}: every primitive,
- * once, large enough to see what it actually does, before anything is built on top of it. The
- * sculpted side learned this the expensive way — an inverted groove profile and a set of bolts
- * that read as pearls both survived a green suite because nothing ever drew them on their own.
- *
- * <p>Two things beyond the primitives, because they are the two claims the drawn pipeline rests
- * on. The contour holds a figure against the ground at the size the game shows it; and the ramps
- * are used through {@code shade} rather than {@code albedo}, because a drawn sprite is unlit by
- * construction.
+ * <p>Same job the sculpt card does for the other pipeline: every primitive, once, before anything
+ * is built on it. What is different here is the sizes it is looked at. A pixel-art sheet has to be
+ * reviewed at <b>one screen pixel per art pixel</b>, where the pixels themselves are inspectable
+ * and a stray one is obvious, <em>and</em> at the size the game shows it, where the question is
+ * whether the shape reads. Neither on its own is enough: the sculpted side lost most of a session
+ * to sheets drawn fifteen times larger than anything the game renders.
  */
 public class InkCardTest {
 
@@ -27,159 +25,199 @@ public class InkCardTest {
         Frame.useAwtBackend();
     }
 
-    private static final int CELL = 150;
-    private static final int PAD = 8;
+    /** The grid a footsoldier is authored on. */
+    private static final int GRID = 64;
 
-    /** Two grounds, because a contour that only works on one of them is not a contour. */
+    /** Screen pixels per art pixel, as the game shows a man on a hundred-and-twenty-eight tile. */
+    private static final int SHOWN = 2;
+
     private static final int PALE = 0xFFB9B5A6;
     private static final int DARK = 0xFF23251E;
 
-    @Test
-    public void everyPrimitiveOnce() throws IOException {
-        int cols = 5;
-        int rows = 2;
-        PixelCanvas sheet = new PixelCanvas(PAD + cols * (CELL + PAD), PAD + rows * (CELL + PAD));
-        for (int row = 0; row < rows; row++) {
-            for (int col = 0; col < cols; col++) {
-                sheet.rect(PAD + col * (CELL + PAD), PAD + row * (CELL + PAD), CELL, CELL,
-                        row == 0 ? PALE : DARK);
-            }
-        }
+    private static final int[] TONES = Ink.tones(WolfPalette.OLIVE, WolfPalette.LEATHER,
+            WolfPalette.LEATHER, WolfPalette.FLESH, WolfPalette.shade(WolfPalette.BLOOD, 1));
 
-        for (int row = 0; row < rows; row++) {
-            int tone = WolfPalette.shade(WolfPalette.OLIVE, row == 0 ? 1 : 0);
-            for (int col = 0; col < cols; col++) {
-                Ink ink = new Ink(CELL, CELL);
-                primitive(ink, col, tone);
-                ink.contour(2f, 0.55f);
-                sheet.blit(ink.finish(), PAD + col * (CELL + PAD), PAD + row * (CELL + PAD));
-            }
+    @Test
+    public void everyPrimitiveAtBothSizes() throws IOException {
+        int cols = 5;
+        int cell = GRID * SHOWN;
+        int pad = 8;
+        PixelCanvas sheet = new PixelCanvas(pad + cols * (cell + pad),
+                pad + cell + pad + GRID + pad);
+        sheet.fill(DARK);
+        sheet.rect(0, 0, sheet.width(), pad + cell + pad / 2, PALE);
+
+        for (int col = 0; col < cols; col++) {
+            Ink ink = new Ink(GRID, GRID);
+            primitive(ink, col);
+            ink.outline();
+            int x = pad + col * (cell + pad);
+            sheet.blit(ink.toCanvas(TONES, SHOWN).fine(), x, pad);
+            // The same sprite at one screen pixel per art pixel, directly under it. This is the
+            // row where a pixel in the wrong place is a pixel in the wrong place rather than a
+            // slight softness in a shape.
+            sheet.blit(ink.toCanvas(TONES, 1), x, pad + cell + pad);
         }
         save(sheet, "ink-shapes.png");
         assertTrue(true);
     }
 
-    private void primitive(Ink ink, int which, int tone) {
-        float c = CELL / 2f;
+    private void primitive(Ink ink, int which) {
+        float c = GRID / 2f;
         switch (which) {
             case 0:
-                ink.ellipse(c, c, 52f, 30f, 0.6f, tone);
+                ink.ellipse(c, c, 22f, 13f, 0.6f, Ink.COAT);
                 break;
             case 1:
-                ink.capsule(c - 38f, c + 34f, c + 38f, c - 34f, 20f, tone);
+                ink.capsule(c - 16f, c + 15f, c + 16f, c - 15f, 8f, Ink.COAT);
                 break;
             case 2:
-                ink.taper(c - 36f, c + 40f, 28f, c + 34f, c - 42f, 6f, tone);
+                ink.taper(c - 15f, c + 17f, 12f, c + 15f, c - 18f, 2f, Ink.COAT);
                 break;
             case 3:
-                ink.box(c - 46f, c - 34f, 92f, 68f, 12f, tone);
+                ink.box(c - 20f, c - 14f, 40f, 28f, 5f, Ink.COAT);
                 break;
             default:
-                ink.polygon(new float[] {c, c - 54f, c + 50f, c - 6f, c + 30f, c + 52f,
-                        c - 30f, c + 52f, c - 50f, c - 6f}, tone);
+                ink.polygon(new float[] {c, c - 23f, c + 21f, c - 3f, c + 13f, c + 22f,
+                        c - 13f, c + 22f, c - 21f, c - 3f}, Ink.COAT);
                 break;
         }
     }
 
     /**
-     * The contour at the sizes the game actually renders, on both grounds, at two widths.
+     * The three operations that are pixel art rather than geometry.
      *
-     * <p>The claim written into {@code Ink.contour} is that the outline is a width in
-     * <em>output</em> pixels and does not scale with the sprite, because a contour that shrinks
-     * with the art stops holding the figure at exactly the distance it is needed. That claim is
-     * right and this sheet also shows its cost, which is why every size gets both widths: two
-     * pixels of outline on a forty-pixel man is a tenth of his width, and it closes the gap
-     * between his legs and welds his arms to his coat. One pixel there holds the silhouette
-     * without eating it.
-     *
-     * <p>So the finding for the figures that come next: <b>two pixels above sixty, one below</b>,
-     * and a drawn body must be authored with gaps no narrower than three pixels at the smallest
-     * size it is shown, or the contour will close them whatever its width.
+     * <p>{@code dither} is how two tones make a third without growing the palette, {@code shade}
+     * is how a shape gets a lit and a turned-away side from a rule rather than from a lighting
+     * model, and {@code outline} is the one-art-pixel edge that holds a figure against the
+     * ground. Each is shown before and after, at both sizes.
      */
     @Test
-    public void theContourHoldsAtEverySize() throws IOException {
-        int[] sizes = {160, 64, 40};
-        int band = 190;
-        int wide = PAD;
-        for (int size : sizes) {
-            wide += 3 * (size + PAD) + PAD;
-        }
-        PixelCanvas sheet = new PixelCanvas(wide, PAD + 2 * (band + PAD));
-        sheet.fill(PALE);
-        sheet.rect(0, PAD + band + PAD / 2, wide, band + PAD, DARK);
-
-        for (int row = 0; row < 2; row++) {
-            int x = PAD;
-            for (int size : sizes) {
-                for (float thickness : new float[] {0f, 1f, 2f}) {
-                    Ink ink = new Ink(size, size);
-                    figurine(ink, size, row == 0);
-                    if (thickness > 0f) {
-                        ink.contour(thickness, 0.6f);
-                    }
-                    sheet.blit(ink.finish(), x, PAD + row * (band + PAD) + (band - size) / 2);
-                    x += size + PAD;
-                }
-                x += PAD;
-            }
-        }
-        save(sheet, "ink-contour.png");
-        assertTrue(true);
-    }
-
-    /**
-     * A stand-in figure: a silhouette with the proportions of a man, in flat tones.
-     *
-     * <p>Not the Partisan — that is the next commit's job. This exists so the contour is judged
-     * against something with thin limbs and a small head, which is where an outline either holds
-     * a shape together or eats it.
-     */
-    private void figurine(Ink ink, int size, boolean lightKit) {
-        float u = size / 100f;
-        int coat = WolfPalette.shade(WolfPalette.OLIVE, lightKit ? 1 : 0);
-        int dark = WolfPalette.shade(WolfPalette.LEATHER, 2);
-        int skin = WolfPalette.shade(WolfPalette.FLESH, 1);
-        float mid = size / 2f;
-
-        ink.capsule(mid - 9 * u, 62 * u, mid - 11 * u, 92 * u, 6 * u, dark);
-        ink.capsule(mid + 9 * u, 62 * u, mid + 11 * u, 92 * u, 6 * u, dark);
-        ink.box(mid - 17 * u, 30 * u, 34 * u, 36 * u, 8 * u, coat);
-        ink.capsule(mid - 16 * u, 36 * u, mid - 21 * u, 58 * u, 5 * u, coat);
-        ink.capsule(mid + 16 * u, 36 * u, mid + 21 * u, 58 * u, 5 * u, coat);
-        ink.capsule(mid - 24 * u, 50 * u, mid + 24 * u, 44 * u, 3 * u, dark);
-        ink.ellipse(mid, 21 * u, 9 * u, 10 * u, 0f, skin);
-        ink.ellipse(mid, 16 * u, 12 * u, 7 * u, 0f, coat);
-    }
-
-    /**
-     * One ramp, all its tones, drawn as authored.
-     *
-     * <p>The sculpted path calls {@code albedo} and lets the light generate the rest; calling
-     * {@code shade} there produced a black tank with grey scratches, because the ramps are
-     * pre-shaded and lighting them twice crushes them. This is the other half of that rule, and
-     * the sheet is what makes it checkable: these swatches should walk evenly from highlight to
-     * shadow with no step collapsing into its neighbour.
-     */
-    @Test
-    public void theRampIsUsedAsAuthored() throws IOException {
-        int[][] ramps = {WolfPalette.OLIVE, WolfPalette.LEATHER, WolfPalette.FLESH,
-                WolfPalette.NIGHT, WolfPalette.BONE};
-        int steps = WolfPalette.rampLength();
-        assertEquals(steps, ramps[0].length);
-        int swatch = 64;
-        PixelCanvas sheet = new PixelCanvas(PAD + steps * (swatch + PAD),
-                PAD + ramps.length * (swatch + PAD));
+    public void ditherShadeAndOutline() throws IOException {
+        int cell = GRID * SHOWN;
+        int pad = 8;
+        PixelCanvas sheet = new PixelCanvas(pad + 6 * (cell + pad),
+                pad + cell + pad + GRID + pad);
         sheet.fill(DARK);
-        for (int r = 0; r < ramps.length; r++) {
-            for (int i = 0; i < steps; i++) {
-                Ink ink = new Ink(swatch, swatch);
-                ink.box(4f, 4f, swatch - 8f, swatch - 8f, 6f, WolfPalette.shade(ramps[r], i));
-                ink.contour(2f, 0.5f);
-                sheet.blit(ink.finish(), PAD + i * (swatch + PAD), PAD + r * (swatch + PAD));
+        sheet.rect(0, 0, sheet.width(), pad + cell + pad / 2, PALE);
+
+        for (int col = 0; col < 6; col++) {
+            Ink ink = new Ink(GRID, GRID);
+            ink.box(14f, 14f, 36f, 36f, 6f, Ink.COAT);
+            switch (col) {
+                case 1:
+                    ink.dither(14, 32, 36, 18, Ink.COAT, Ink.COAT_DARK);
+                    break;
+                case 2:
+                    ink.dither(14, 32, 36, 9, Ink.COAT, Ink.COAT_DARK);
+                    ink.rect(14, 41, 36, 9, Ink.COAT_DARK);
+                    break;
+                case 3:
+                    ink.shade(Ink.COAT, Ink.COAT_DARK, 1, 1, 4);
+                    break;
+                case 4:
+                    ink.outline();
+                    break;
+                case 5:
+                    ink.shade(Ink.COAT, Ink.COAT_DARK, 1, 1, 4);
+                    ink.dither(14, 30, 36, 8, Ink.COAT, Ink.COAT_DARK);
+                    ink.outline();
+                    break;
+                default:
+                    break;
+            }
+            int x = pad + col * (cell + pad);
+            sheet.blit(ink.toCanvas(TONES, SHOWN).fine(), x, pad);
+            sheet.blit(ink.toCanvas(TONES, 1), x, pad + cell + pad);
+        }
+        save(sheet, "ink-operations.png");
+        assertTrue(true);
+    }
+
+    /**
+     * Every tone slot, and the same grid wearing two different sets of them.
+     *
+     * <p>The second half is the claim that makes slots worth having instead of colours: one grid,
+     * two factions. If a Resistance partisan and a Regime soldier can share a body and differ by
+     * a row of tones, then the drawing and the palette are genuinely separable and a change of
+     * uniform costs nothing.
+     */
+    @Test
+    public void slotsAreColouredLast() throws IOException {
+        int[] regime = Ink.tones(WolfPalette.NIGHT, WolfPalette.NIGHT, WolfPalette.NIGHT,
+                WolfPalette.FLESH, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        int swatch = 20;
+        int pad = 6;
+        int cell = GRID * SHOWN;
+        PixelCanvas sheet = new PixelCanvas(
+                Math.max(pad + Ink.SLOTS * (swatch + pad), pad + 2 * (cell + pad)),
+                pad + swatch + pad + cell + pad);
+        sheet.fill(DARK);
+
+        for (byte tone = 1; tone < Ink.SLOTS; tone++) {
+            Ink chip = new Ink(swatch, swatch);
+            chip.rect(0, 0, swatch, swatch, tone);
+            sheet.blit(chip.toCanvas(TONES, 1), pad + tone * (swatch + pad), pad);
+        }
+
+        Ink man = new Ink(GRID, GRID);
+        blockedInFigure(man);
+        man.outline();
+        sheet.blit(man.toCanvas(TONES, SHOWN).fine(), pad, pad + swatch + pad);
+        sheet.blit(man.toCanvas(regime, SHOWN).fine(), pad + cell + pad, pad + swatch + pad);
+        save(sheet, "ink-tones.png");
+
+        // Colour is attached at the very end and changes nothing about the drawing.
+        assertArrayEquals(man.toGrid(), Ink.fromGrid(man.toGrid()).toGrid());
+        assertTrue(true);
+    }
+
+    /**
+     * A grid survives being written out as text and read back.
+     *
+     * <p>The load-bearing property of the whole pipeline, because the hand-fixing step is exactly
+     * a round trip through text: the recipe blocks a figure in, it is dumped, the pixels that read
+     * badly are corrected by hand, and the corrected grid is what ships. If the round trip were
+     * lossy the hand corrections would be the thing it lost.
+     */
+    @Test
+    public void aGridSurvivesTheRoundTripThroughText() {
+        Ink ink = new Ink(GRID, GRID);
+        blockedInFigure(ink);
+        ink.outline();
+        String[] dumped = ink.toGrid();
+        assertEquals(GRID, dumped.length);
+        assertEquals(GRID, dumped[0].length());
+
+        Ink reloaded = Ink.fromGrid(dumped);
+        assertEquals(GRID, reloaded.width());
+        assertEquals(GRID, reloaded.height());
+        for (int y = 0; y < GRID; y++) {
+            for (int x = 0; x < GRID; x++) {
+                assertEquals("pixel " + x + "," + y, ink.at(x, y), reloaded.at(x, y));
             }
         }
-        save(sheet, "ink-tones.png");
-        assertTrue(true);
+    }
+
+    /**
+     * A figure blocked in from primitives — scaffolding, not art.
+     *
+     * <p>Deliberately crude. It exists so the card is judged against something with a small head
+     * and thin limbs, which is where an outline either holds a shape together or closes the gaps
+     * in it, and it is the shape the next commit's hand-fixing starts from.
+     */
+    private void blockedInFigure(Ink ink) {
+        ink.capsule(26f, 40f, 25f, 58f, 4f, Ink.BOOT);
+        ink.capsule(38f, 40f, 39f, 58f, 4f, Ink.BOOT);
+        ink.box(22f, 20f, 20f, 22f, 5f, Ink.COAT);
+        ink.capsule(23f, 24f, 20f, 38f, 3f, Ink.COAT);
+        ink.capsule(41f, 24f, 44f, 38f, 3f, Ink.COAT);
+        ink.capsule(18f, 34f, 46f, 30f, 2f, Ink.METAL);
+        ink.ellipse(32f, 13f, 6f, 7f, 0f, Ink.SKIN);
+        ink.ellipse(32f, 9f, 8f, 4f, 0f, Ink.COAT_LIGHT);
+        ink.pixel(29, 13, Ink.EYE);
+        ink.pixel(35, 13, Ink.EYE);
+        ink.shade(Ink.COAT, Ink.COAT_DARK, 1, 1, 4);
     }
 
     private void save(PixelCanvas canvas, String name) throws IOException {

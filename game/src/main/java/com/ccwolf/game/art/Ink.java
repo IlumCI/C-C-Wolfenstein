@@ -1,60 +1,101 @@
 package com.ccwolf.game.art;
 
 /**
- * A canvas for sprites that are <em>drawn</em> rather than sculpted.
+ * A pixel grid for sprites that are <em>drawn</em> rather than sculpted.
  *
- * <h2>Why there are two pipelines</h2>
+ * <h2>Why this is a grid of slots and not a canvas of colours</h2>
  *
- * <p>{@link Sculptor} builds form and lights it, and it is the right tool for anything with
- * enough pixels to show geometry: a tank, a gun, an Ubersoldat. Two contact sheets settled that
- * it is the wrong tool for a footsoldier. A head rendered at three hundred, ninety-six, forty and
- * twenty pixels has no face at the last two — and twenty is roughly what the game shows. Three
- * distinct helmet silhouettes, stripped to pure black, are clearly three at eighty pixels and
- * three identical blobs at twenty.
+ * <p>The sculpting engine next door is finished and it is the right tool for a machine, but the
+ * figures it produced were soft, smooth and shaded, and that is the wrong medium for this game.
+ * This game is pixel art. The distinction is not decoration: pixel art means every edge lands on a
+ * whole pixel, every tone is one of a handful chosen in advance, and the person drawing decides
+ * what each pixel is. Anti-aliased shapes blown up to sprite size are a vector illustration
+ * wearing a sprite's clothes.
  *
- * <p>Sculpted detail needs pixels to be legible and a footsoldier never gets them. So infantry
- * are drawn the way sprite artists have always solved "must read at twenty pixels": a bold
- * silhouette, a few deliberate tones, and a dark contour holding the figure against the ground.
+ * <p>So there is no coverage here, no blending and no colour. There is a byte per pixel naming a
+ * <b>tone slot</b>, and a shape either claims a pixel or does not. Colours are attached at the
+ * very end by {@link #toCanvas}, which is what lets one grid serve both factions and what makes a
+ * dumped grid legible enough to correct by hand.
  *
- * <h2>What this is, and what it deliberately is not</h2>
+ * <h2>The grid</h2>
  *
- * <p>Shapes, colours, an order to paint them in, and a contour. No depth, no normals, no
- * material, no lighting. Bending the sculptor into flat output would have meant six float buffers
- * doing the work of two and a lighting model carefully defeated; this is two hundred lines that
- * does the job directly.
+ * <p>A footsoldier is authored at sixty-four by sixty-four and shown at two screen pixels per art
+ * pixel, which is the same hundred and twenty-eight pixels on screen the old thirty-two grid gave
+ * at four. Four times the art pixels at no cost anywhere else — the atlas, the renderer and the
+ * memory budget only ever see the finished buffer.
  *
- * <p>The anti-aliased shapes are the same signed-distance formulas {@code Sculptor} uses, because
- * they were already written and already proven. What changes is everything behind them:
- * compositing is a plain painter's over in draw order, so the artist controls exactly which tone
- * lands where, which is the entire point of drawing rather than rendering.
+ * <p>What those pixels buy is the answer to a problem three attempts failed at: a head at the old
+ * grid was six pixels across, which is a helmet-coloured blob, and every attempt to render a face
+ * into it failed because there was nothing to render into. At sixty-four the head is about twelve
+ * by fourteen, which is a brim, a brow shadow, a jaw and two eyes — <em>placed</em>, by hand, for
+ * how they read, rather than derived from geometry.
  *
- * <h2>Tones come from {@code WolfPalette.shade}</h2>
+ * <h2>How a sprite gets made</h2>
  *
- * <p>The ramps in this game are pre-shaded — index 0 is documented as the highlight — which is
- * why the sculpted path has to use {@code albedo} and let the light generate the rest. A drawn
- * sprite is unlit by construction, so the ramps are used as authored. The rule across the two
- * pipelines is now simply <b>albedo for lit, shade for drawn</b>.
+ * <p>Shapes block the figure in, {@link #toGrid} dumps it as text, the pixels that read badly get
+ * corrected by hand, and the corrected grid is checked into the source and is from then on the
+ * art. The shape primitives are scaffolding for the blocking-in stage and are deliberately the
+ * same signed-distance formulas the sculptor uses, because they were already proven — what
+ * changed is that a pixel is claimed when its centre falls inside, with no partial coverage
+ * anywhere.
  */
 public final class Ink {
 
-    /** How far a pixel's distance spans the transition from covered to not. */
-    private static final float EDGE = 0.5f;
+    // --- the slot alphabet ---------------------------------------------------------------------
+
+    /** No pixel. Distinct from every tone, and the only slot {@link #toCanvas} leaves clear. */
+    public static final byte EMPTY = 0;
+    /** The dark edge that holds a figure against the ground. */
+    public static final byte OUTLINE = 1;
+
+    public static final byte COAT_LIGHT = 2;
+    public static final byte COAT = 3;
+    public static final byte COAT_DARK = 4;
+    public static final byte TROUSER = 5;
+    public static final byte TROUSER_DARK = 6;
+    public static final byte BOOT = 7;
+    public static final byte BOOT_DARK = 8;
+    public static final byte SKIN = 9;
+    public static final byte SKIN_SHADE = 10;
+    public static final byte KIT = 11;
+    public static final byte KIT_DARK = 12;
+    public static final byte METAL = 13;
+    public static final byte METAL_DARK = 14;
+    public static final byte WOOD = 15;
+    /** A faction flash: an armband, a painted number, a unit's one spot of colour. */
+    public static final byte ACCENT = 16;
+    /** An eye, a lens, a visor slit. One pixel, and it is what makes a helmet a head. */
+    public static final byte EYE = 17;
+
+    public static final int SLOTS = 18;
+
+    /**
+     * One character per slot, for dumping and reloading a grid as text.
+     *
+     * <p>Chosen so a grid reads as a picture in a source file: upper case is the lit tone of a
+     * thing and lower case its shadow, and the dot is nothing at all. Correcting art by hand is
+     * only bearable if the thing being corrected looks like the thing it draws.
+     */
+    private static final char[] KEYS = {
+        '.', 'o',
+        'L', 'C', 'd',
+        'T', 't',
+        'B', 'b',
+        'S', 's',
+        'K', 'k',
+        'M', 'm',
+        'W',
+        'A', 'E',
+    };
 
     private final int width;
     private final int height;
-    private final float[] cover;
-    private final float[] red;
-    private final float[] green;
-    private final float[] blue;
+    private final byte[] slot;
 
     public Ink(int width, int height) {
         this.width = width;
         this.height = height;
-        int n = width * height;
-        this.cover = new float[n];
-        this.red = new float[n];
-        this.green = new float[n];
-        this.blue = new float[n];
+        this.slot = new byte[width * height];
     }
 
     public int width() {
@@ -65,10 +106,29 @@ public final class Ink {
         return height;
     }
 
-    // --- shapes ------------------------------------------------------------------------------
+    public byte at(int x, int y) {
+        return inBounds(x, y) ? slot[y * width + x] : EMPTY;
+    }
 
-    /** An ellipse, at an angle. Heads, shoulders, packs, wheels — most of a figure. */
-    public Ink ellipse(float cx, float cy, float rx, float ry, float rotation, int color) {
+    /** Sets one pixel. The whole point of the exercise, and the only primitive that must exist. */
+    public Ink pixel(int x, int y, byte tone) {
+        if (inBounds(x, y)) {
+            slot[y * width + x] = tone;
+        }
+        return this;
+    }
+
+    // --- shapes, for blocking in ---------------------------------------------------------------
+
+    /**
+     * An ellipse, at an angle. Heads, shoulders, packs, wheels.
+     *
+     * <p>Signed distance rather than a scan conversion, so the same call handles the rotation and
+     * so the maths is shared with {@code Sculptor} where it was already proven. The pixel is
+     * claimed when its <em>centre</em> is inside, which is the standard rule and is what puts an
+     * edge on a whole pixel.
+     */
+    public Ink ellipse(float cx, float cy, float rx, float ry, float rotation, byte tone) {
         if (rx <= 0f || ry <= 0f) {
             return this;
         }
@@ -93,19 +153,21 @@ public final class Ink {
                 float by = ey / (ry * ry);
                 float k2 = (float) Math.sqrt(bx * bx + by * by);
                 float distance = k2 <= 1e-6f ? -Math.min(rx, ry) : k1 * (k1 - 1f) / k2;
-                paint(x, y, distance, color);
+                if (distance <= 0f) {
+                    slot[y * width + x] = tone;
+                }
             }
         }
         return this;
     }
 
-    /** A round-ended thick line: limbs, straps, barrels, slung rifles. */
-    public Ink capsule(float x0, float y0, float x1, float y1, float radius, int color) {
-        return taper(x0, y0, radius, x1, y1, radius, color);
+    /** A round-ended thick line: limbs, straps, barrels, a slung rifle. */
+    public Ink capsule(float x0, float y0, float x1, float y1, float radius, byte tone) {
+        return taper(x0, y0, radius, x1, y1, radius, tone);
     }
 
-    /** The same with a radius that changes along its length. */
-    public Ink taper(float x0, float y0, float r0, float x1, float y1, float r1, int color) {
+    /** The same with a radius that changes along its length: a forearm, a muzzle. */
+    public Ink taper(float x0, float y0, float r0, float x1, float y1, float r1, byte tone) {
         float maxRadius = Math.max(r0, r1);
         if (maxRadius <= 0f) {
             return this;
@@ -126,15 +188,16 @@ public final class Ink {
                 t = t < 0f ? 0f : (t > 1f ? 1f : t);
                 float dx = px - ax * t;
                 float dy = py - ay * t;
-                float distance = (float) Math.sqrt(dx * dx + dy * dy) - (r0 + (r1 - r0) * t);
-                paint(x, y, distance, color);
+                if ((float) Math.sqrt(dx * dx + dy * dy) - (r0 + (r1 - r0) * t) <= 0f) {
+                    slot[y * width + x] = tone;
+                }
             }
         }
         return this;
     }
 
-    /** A rounded box: webbing pouches, boxes, plates, the flat of a stock. */
-    public Ink box(float x, float y, float w, float h, float corner, int color) {
+    /** A rounded box: pouches, plates, the flat of a stock, a magazine. */
+    public Ink box(float x, float y, float w, float h, float corner, byte tone) {
         if (w <= 0f || h <= 0f) {
             return this;
         }
@@ -152,19 +215,16 @@ public final class Ink {
                 float outX = Math.max(dx, 0f);
                 float outY = Math.max(dy, 0f);
                 float outside = (float) Math.sqrt(outX * outX + outY * outY);
-                paint(px, py, outside + Math.min(Math.max(dx, dy), 0f) - r, color);
+                if (outside + Math.min(Math.max(dx, dy), 0f) - r <= 0f) {
+                    slot[py * width + px] = tone;
+                }
             }
         }
         return this;
     }
 
-    /**
-     * A closed polygon: a coat skirt, a cape, a helmet brim seen edge-on.
-     *
-     * <p>Coverage is sampled four by four rather than derived from a distance, because a general
-     * polygon has no cheap signed distance. Reach for a box or a capsule where either will do.
-     */
-    public Ink polygon(float[] xy, int color) {
+    /** A closed polygon: a coat skirt, a cape, a helmet brim seen edge-on. */
+    public Ink polygon(float[] xy, byte tone) {
         if (xy.length < 6) {
             return this;
         }
@@ -180,172 +240,242 @@ public final class Ink {
         }
         for (int y = Math.max(0, (int) loy - 1); y <= Math.min(height - 1, (int) hiy + 1); y++) {
             for (int x = Math.max(0, (int) lox - 1); x <= Math.min(width - 1, (int) hix + 1); x++) {
-                int hits = 0;
-                for (int sy = 0; sy < 4; sy++) {
-                    for (int sx = 0; sx < 4; sx++) {
-                        if (inside(xy, x + (sx + 0.5f) / 4f, y + (sy + 0.5f) / 4f)) {
-                            hits++;
-                        }
-                    }
-                }
-                if (hits > 0) {
-                    over(y * width + x, hits / 16f, color);
+                if (inside(xy, x + 0.5f, y + 0.5f)) {
+                    slot[y * width + x] = tone;
                 }
             }
         }
         return this;
     }
 
-    // --- the contour --------------------------------------------------------------------------
+    /** A straight run of pixels, ends included. For a strap, a barrel, a rifle sling. */
+    public Ink line(int x0, int y0, int x1, int y1, byte tone) {
+        int dx = Math.abs(x1 - x0);
+        int dy = -Math.abs(y1 - y0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sy = y0 < y1 ? 1 : -1;
+        int error = dx + dy;
+        while (true) {
+            pixel(x0, y0, tone);
+            if (x0 == x1 && y0 == y1) {
+                return this;
+            }
+            int doubled = error * 2;
+            if (doubled >= dy) {
+                error += dy;
+                x0 += sx;
+            }
+            if (doubled <= dx) {
+                error += dx;
+                y0 += sy;
+            }
+        }
+    }
+
+    /** A filled rectangle in whole pixels, for anything that should have no curve at all. */
+    public Ink rect(int x, int y, int w, int h, byte tone) {
+        for (int py = y; py < y + h; py++) {
+            for (int px = x; px < x + w; px++) {
+                pixel(px, py, tone);
+            }
+        }
+        return this;
+    }
+
+    // --- the pixel-art operations --------------------------------------------------------------
 
     /**
-     * Lays a dark outline under the figure. Call once, last.
+     * A checkerboard of two tones, the classic way to get a third tone out of two.
      *
-     * <p>This is the readability mechanism, and two decisions in it matter more than the rest of
-     * the class.
-     *
-     * <p><b>The width is in output pixels and does not scale with the sprite.</b> A contour that
-     * shrinks along with the art stops holding the figure at exactly the distance where holding
-     * it is the whole job.
-     *
-     * <p><b>It is not constant black.</b> Pure black on a Regime greatcoat is invisible and on a
-     * bone-coloured sleeve is a sticker, so the contour is a darkened version of whatever it
-     * surrounds, with a floor so that something very dark still gets an edge.
-     *
-     * @param thickness how far the outline reaches beyond the silhouette, in pixels
-     * @param strength how far toward black the surrounding colour is taken
+     * <p>Worth having rather than adding palette entries: a dithered band between a coat's lit and
+     * shadowed tone reads as a gradient at two screen pixels per art pixel, and it keeps the
+     * palette small, which is most of what makes a set of sprites look like one set.
      */
-    public Ink contour(float thickness, float strength) {
-        int reach = Math.max(1, Math.round(thickness));
-        float[] outAlpha = new float[width * height];
-        int[] outColor = new int[width * height];
+    public Ink dither(int x, int y, int w, int h, byte a, byte b) {
+        for (int py = y; py < y + h; py++) {
+            for (int px = x; px < x + w; px++) {
+                pixel(px, py, ((px + py) & 1) == 0 ? a : b);
+            }
+        }
+        return this;
+    }
 
+    /**
+     * Darkens the band of a tone that lies along its turned-away edge.
+     *
+     * <p>A pixel of {@code lit} takes {@code shadow} when the tone runs out within {@code depth}
+     * steps in the given direction — so the shaded band is as wide as the depth asked for, and it
+     * follows the shape's own outline rather than a rectangle.
+     *
+     * <p>The depth is the whole point, and the shape card is what showed it: at one pixel this
+     * darkens a rim so thin it may as well be part of the outline, which is not what a pixel
+     * artist means by shading a side. Three or four pixels on a torso is a lit side and a turned
+     * side, and that is what makes a flat tone read as a body.
+     *
+     * <p>It is a rule, not a lighting model, and that is deliberate. One direction applied
+     * consistently across every sprite means the whole roster is lit from the same place by
+     * construction — the same reason the sculpted path has exactly one {@code Light}.
+     */
+    public Ink shade(byte lit, byte shadow, int dx, int dy, int depth) {
+        byte[] before = slot.clone();
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int index = y * width + x;
-                if (cover[index] >= 0.99f) {
+                if (before[index] != lit) {
                     continue;
                 }
-                // The nearest ring at which something solid sits, which is the distance to the
-                // silhouette to within a pixel and costs a small fixed scan.
-                int found = 0;
-                int source = -1;
-                for (int r = 1; r <= reach && found == 0; r++) {
-                    for (int dy = -r; dy <= r && found == 0; dy++) {
-                        for (int dx = -r; dx <= r; dx++) {
-                            if (Math.max(Math.abs(dx), Math.abs(dy)) != r) {
-                                continue;
-                            }
-                            int sx = x + dx;
-                            int sy = y + dy;
-                            if (sx < 0 || sy < 0 || sx >= width || sy >= height) {
-                                continue;
-                            }
-                            int at = sy * width + sx;
-                            if (cover[at] >= 0.5f) {
-                                found = r;
-                                source = at;
-                                break;
-                            }
-                        }
+                for (int step = 1; step <= depth; step++) {
+                    int nx = x + dx * step;
+                    int ny = y + dy * step;
+                    byte neighbour = inBounds(nx, ny) ? before[ny * width + nx] : EMPTY;
+                    if (neighbour != lit) {
+                        slot[index] = shadow;
+                        break;
                     }
                 }
-                if (found == 0) {
-                    continue;
-                }
-                float fade = 1f - (found - 1) / (float) reach;
-                outAlpha[index] = fade * (1f - cover[index]);
-                outColor[index] = darken(source, strength);
             }
-        }
-
-        // Composited underneath, so the figure keeps its own colour and only the edge darkens.
-        for (int i = 0; i < outAlpha.length; i++) {
-            float a = outAlpha[i];
-            if (a <= 0f) {
-                continue;
-            }
-            under(i, a, outColor[i]);
         }
         return this;
     }
 
-    private int darken(int index, float strength) {
-        float r = red[index] * (1f - strength);
-        float g = green[index] * (1f - strength);
-        float b = blue[index] * (1f - strength);
-        // A floor, so a black greatcoat still gets an edge that is darker than it is.
-        float floor = 0.055f;
-        r = Math.min(r, red[index] - floor < 0f ? 0f : red[index] - floor);
-        g = Math.min(g, green[index] - floor < 0f ? 0f : green[index] - floor);
-        b = Math.min(b, blue[index] - floor < 0f ? 0f : blue[index] - floor);
-        return (clamp255(r) << 16) | (clamp255(g) << 8) | clamp255(b);
-    }
-
-    // --- compositing ---------------------------------------------------------------------------
-
-    private void paint(int x, int y, float distance, int color) {
-        if (distance >= EDGE) {
-            return;
-        }
-        over(y * width + x, distance <= -EDGE ? 1f : (EDGE - distance), color);
-    }
-
-    /** Source over destination, straight alpha. */
-    private void over(int index, float alpha, int color) {
-        if (alpha <= 0f) {
-            return;
-        }
-        if (alpha > 1f) {
-            alpha = 1f;
-        }
-        float sr = ((color >> 16) & 0xFF) / 255f;
-        float sg = ((color >> 8) & 0xFF) / 255f;
-        float sb = (color & 0xFF) / 255f;
-        float da = cover[index];
-        float out = alpha + da * (1f - alpha);
-        if (out <= 1e-6f) {
-            return;
-        }
-        red[index] = (sr * alpha + red[index] * da * (1f - alpha)) / out;
-        green[index] = (sg * alpha + green[index] * da * (1f - alpha)) / out;
-        blue[index] = (sb * alpha + blue[index] * da * (1f - alpha)) / out;
-        cover[index] = out;
-    }
-
-    /** Destination over source: the contour goes beneath what is already drawn. */
-    private void under(int index, float alpha, int color) {
-        float sr = ((color >> 16) & 0xFF) / 255f;
-        float sg = ((color >> 8) & 0xFF) / 255f;
-        float sb = (color & 0xFF) / 255f;
-        float da = cover[index];
-        float out = da + alpha * (1f - da);
-        if (out <= 1e-6f) {
-            return;
-        }
-        red[index] = (red[index] * da + sr * alpha * (1f - da)) / out;
-        green[index] = (green[index] * da + sg * alpha * (1f - da)) / out;
-        blue[index] = (blue[index] * da + sb * alpha * (1f - da)) / out;
-        cover[index] = out;
-    }
-
-    /** The finished sprite. */
-    public PixelCanvas finish() {
-        PixelCanvas out = new PixelCanvas(width, height);
-        int[] pixels = out.pixels();
-        for (int i = 0; i < pixels.length; i++) {
-            if (cover[i] <= 0.002f) {
-                continue;
+    /**
+     * Lays a one-pixel dark edge around the figure. Call once, last.
+     *
+     * <p>One <em>art</em> pixel, which is the whole reason this does not use
+     * {@code PixelCanvas.outline}: that one walks the raw buffer, so on a canvas showing two
+     * screen pixels per art pixel it draws a half-pixel edge, and on the old four-times canvas a
+     * quarter of one. A contour that is a fraction of a pixel wide is not a contour.
+     *
+     * <p>Four-connected, so corners stay sharp rather than picking up a diagonal bulge, and it
+     * only ever writes into empty pixels, so nothing already drawn is eaten.
+     */
+    public Ink outline() {
+        byte[] before = slot.clone();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int index = y * width + x;
+                if (before[index] != EMPTY) {
+                    continue;
+                }
+                if (solid(before, x - 1, y) || solid(before, x + 1, y)
+                        || solid(before, x, y - 1) || solid(before, x, y + 1)) {
+                    slot[index] = OUTLINE;
+                }
             }
-            pixels[i] = (clamp255(cover[i]) << 24) | (clamp255(red[i]) << 16)
-                    | (clamp255(green[i]) << 8) | clamp255(blue[i]);
+        }
+        return this;
+    }
+
+    // --- text, for the hand-fixing step --------------------------------------------------------
+
+    /** The grid as one string per row, ready to be looked at, corrected and pasted back. */
+    public String[] toGrid() {
+        String[] rows = new String[height];
+        StringBuilder line = new StringBuilder(width);
+        for (int y = 0; y < height; y++) {
+            line.setLength(0);
+            for (int x = 0; x < width; x++) {
+                line.append(KEYS[slot[y * width + x]]);
+            }
+            rows[y] = line.toString();
+        }
+        return rows;
+    }
+
+    /**
+     * A grid read back from text — the hand-corrected art, on its way to being drawn.
+     *
+     * <p>Any character not in the alphabet is empty, so a grid can be annotated in the margin
+     * while it is being worked on without the annotation becoming art.
+     */
+    public static Ink fromGrid(String[] rows) {
+        int w = 0;
+        for (String row : rows) {
+            w = Math.max(w, row.length());
+        }
+        Ink ink = new Ink(w, rows.length);
+        for (int y = 0; y < rows.length; y++) {
+            String row = rows[y];
+            for (int x = 0; x < row.length(); x++) {
+                char c = row.charAt(x);
+                for (byte k = 0; k < KEYS.length; k++) {
+                    if (KEYS[k] == c) {
+                        ink.slot[y * w + x] = k;
+                        break;
+                    }
+                }
+            }
+        }
+        return ink;
+    }
+
+    // --- colour, attached last -----------------------------------------------------------------
+
+    /**
+     * The finished sprite, at the given screen pixels per art pixel.
+     *
+     * <p>Colour arrives here and nowhere earlier, which is what lets one grid be a Resistance
+     * partisan and a Regime soldier depending on the row of tones handed in.
+     *
+     * @param tones one colour per slot, indexed by the slot constants; slot zero is ignored
+     */
+    public PixelCanvas toCanvas(int[] tones, int scale) {
+        PixelCanvas out = new PixelCanvas(width, height, scale);
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                byte tone = slot[y * width + x];
+                if (tone != EMPTY) {
+                    out.px(x, y, tones[tone]);
+                }
+            }
         }
         return out;
     }
 
-    private static int clamp255(float v) {
-        int i = (int) (v * 255f + 0.5f);
-        return i < 0 ? 0 : (i > 255 ? 255 : i);
+    /**
+     * A row of tones built from the ramps a unit wears.
+     *
+     * <p>Through {@code shade} rather than {@code albedo}: the ramps in this game are pre-shaded,
+     * the sculpted path has to hand the top of one to a light and let it generate the rest, and a
+     * drawn sprite is unlit by construction and wants them exactly as authored. The rule across
+     * the two pipelines is <b>albedo for lit, shade for drawn</b>.
+     *
+     * <p>The outline is derived from the coat rather than being black, which is the finding from
+     * the shape card that survived the change of medium: pure black on a Regime greatcoat is
+     * invisible and on a bone sleeve is a sticker. Derived, it is always the same tone darker than
+     * the thing it surrounds — and the floor stops a black uniform losing its edge entirely.
+     */
+    public static int[] tones(int[] coat, int[] trouser, int[] kit, int[] skin, int accent) {
+        int[] out = new int[SLOTS];
+        out[OUTLINE] = WolfPalette.mix(WolfPalette.darken(coat[coat.length - 1], 0.55f),
+                0xFF1A1712, 0.35f);
+        out[COAT_LIGHT] = WolfPalette.shade(coat, 0);
+        out[COAT] = WolfPalette.shade(coat, 1);
+        out[COAT_DARK] = WolfPalette.shade(coat, 3);
+        out[TROUSER] = WolfPalette.shade(trouser, 2);
+        out[TROUSER_DARK] = WolfPalette.shade(trouser, 3);
+        out[BOOT] = WolfPalette.shade(WolfPalette.LEATHER, 3);
+        out[BOOT_DARK] = WolfPalette.shade(WolfPalette.LEATHER, 4);
+        out[SKIN] = WolfPalette.shade(skin, 1);
+        out[SKIN_SHADE] = WolfPalette.shade(skin, 3);
+        out[KIT] = WolfPalette.shade(kit, 1);
+        out[KIT_DARK] = WolfPalette.shade(kit, 3);
+        out[METAL] = WolfPalette.shade(WolfPalette.GUNMETAL, 1);
+        out[METAL_DARK] = WolfPalette.shade(WolfPalette.GUNMETAL, 3);
+        out[WOOD] = WolfPalette.shade(WolfPalette.LEATHER, 1);
+        out[ACCENT] = accent;
+        out[EYE] = 0xFF14100C;
+        return out;
+    }
+
+    // --- helpers -------------------------------------------------------------------------------
+
+    private boolean inBounds(int x, int y) {
+        return x >= 0 && y >= 0 && x < width && y < height;
+    }
+
+    private boolean solid(byte[] buffer, int x, int y) {
+        return inBounds(x, y) && buffer[y * width + x] != EMPTY;
     }
 
     private static boolean inside(float[] xy, float px, float py) {
