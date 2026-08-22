@@ -1,5 +1,6 @@
 package com.ccwolf.core.sim;
 
+import com.ccwolf.core.combat.Doctrines;
 import com.ccwolf.core.combat.Earthworks;
 import com.ccwolf.core.combat.Suppression;
 import com.ccwolf.core.combat.Weapon;
@@ -367,7 +368,8 @@ public final class GameWorld {
             ids = trimmed;
         }
 
-        Squad squad = new Squad(nextEntityId++, ownerId, type, ids, sumX / count, sumY / count);
+        Squad squad = new Squad(nextEntityId++, ownerId, type, ids, sumX / count, sumY / count,
+                Doctrines.spread(player(ownerId).doctrine()));
         squads.add(squad);
         for (int slot = 0; slot < ids.length; slot++) {
             Unit unit = (Unit) entity(ids[slot]);
@@ -2494,7 +2496,8 @@ public final class GameWorld {
         float multiplier = 1f;
         if (!unit.type().isVehicle()) {
             multiplier *= Suppression.damageInCover(weapon.weaponClass(),
-                    map.cover(unit.tileX(), unit.tileY()), TileMap.MAX_COVER);
+                    map.cover(unit.tileX(), unit.tileY()), TileMap.MAX_COVER,
+                    Doctrines.coverScale(player(unit.ownerId()).doctrine()));
             if (unit.isProne()) {
                 multiplier *= Suppression.damageWhenProne();
             }
@@ -2506,13 +2509,18 @@ public final class GameWorld {
      * Books one tick of a man's digging, raising his tile's cover when he has done enough.
      *
      * <p>The one place earthworks are created, so the conditions on them are stated once. A
-     * vehicle has no shovel. A man with his head down is not using his. And a tile that is
+     * vehicle has no shovel. A man with his head down is not using his - unless his side dug
+     * that rule out from under itself, which is what Deep Works is. And a tile that is
      * already as deep as tiles go takes no more work — checked before banking the tick, so a
      * squad sitting on finished ground is not silently throwing away effort it could be
      * spending a tile over.
      */
     public void digIn(Unit unit) {
-        if (unit == null || !unit.isAlive() || unit.type().isVehicle() || unit.isProne()) {
+        if (unit == null || !unit.isAlive() || unit.type().isVehicle()) {
+            return;
+        }
+        Doctrine doctrine = player(unit.ownerId()).doctrine();
+        if (unit.isProne() && !Doctrines.digsUnderFire(doctrine)) {
             return;
         }
         int x = unit.tileX();
@@ -2520,7 +2528,7 @@ public final class GameWorld {
         if (map.cover(x, y) >= TileMap.MAX_COVER) {
             return;
         }
-        if (unit.dig(Earthworks.TICKS_PER_LEVEL)) {
+        if (unit.dig(Doctrines.digTicks(doctrine))) {
             map.addCover(x, y, 1);
         }
     }

@@ -119,6 +119,27 @@ public final class Suppression {
      * @param coverLevel 0 to TileMap.MAX_COVER
      * @param maxCover the scale coverLevel is measured on
      */
+    /**
+     * The same, with a doctrine's opinion of how much cover is worth folded in.
+     *
+     * <p>The scale multiplies the <em>fraction cover removes</em>, not the damage: it makes an
+     * existing trench better rather than inventing protection for a man in the open, and it does
+     * nothing at all against the classes cover never helped against, which is what stops a
+     * defensive doctrine from being an answer to everything.
+     *
+     * <p>Clamped here rather than at the caller. A scale high enough to take the fraction past
+     * one would make a shot heal, and the clamp belongs next to the arithmetic it protects.
+     */
+    public static float damageInCover(WeaponClass weapon, int coverLevel, int maxCover,
+                                      float coverScale) {
+        if (coverLevel <= 0 || maxCover <= 0) {
+            return 1f;
+        }
+        float fraction = Math.min(1f, coverLevel / (float) maxCover);
+        float effect = Math.min(1f, coverEffect(weapon) * coverScale);
+        return 1f - effect * fraction;
+    }
+
     public static float damageInCover(WeaponClass weapon, int coverLevel, int maxCover) {
         if (coverLevel <= 0 || maxCover <= 0) {
             return 1f;

@@ -105,6 +105,19 @@ public final class Squad {
 
     public Squad(int id, int ownerId, UnitType type, int[] memberIds, float anchorX,
             float anchorY) {
+        this(id, ownerId, type, memberIds, anchorX, anchorY, 1f);
+    }
+
+    /**
+     * A squad that stands wider or tighter than its formation was authored for.
+     *
+     * <p>Set once, at formation, from the owner's doctrine. It is not a live lookup because a
+     * squad has no handle on the world and should not grow one to answer a question whose answer
+     * cannot change: a doctrine is picked before the first tick and never changes after it.
+     */
+    public Squad(int id, int ownerId, UnitType type, int[] memberIds, float anchorX,
+            float anchorY, float spread) {
+        this.spread = spread;
         this.id = id;
         this.ownerId = ownerId;
         this.type = type;
@@ -113,6 +126,13 @@ public final class Squad {
         this.strength = memberIds.length;
         this.anchorX = anchorX;
         this.anchorY = anchorY;
+    }
+
+    /** How far apart these men stand, as a multiple of the formation's own spacing. */
+    private final float spread;
+
+    public float spread() {
+        return spread;
     }
 
     public int id() {
@@ -459,8 +479,11 @@ public final class Squad {
      * @param out a two-element array the position is written into, to avoid allocating
      */
     public void slotPosition(int slot, float[] out) {
-        float forward = formation.offsetX(slot);
-        float across = formation.offsetY(slot);
+        // The formation bakes its offsets once per constant, so a doctrine that spreads a squad
+        // scales them here rather than authoring a second set of formations that would then
+        // have to be kept in step with the first.
+        float forward = formation.offsetX(slot) * spread;
+        float across = formation.offsetY(slot) * spread;
         float cos = (float) StrictMath.cos(heading);
         float sin = (float) StrictMath.sin(heading);
         out[0] = anchorX + forward * cos - across * sin;
