@@ -28,6 +28,20 @@ public final class UnitSprites {
     public static final int INFANTRY_SIZE = 32;
     public static final int VEHICLE_SIZE = 48;
 
+    /** A heavy piece: twice a man's frontage, and it should be obvious it does not fit a tile. */
+    public static final int HEAVY_SIZE = 64;
+
+    /**
+     * A land cruiser. Three and a half tiles across.
+     *
+     * <p>The Regime's answer to every problem is a larger machine, and the wonder-weapon
+     * programmes are where that stops being a joke. So the Resonanzkanone is drawn at the size
+     * the fiction implies rather than the size that is convenient: it should dwarf the tank
+     * parked beside it, and it should be obvious from across the map that something enormous is
+     * coming.
+     */
+    public static final int SUPERWEAPON_SIZE = 112;
+
     public static final int FACINGS = 8;
     public static final int WALK_FRAMES = 2;
 
@@ -54,6 +68,12 @@ public final class UnitSprites {
                 return vehicle(hound(frame), facing, 15, 5);
             case HARVESTER:
                 return vehicle(harvester(faction, frame), facing, 18, 6);
+            case FELDKANONE:
+                return vehicle(feldkanone(frame), facing, 15, 5);
+            case NEBELWERFER:
+                return vehicle(nebelwerfer(frame), facing, 22, 8);
+            case RESONANZKANONE:
+                return vehicle(resonanzkanone(frame), facing, 40, 15);
             case UBERSOLDAT:
                 return ubersoldat(facing, frame);
             default:
@@ -771,6 +791,341 @@ public final class UnitSprites {
      * Scout jeep: open-topped, four treaded wheels, a windscreen frame, two seats, a pintle
      * gun on a ring mount and a spare wheel on the back.
      */
+    /**
+     * How wide a type's sprite is authored, in tiles.
+     *
+     * <p>The renderer used to ask {@code isVehicle()} for this, which happened to be right
+     * while the only oversized sprites belonged to vehicles. The guns broke that: they are
+     * crew-served infantry as far as the simulation is concerned — suppressible, able to take
+     * cover, able to dig in — but they are drawn through the rotate path at vehicle size, and a
+     * renderer keyed on {@code isVehicle()} would have shrunk them by a third. Ask the art how
+     * big the art is.
+     */
+    public static float boxTiles(UnitType type) {
+        switch (type) {
+            case RESONANZKANONE:
+                return SUPERWEAPON_SIZE / (float) TILE;
+            case NEBELWERFER:
+                return HEAVY_SIZE / (float) TILE;
+            case FELDKANONE:
+                return VEHICLE_SIZE / (float) TILE;
+            default:
+                return type.isVehicle() ? VEHICLE_SIZE / (float) TILE : 1f;
+        }
+    }
+
+    /**
+     * A Regime field gun on a Resistance farm cart, and the mismatch is the design.
+     *
+     * <p>Grey barrel, grey shield, and everything holding them up is timber and canvas with a
+     * hand-painted mark over whatever was stencilled there before. Nothing about the two halves
+     * agrees, which is the whole story of how the Kreisau Circle came to own artillery.
+     */
+    private static PixelCanvas feldkanone(int frame) {
+        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        int[] metal = WolfPalette.GUNMETAL;
+        int[] steel = WolfPalette.STEEL;
+        int[] timber = WolfPalette.LEATHER;
+        int[] cloth = WolfPalette.OLIVE;
+        int cx = 24;
+        int cy = 24;
+        int recoil = frame == 1 ? 2 : 0;
+
+        // --- cart wheels: spoked timber, far too agricultural for the gun on top ----------
+        for (int side = -1; side <= 1; side += 2) {
+            int wy = cy + side * 9;
+            c.ellipse(cx - 4, wy, 7, 7, WolfPalette.shade(timber, 3));
+            c.ellipse(cx - 4, wy, 5, 5, WolfPalette.shade(timber, 2));
+            c.ellipse(cx - 4, wy, 2, 2, WolfPalette.shade(metal, 3));
+            for (int spoke = 0; spoke < 4; spoke++) {
+                int dx = spoke < 2 ? (spoke == 0 ? -5 : 5) : 0;
+                int dy = spoke < 2 ? 0 : (spoke == 2 ? -5 : 5);
+                c.line(cx - 4, wy, cx - 4 + dx, wy + dy, WolfPalette.shade(timber, 1));
+            }
+        }
+
+        // --- trail: two split legs dragging back off the cart bed -------------------------
+        c.line(cx - 6, cy - 3, cx - 18, cy - 8, WolfPalette.shade(timber, 2));
+        c.line(cx - 6, cy + 3, cx - 18, cy + 8, WolfPalette.shade(timber, 2));
+        c.rect(cx - 19, cy - 9, 3, 3, WolfPalette.shade(metal, 3));
+        c.rect(cx - 19, cy + 7, 3, 3, WolfPalette.shade(metal, 3));
+        // Lashed-down canvas over the ready rounds.
+        c.panel(cx - 14, cy - 4, 8, 9, cloth, 2);
+        c.hLine(cx - 14, cx - 7, cy, WolfPalette.shade(timber, 1));
+
+        // --- shield: sheet steel, chipped, with a hand-painted mark -----------------------
+        c.rect(cx - 3, cy - 12, 6, 24, WolfPalette.shade(steel, 2));
+        c.vLine(cx - 3, cy - 12, cy + 11, WolfPalette.shade(steel, 0));
+        c.vLine(cx + 2, cy - 12, cy + 11, WolfPalette.shade(steel, 4));
+        // Rolled top and bottom edges, so the plate reads as a plate and not as the barrel.
+        c.hLine(cx - 3, cx + 2, cy - 12, WolfPalette.shade(steel, 0));
+        c.hLine(cx - 3, cx + 2, cy + 11, WolfPalette.shade(steel, 4));
+        c.speckle(cx - 2, cy - 11, 4, 22, WolfPalette.shade(steel, 4), 71, 9);
+        // The mark: a rough painted ring, put on over somebody else's stencil.
+        c.ellipse(cx - 1, cy - 6, 3, 3, WolfPalette.shade(cloth, 0));
+        c.ellipse(cx - 1, cy - 6, 2, 2, WolfPalette.shade(steel, 2));
+
+        // --- breech and barrel, recoiling between frames ----------------------------------
+        c.panel(cx + 1, cy - 4, 7, 8, metal, 2);
+        c.rect(cx + 7 - recoil, cy - 2, 15, 4, WolfPalette.shade(metal, 2));
+        c.hLine(cx + 7 - recoil, cx + 21 - recoil, cy - 2, WolfPalette.shade(metal, 1));
+        c.hLine(cx + 7 - recoil, cx + 21 - recoil, cy + 1, WolfPalette.shade(metal, 4));
+        c.rect(cx + 20 - recoil, cy - 3, 3, 6, WolfPalette.shade(metal, 3));
+
+        // --- crew: two men, so that a hit on this reads as men being hit ------------------
+        crewman(c, cx - 8, cy - 11, cloth);
+        crewman(c, cx - 9, cy + 8, cloth);
+        return c;
+    }
+
+    /**
+     * A rack of tubes on a low chassis. 1970s, and squared off everywhere the Feldkanone is not.
+     *
+     * <p>Drawn at {@link #HEAVY_SIZE}: twice a man's frontage, so it reads as equipment that
+     * needs a road rather than something a section carries.
+     */
+    private static PixelCanvas nebelwerfer(int frame) {
+        PixelCanvas c = new PixelCanvas(HEAVY_SIZE, HEAVY_SIZE);
+        int[] body = WolfPalette.NIGHT;
+        int[] metal = WolfPalette.GUNMETAL;
+        int[] brass = WolfPalette.BRASS;
+        int cx = 32;
+        int cy = 32;
+        int lit = frame == 1 ? 1 : 0;
+
+        // --- chassis: flat, wide, and obviously made in a factory -------------------------
+        for (int side = -1; side <= 1; side += 2) {
+            int wy = cy + side * 16;
+            c.rect(cx - 20, wy - 4, 34, 8, WolfPalette.shade(metal, 4));
+            c.hLine(cx - 20, cx + 13, wy - 4, WolfPalette.shade(metal, 2));
+            c.hLine(cx - 20, cx + 13, wy + 3, WolfPalette.shade(body, 4));
+            for (int t = 0; t < 16; t++) {
+                c.vLine(cx - 19 + t * 2, wy - 3, wy + 2, WolfPalette.shade(metal, 3));
+            }
+        }
+        c.panel(cx - 22, cy - 13, 38, 26, body, 1);
+        c.rivets(cx - 21, cy - 12, 36, 24, 6, WolfPalette.shade(metal, 1),
+                WolfPalette.shade(metal, 4));
+        c.hazard(cx - 22, cy - 15, 38, 3, WolfPalette.shade(brass, 1),
+                WolfPalette.shade(body, 3));
+
+        // --- cab: an armoured box at the front left, with a vision slit -------------------
+        c.panel(cx - 20, cy - 10, 12, 20, body, 0);
+        c.rect(cx - 20, cy - 3, 2, 6, WolfPalette.shade(metal, 4));
+
+        // --- the rack: eight tubes with air between them ----------------------------------
+        for (int tube = 0; tube < 8; tube++) {
+            int ty = cy - 14 + tube * 4;
+            int length = 30 - Math.abs(tube - 3) * 2;
+            int tx = cx - 4;
+            c.rect(tx, ty, length, 3, WolfPalette.shade(metal, 3));
+            c.hLine(tx, tx + length - 1, ty, WolfPalette.shade(metal, 1));
+            c.hLine(tx, tx + length - 1, ty + 2, WolfPalette.shade(body, 4));
+            c.rect(tx + length - 3, ty, 3, 3,
+                    WolfPalette.shade(brass, lit == 1 && tube % 2 == 0 ? 0 : 2));
+        }
+        // Elevation frame holding the rack up at the back.
+        c.rect(cx - 7, cy - 16, 4, 32, WolfPalette.shade(metal, 2));
+        c.vLine(cx - 7, cy - 16, cy + 15, WolfPalette.shade(metal, 1));
+
+        crewman(c, cx - 26, cy - 16, body);
+        crewman(c, cx - 27, cy + 13, body);
+        return c;
+    }
+
+    /**
+     * Not an artifact. A Regime gun built around one, at the size the Regime builds things.
+     *
+     * <p>The Totenkopf Division does not field alien weaponry. It fields <em>its</em> weaponry
+     * with alien contents, reverse-engineered into the same riveted plate, blackout paint and
+     * brutal geometry as everything else on its inventory — so the vocabulary is drawn from the
+     * real wonder-weapon programmes rather than from anything organic.
+     *
+     * <p>Three references, all load-bearing:
+     *
+     * <ul>
+     *   <li><b>The thousand-tonne land cruiser</b> — the reason this is drawn at
+     *       {@link #SUPERWEAPON_SIZE} rather than at vehicle scale. Three track assemblies a
+     *       side, a hull built like a warship's, secondary mounts on the corners. It should
+     *       dwarf a tank, and it should look like it ruins the ground it is parked on.</li>
+     *   <li><b>The high-pressure pump</b> — a barrel with a row of angled pressure chambers
+     *       branching off it, each adding to the round on its way down the bore. This is what
+     *       makes it a gun with an appalling internal process rather than merely a gun.</li>
+     *   <li><b>Naval practice</b> — a barbette, a conning position with vision slits, and a
+     *       gun far too large for the carriage under it.</li>
+     * </ul>
+     *
+     * <p>An earlier version built the front end from stacked parabolic reflectors, after the
+     * acoustic cannon. It was accurate and it was wrong: nested dishes read as an antenna, and
+     * what this has to read as first, before anything clever, is artillery.
+     *
+     * <p>{@link WolfPalette#RESONANCE} appears in the chamber throats, the breech seam and down
+     * the bore, and nowhere else. Caged, panelled over, and let out in one direction on
+     * purpose: what you see is the containment, not the thing contained.
+     */
+    private static PixelCanvas resonanzkanone(int frame) {
+        PixelCanvas c = new PixelCanvas(SUPERWEAPON_SIZE, SUPERWEAPON_SIZE);
+        int[] glow = WolfPalette.RESONANCE;
+        int[] steel = WolfPalette.STEEL;
+        int[] metal = WolfPalette.GUNMETAL;
+        int[] night = WolfPalette.NIGHT;
+        int cy = 56;
+        int charge = frame == 1 ? 0 : 2;
+
+        // Absolute pixels rather than offsets from a centre: the assembly has to fit the canvas
+        // and stay balanced about its middle, because the sprite is rotated about (56, 56) for
+        // the other seven facings.
+        //
+        // The proportion is the thing to get right and took two attempts. A hull as tall as it
+        // is long reads as a bunker however it is detailed, and a barbette drawn twenty pixels
+        // across swallowed the whole deck and turned the gun into a dome. A land cruiser is
+        // long, and its gun sticks well out past the end of it.
+        int hullLeft = 2;
+        int hullRight = 74;
+        int hullHalf = 22;
+        int barbetteX = 58;
+        int breechRight = 78;
+        int barrelRight = 98;
+        int muzzleRight = 108;
+
+        // --- three track assemblies a side, in the land-cruiser manner --------------------
+        for (int side = -1; side <= 1; side += 2) {
+            int ty = cy + side * 28 - 5;
+            for (int bogie = 0; bogie < 3; bogie++) {
+                int bx = hullLeft + 3 + bogie * 23;
+                c.rect(bx, ty, 22, 11, WolfPalette.shade(metal, 4));
+                c.hLine(bx, bx + 21, ty, WolfPalette.shade(metal, 2));
+                c.hLine(bx, bx + 21, ty + 10, WolfPalette.shade(night, 4));
+                for (int link = 0; link < 11; link++) {
+                    c.vLine(bx + 1 + link * 2, ty + 1, ty + 9, WolfPalette.shade(metal, 3));
+                }
+                c.ellipse(bx + 6, ty + 5, 3, 3, WolfPalette.shade(metal, 2));
+                c.ellipse(bx + 15, ty + 5, 3, 3, WolfPalette.shade(metal, 2));
+            }
+        }
+
+        // --- hull: long, riveted, and with nothing decorative on it -----------------------
+        c.panel(hullLeft, cy - hullHalf, hullRight - hullLeft, hullHalf * 2 + 1, night, 1);
+        c.rivets(hullLeft + 2, cy - hullHalf + 2, hullRight - hullLeft - 4, hullHalf * 2 - 3,
+                8, WolfPalette.shade(steel, 2), WolfPalette.shade(night, 4));
+        c.hazard(hullLeft, cy - hullHalf - 3, hullRight - hullLeft, 3,
+                WolfPalette.shade(WolfPalette.BRASS, 1), WolfPalette.shade(night, 3));
+        c.hazard(hullLeft, cy + hullHalf + 1, hullRight - hullLeft, 3,
+                WolfPalette.shade(WolfPalette.BRASS, 1), WolfPalette.shade(night, 3));
+
+        // --- deckhouse: a raised block forward of the gun, with a conning slit -------------
+        c.panel(hullLeft + 6, cy - 13, 26, 27, night, 0);
+        c.rivets(hullLeft + 7, cy - 12, 24, 25, 7, WolfPalette.shade(steel, 1),
+                WolfPalette.shade(night, 4));
+        c.rect(hullLeft + 6, cy - 3, 3, 7, WolfPalette.shade(metal, 4));
+        c.vLine(hullLeft + 7, cy - 2, cy + 2, WolfPalette.shade(glow, charge + 3));
+
+        // --- two secondary mounts, small and dark, on the forward corners ------------------
+        int[][] mounts = {{hullLeft + 38, cy - 16}, {hullLeft + 38, cy + 16}};
+        for (int i = 0; i < mounts.length; i++) {
+            c.ellipse(mounts[i][0], mounts[i][1], 4, 4, WolfPalette.shade(steel, 4));
+            c.ellipse(mounts[i][0], mounts[i][1], 2, 2, WolfPalette.shade(steel, 2));
+            c.rect(mounts[i][0], mounts[i][1] - 1, 8, 2, WolfPalette.shade(metal, 3));
+        }
+
+        // --- barbette: a ring, not a dome. Dark, so the deck reads through it --------------
+        c.ellipse(barbetteX, cy, 14, 15, WolfPalette.shade(steel, 4));
+        c.ellipse(barbetteX, cy, 12, 13, WolfPalette.shade(steel, 3));
+        c.ellipse(barbetteX, cy, 9, 10, WolfPalette.shade(night, 2));
+        c.rivets(barbetteX - 11, cy - 12, 22, 24, 7, WolfPalette.shade(steel, 1),
+                WolfPalette.shade(steel, 4));
+
+        // --- breech: a mass of steel with the sliding block showing ------------------------
+        c.panel(barbetteX + 2, cy - 12, breechRight - barbetteX - 2, 25, steel, 3);
+        c.hLine(barbetteX + 2, breechRight - 1, cy - 2, WolfPalette.shade(steel, 4));
+        c.hLine(barbetteX + 2, breechRight - 1, cy + 2, WolfPalette.shade(steel, 1));
+        c.vLine(breechRight - 1, cy - 6, cy + 5, WolfPalette.shade(glow, charge + 2));
+
+        // --- the barrel: long and thin, sticking well clear of the hull -------------------
+        c.rect(breechRight, cy - 5, barrelRight - breechRight, 11, WolfPalette.shade(metal, 3));
+        c.hLine(breechRight, barrelRight - 1, cy - 5, WolfPalette.shade(metal, 1));
+        c.hLine(breechRight, barrelRight - 1, cy - 4, WolfPalette.shade(metal, 2));
+        c.hLine(breechRight, barrelRight - 1, cy + 4, WolfPalette.shade(night, 3));
+        c.hLine(breechRight, barrelRight - 1, cy + 5, WolfPalette.shade(night, 4));
+        for (int rib = 0; rib < 4; rib++) {
+            c.vLine(breechRight + 2 + rib * 2, cy - 3, cy + 3, WolfPalette.shade(metal, 2));
+        }
+
+        // --- pressure chambers, clustered at the breech end --------------------------------
+        // They must leave a clean run of bare tube in front of them: spread down the whole
+        // barrel they read as a centipede and bury the gun in its own plumbing.
+        for (int i = 0; i < 2; i++) {
+            int bx = breechRight + 4 + i * 5;
+            for (int side = -1; side <= 1; side += 2) {
+                int tipY = cy + side * 13;
+                c.thickLine(bx, cy + side * 4, bx - 4, tipY, 1, WolfPalette.shade(metal, 2));
+                c.rect(bx - 7, tipY + (side < 0 ? -3 : 0), 7, 4, WolfPalette.shade(steel, 3));
+                c.rectOutline(bx - 7, tipY + (side < 0 ? -3 : 0), 7, 4,
+                        WolfPalette.shade(night, 4));
+                c.rect(bx - 5, tipY + (side < 0 ? -2 : 1), 3, 2,
+                        WolfPalette.shade(glow, charge));
+            }
+        }
+
+        // --- muzzle: a heavy brake, and the one honest look down the bore ------------------
+        c.rect(barrelRight, cy - 10, muzzleRight - barrelRight, 21, WolfPalette.shade(steel, 2));
+        c.hLine(barrelRight, muzzleRight - 1, cy - 10, WolfPalette.shade(steel, 0));
+        c.hLine(barrelRight, muzzleRight - 1, cy + 10, WolfPalette.shade(steel, 4));
+        c.rect(barrelRight + 2, cy - 8, 5, 4, WolfPalette.shade(night, 4));
+        c.rect(barrelRight + 2, cy + 5, 5, 4, WolfPalette.shade(night, 4));
+        c.rect(barrelRight, cy - 4, muzzleRight - barrelRight, 9, WolfPalette.shade(night, 4));
+        c.rect(barrelRight + 1, cy - 3, muzzleRight - barrelRight - 1, 7,
+                WolfPalette.shade(glow, charge + 2));
+        c.rect(barrelRight + 2, cy - 1, muzzleRight - barrelRight - 2, 3,
+                WolfPalette.shade(glow, charge));
+
+        // --- skull plate on the deckhouse. The only marking anything in this game carries --
+        skullStencil(c, hullLeft + 19, cy - 16);
+
+        crewman(c, hullLeft + 36, cy - 6, night);
+        crewman(c, hullLeft + 36, cy + 6, night);
+        return c;
+    }
+
+    /**
+     * A small stencilled skull, the only marking anything in this game carries.
+     *
+     * <p>Drawn rather than suggested. A bone-coloured ellipse of about this size reads as a
+     * splash of spilled paint, not as a mark somebody put there on purpose — the sockets and
+     * the jaw are what make it a stencil, and they have to be cut into it even at six pixels
+     * across.
+     */
+    private static void skullStencil(PixelCanvas c, int cx, int cy) {
+        int[] bone = WolfPalette.BONE;
+        int dark = WolfPalette.shade(WolfPalette.NIGHT, 4);
+        // Cranium.
+        c.ellipse(cx, cy, 3, 2, WolfPalette.shade(bone, 3));
+        c.hLine(cx - 2, cx + 2, cy - 2, WolfPalette.shade(bone, 2));
+        // Sockets, which are the whole reason it reads.
+        c.px(cx - 1, cy, dark);
+        c.px(cx + 1, cy, dark);
+        // Jaw.
+        c.hLine(cx - 1, cx + 1, cy + 2, WolfPalette.shade(bone, 3));
+        c.px(cx, cy + 3, WolfPalette.shade(bone, 4));
+    }
+
+    /**
+     * A man beside a gun, seen from above.
+     *
+     * <p>Small and crude on purpose — this is background to the weapon, not a figure in its own
+     * right. It exists because the simulation reports a gun as infantry when it is hit, so a
+     * hit on one sprays blood; without visible crew that would read as a bug rather than as the
+     * gun's crew being killed, which is exactly what it is.
+     */
+    private static void crewman(PixelCanvas c, int x, int y, int[] cloth) {
+        // A helmet from above, not a face. Two earlier versions put flesh at the centre and
+        // both read as a scrap of pale debris beside the gun rather than as a man: at three
+        // pixels across, the lightest colour wins and skin is the lightest thing on a soldier.
+        c.ellipse(x, y, 2, 2, WolfPalette.shade(cloth, 4));
+        c.ellipse(x, y, 1, 1, WolfPalette.shade(cloth, 2));
+        c.px(x, y - 1, WolfPalette.shade(cloth, 1));
+    }
+
     private static PixelCanvas jeep(Faction faction, int frame) {
         PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
         int[] body = faction == Faction.REGIME ? WolfPalette.NIGHT : WolfPalette.OLIVE;

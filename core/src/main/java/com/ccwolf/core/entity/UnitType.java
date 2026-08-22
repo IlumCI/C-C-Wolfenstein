@@ -94,7 +94,43 @@ public enum UnitType {
     // --- Shared ---------------------------------------------------------------------------
     /** Mines uranium and hauls it back to a refinery. Unarmed and always a target. */
     HARVESTER("Harvester", null, 1000, 300, 500, 2.2f, 4,
-            ArmorClass.LIGHT, null, true, 500, BuildingType.WAR_WORKS, BuildingType.REFINERY);
+            ArmorClass.LIGHT, null, true, 500, BuildingType.WAR_WORKS, BuildingType.REFINERY),
+
+    /**
+     * The Resistance's only gun, and it is not theirs.
+     *
+     * <p>A Regime field piece taken off a column and dragged behind a farm cart ever since.
+     * 1945 in every respect: one shell at a time, a long wait between them, and a crew whose
+     * best plan after firing is to be somewhere else. It is also the single most expensive
+     * thing the Kreisau Circle can field, which is the point — their heaviest punch is
+     * something they stole.
+     */
+    FELDKANONE("Stolen Feldkanone", Faction.RESISTANCE, 850, 280, 100, 1.3f, 5,
+            ArmorClass.FLESH, Weapon.FELDKANONE, false, 0,
+            BuildingType.WAR_WORKS, BuildingType.REFINERY),
+
+    /**
+     * A rack of tubes that empties itself at a piece of ground.
+     *
+     * <p>1970s industry, and the first weapon in the game that cares about the shape of what it
+     * is shooting at rather than only the distance to it. Four rounds across a frontage is
+     * wasted on one man and ruinous to a line of them.
+     */
+    NEBELWERFER("Nebelwerfer-71", Faction.REGIME, 950, 300, 110, 1.4f, 5,
+            ArmorClass.FLESH, Weapon.NEBELWERFER, false, 0,
+            BuildingType.WAR_WORKS, BuildingType.REFINERY),
+
+    /**
+     * Whatever the Regime dug up, on a carriage.
+     *
+     * <p>It does not throw anything, and there is no crater afterwards. Cover is no help and
+     * earthworks are no help, and what it mostly leaves behind is a position full of men who
+     * are alive and will not stay. Ponderous, ruinously expensive, and it outranges everything
+     * else on the map — which is the whole argument for building one.
+     */
+    RESONANZKANONE("Resonanzkanone", Faction.REGIME, 1600, 420, 130, 0.9f, 6,
+            ArmorClass.FLESH, Weapon.RESONANZKANONE, false, 0,
+            BuildingType.WAR_WORKS, BuildingType.REFINERY);
 
     private final String displayName;
     private final Faction faction;
@@ -233,12 +269,36 @@ public enum UnitType {
     }
 
     /** Unarmed specialists that act on a target instead of shooting it. */
+    /**
+     * True for a gun that drops shells on a place rather than shooting at a thing.
+     *
+     * <p>Keyed on the weapon having a dead zone rather than on a list of unit names, because
+     * that is the property everything actually cares about: a weapon with a hole in the middle
+     * of its range needs callers that back off instead of closing, and needs keeping out of any
+     * list that ends in an attack-move.
+     */
+    public boolean isArtillery() {
+        return weapon != null && weapon.hasMinRange();
+    }
+
     public boolean isInfiltrator() {
         return this == INFILTRATOR || this == SABOTEUR;
     }
 
     /** Collision/selection radius in tiles. Vehicles are chunkier than infantry. */
     public float radius() {
-        return vehicle ? 0.42f : 0.28f;
+        switch (this) {
+            // The guns take up real ground. A machine drawn three and a half tiles across that
+            // other units walk straight through would look like a bug, and the footprint is
+            // also what makes a battery worth flanking rather than worth walking around.
+            case RESONANZKANONE:
+                return 1.0f;
+            case NEBELWERFER:
+                return 0.7f;
+            case FELDKANONE:
+                return 0.5f;
+            default:
+                return vehicle ? 0.42f : 0.28f;
+        }
     }
 }

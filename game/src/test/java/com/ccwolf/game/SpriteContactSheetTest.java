@@ -35,8 +35,19 @@ public class SpriteContactSheetTest {
         Frame.useAwtBackend();
     }
 
-    /** Sprites are drawn at 3x so the pixels are legible in a review. */
-    private static final int ZOOM = 3;
+    /** Sprites are drawn at 2x so the pixels are legible without the sheet becoming a mural. */
+    private static final int ZOOM = 2;
+
+    /**
+     * The widest sprite in the game, which is what every unit cell is sized to.
+     *
+     * <p>Uniform cells rather than cells that fit their contents, because the relative size of
+     * these things is now part of the design — a land cruiser next to a rifleman only reads if
+     * they are drawn against the same ruler. Sizing cells to VEHICLE_SIZE, as this did, made
+     * the oversized sprites overlap each other and the row above, which looked exactly like a
+     * drawing fault and was not one.
+     */
+    private static final int WIDEST_SPRITE = UnitSprites.SUPERWEAPON_SIZE;
     private static final int PAD = 8;
     private static final int LABEL_H = 14;
     private static final int BACKDROP = 0xFF23251E;
@@ -54,7 +65,7 @@ public class SpriteContactSheetTest {
     @Test
     public void everyUnitInEveryFacing() throws IOException {
         SpriteAtlas atlas = SpriteAtlas.get();
-        int cell = UnitSprites.VEHICLE_SIZE * ZOOM + PAD;
+        int cell = WIDEST_SPRITE * ZOOM + PAD;
         int rows = 0;
         for (UnitType type : UnitType.values()) {
             rows += type.faction() == null ? 2 : 1;
@@ -77,7 +88,7 @@ public class SpriteContactSheetTest {
                     assertNotNull(type + " facing " + facing + " missing", sprite);
                     assertTrue("sprite is blank: " + type + " facing " + facing,
                             hasContent(sprite));
-                    drawScaled(canvas, sprite, 120 + facing * cell, y + LABEL_H);
+                    drawCentred(canvas, sprite, 120 + facing * cell, y + LABEL_H, cell);
                 }
                 y += cell + LABEL_H;
             }
@@ -88,7 +99,7 @@ public class SpriteContactSheetTest {
     @Test
     public void unitAnimationFrames() throws IOException {
         SpriteAtlas atlas = SpriteAtlas.get();
-        int cell = UnitSprites.VEHICLE_SIZE * ZOOM + PAD;
+        int cell = WIDEST_SPRITE * ZOOM + PAD;
         Frame sheet = new Frame(cell * 6 + 130,
                 UnitType.values().length * (cell + LABEL_H) + PAD);
         Surface canvas = sheet.surface();
@@ -195,6 +206,15 @@ public class SpriteContactSheetTest {
     private void drawScaled(Surface surface, Image sprite, int x, int y) {
         surface.drawImage(sprite, x, y,
                 x + sprite.width() * ZOOM, y + sprite.height() * ZOOM, paint);
+    }
+
+    /** Centres a sprite in a uniform cell, so different sizes share one visual ruler. */
+    private void drawCentred(Surface surface, Image sprite, int x, int y, int cell) {
+        int w = sprite.width() * ZOOM;
+        int h = sprite.height() * ZOOM;
+        int left = x + (cell - PAD - w) / 2;
+        int top = y + (cell - PAD - h) / 2;
+        surface.drawImage(sprite, left, top, left + w, top + h, paint);
     }
 
     /** A sprite that is entirely transparent means the recipe drew nothing. */

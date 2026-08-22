@@ -81,6 +81,22 @@ public final class WolfPalette {
         0xFFE8B98C, 0xFFD09A68, 0xFFB07E58, 0xFF8A5E3E, 0xFF5E3F2A,
     };
 
+    /**
+     * Reverse-engineered resonance: neon red bleeding into violet.
+     *
+     * <p>The Regime's wonder-weapons do not glow the same colour as the ground does. This ramp
+     * exists so that the one thing on the battlefield nobody built from first principles is the
+     * one thing that is not a colour anything else in this game is — it should look like it is
+     * lit from a source the rest of the world does not have.
+     *
+     * <p>Used only where the containment lets it out: chamber throats, a bore, an impact. Never
+     * as a surface anything is painted.
+     */
+    public static final int[] RESONANCE = {
+        0xFFFF5FA8, 0xFFE02B7A, 0xFFA81C6E, 0xFF6E1257, 0xFF35082C,
+    };
+
+
     /** Occult tech glow: the uranium seams and whatever the Regime is doing with them. */
     public static final int[] OCCULT = {
         0xFFCFFFA8, 0xFF8FE86A, 0xFF5CBE3E, 0xFF357A28, 0xFF1D4418,

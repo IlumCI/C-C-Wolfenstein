@@ -318,9 +318,11 @@ public final class WorldRenderer {
         float cx = camera.screenX(u.renderX(alpha));
         float cy = camera.screenY(u.renderY(alpha));
 
-        // Sprites are authored one tile across for infantry, a little over for vehicles.
-        float size = px * (u.type().isVehicle()
-                ? UnitSprites.VEHICLE_SIZE / (float) UnitSprites.TILE : 1f);
+        // Ask the art how big the art is. This used to read isVehicle(), which was right only
+        // while every oversized sprite belonged to a vehicle - the guns are crew-served
+        // infantry to the simulation and vehicle-sized on the canvas, and would have been drawn
+        // a third too small.
+        float size = px * UnitSprites.boxTiles(u.type());
         if (cx + size < camera.viewLeft() || cy + size < camera.viewTop()
                 || cx - size > camera.viewLeft() + camera.viewWidth()
                 || cy - size > camera.viewTop() + camera.viewHeight()) {
