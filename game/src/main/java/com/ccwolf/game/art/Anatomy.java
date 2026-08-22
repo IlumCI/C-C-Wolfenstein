@@ -281,12 +281,28 @@ public final class Anatomy {
                 p.size(44f), p.size(60f), 0.20f, 4f, seed);
     }
 
+    /**
+     * A neck.
+     *
+     * <p>Small, and the figure does not work without it. With the skull sitting straight on the
+     * yoke the two weld into one mass and a soldier reads as hunched — which is what the first
+     * full figure looked like, and it took a while to see because the fault is the absence of
+     * something rather than the presence of anything.
+     */
+    public static void neck(Sculptor s, Pose p, float across, float forward, int skin,
+                            int collar) {
+        s.weld(true);
+        mass(s, p, across, forward - 1f, 146f, 5.2f, 5.2f, 6f, skin, SKIN_SHEEN);
+        s.weld(false);
+        mass(s, p, across, forward - 1f, 141f, 7.6f, 7f, 2.6f, collar, Sculptor.CLOTH);
+    }
+
     /** Shoulders, as a yoke across the top of the chest rather than two balls stuck on it. */
     public static void shoulders(Sculptor s, Pose p, float across, float forward, int cloth) {
         s.weld(true);
-        mass(s, p, across, forward, 138f, 23f, 11f, 6f, cloth, Sculptor.CLOTH);
-        mass(s, p, across - 19f, forward, 135f, 6.5f, 8f, 7f, cloth, Sculptor.CLOTH);
-        mass(s, p, across + 19f, forward, 135f, 6.5f, 8f, 7f, cloth, Sculptor.CLOTH);
+        mass(s, p, across, forward, 137f, 25f, 11.5f, 6.5f, cloth, Sculptor.CLOTH);
+        mass(s, p, across - 21f, forward, 134f, 7.5f, 8.5f, 8f, cloth, Sculptor.CLOTH);
+        mass(s, p, across + 21f, forward, 134f, 7.5f, 8.5f, 8f, cloth, Sculptor.CLOTH);
         s.weld(false);
     }
 

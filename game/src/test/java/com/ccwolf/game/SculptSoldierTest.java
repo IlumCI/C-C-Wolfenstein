@@ -120,6 +120,70 @@ public class SculptSoldierTest {
         assertTrue(true);
     }
 
+    /**
+     * The three helmets as black silhouettes, at the size the game shows them.
+     *
+     * <p>The acceptance test for the whole Kreisau look, and the reason salvaged Allied kit is a
+     * better variety axis than clothing was. A shirt pattern is invisible at forty pixels; an
+     * outline is not. So this throws away every colour, every material and all the shading, and
+     * asks the only question that matters: with nothing left but the shape, can a pot helmet, a
+     * dish helmet and a coal-scuttle be told apart?
+     *
+     * <p>If they cannot, the variety is decorative and the effort belongs somewhere else.
+     */
+    @Test
+    public void theThreeHelmetsAreTellableApartInBlack() throws IOException {
+        int[] sizes = {160, 64, 40};
+        // Measured from the content, not guessed. A sheet narrower than what it lays out draws
+        // the small cells off the right-hand edge, where they pass and are never looked at -
+        // and the small cells are the entire point of this test.
+        int wide = 10;
+        for (int size : sizes) {
+            wide += 3 * (size + 6) + 12;
+        }
+        PixelCanvas sheet = new PixelCanvas(wide, 2 * 180 + 30);
+        sheet.fill(0xFFB9B5A6);
+
+        for (int row = 0; row < 2; row++) {
+            int x = 10;
+            for (int size : sizes) {
+                for (int kit = 0; kit < 3; kit++) {
+                    Sculptor s = new Sculptor(size, size);
+                    Pose p = new Pose((float) ((row == 0 ? 2 : 3) * Math.PI / 4.0), size / 2f,
+                            size * 0.62f, size * 0.0283f);
+                    Anatomy.skull(s, p, 0f, 0f, 0f, WolfPalette.shade(WolfPalette.FLESH, 2));
+                    int kitColor = WolfPalette.shade(WolfPalette.OLIVE, 1);
+                    if (kit == 0) {
+                        Anatomy.potHelmet(s, p, 0f, 0f, 4f, kitColor);
+                    } else if (kit == 1) {
+                        Anatomy.dishHelmet(s, p, 0f, 0f, 5f, kitColor);
+                    } else {
+                        Anatomy.stahlhelm(s, p, 0f, 0f, 3f,
+                                WolfPalette.albedo(WolfPalette.NIGHT));
+                    }
+                    sheet.blit(blacken(s.light(Light.overcast())), x,
+                            10 + row * 180 + (180 - size) / 2);
+                    x += size + 6;
+                }
+                x += 10;
+            }
+        }
+        save(sheet, "sculpt-silhouettes.png");
+        assertTrue(true);
+    }
+
+    /** Every covered pixel to solid black, so only the outline survives. */
+    private PixelCanvas blacken(PixelCanvas lit) {
+        PixelCanvas out = new PixelCanvas(lit.width(), lit.height());
+        int[] src = lit.pixels();
+        int[] dst = out.pixels();
+        for (int i = 0; i < src.length; i++) {
+            int alpha = src[i] >>> 24;
+            dst[i] = alpha << 24;
+        }
+        return out;
+    }
+
     // --- the figure ---------------------------------------------------------------------------
 
     /** A Kreisau partisan in salvaged Allied kit. */
@@ -136,6 +200,7 @@ public class SculptSoldierTest {
         Anatomy.torso(s, p, 0f, 0f, blouse, 3);
         Anatomy.webbing(s, p, 0f, canvas, canvas);
         Anatomy.shoulders(s, p, 0f, 0f, blouse);
+        Anatomy.neck(s, p, 0f, 0f, skin, blouse);
         Anatomy.armsAtTheReady(s, p, 0f, blouse, skin);
         Anatomy.skull(s, p, 0f, 2f, 158f, skin);
         Anatomy.potHelmet(s, p, 0f, 1f, 162f, blouse);
@@ -148,11 +213,11 @@ public class SculptSoldierTest {
         int wood = WolfPalette.shade(WolfPalette.LEATHER, 1);
 
         // Receiver, running forward past the left hand.
-        Anatomy.tube(s, p, 6f, 8f, 113f, -6f, 26f, 118f, 1.9f, steel, Sculptor.STEEL);
+        Anatomy.tube(s, p, 7f, 6f, 112f, -7f, 27f, 118f, 2.6f, steel, Sculptor.STEEL);
         // The stock, back under the right forearm.
-        Anatomy.tube(s, p, 8f, 4f, 112f, 12f, -6f, 110f, 1.7f, wood, Sculptor.LEATHER);
+        Anatomy.tube(s, p, 9f, 3f, 111f, 14f, -9f, 108f, 2.4f, wood, Sculptor.LEATHER);
         // Magazine, hanging under the receiver: the detail that names the weapon.
-        Anatomy.tube(s, p, 1f, 15f, 112f, 1f, 15f, 101f, 1.3f, steel, Sculptor.STEEL);
+        Anatomy.tube(s, p, 1f, 15f, 111f, 1f, 16f, 99f, 1.8f, steel, Sculptor.STEEL);
         Machine.barrel(s, p.x(-4f, 23f, 117f), p.y(-4f, 23f, 117f),
                 p.x(-9f, 33f, 119f), p.y(-9f, 33f, 119f), p.size(1.1f),
                 p.depth(-6f, 28f, 118f), steel);

@@ -55,6 +55,10 @@ public final class Light {
     /**
      * A warm up-light from below, the ground throwing the key back at whatever stands on it.
      *
+     * <p>Kept low, and the rim with it. Both terms are strongest on the surface turned away from
+     * the key, so they land on the same edge and add up: at their first settings every figure
+     * had a bright line down its lower right that read as an outline rather than as light.
+     *
      * <p>One extra dot product, and the difference between a figure that has an underside and a
      * figure whose underside is a black hole. Undersides falling to flat black is the standing
      * tell of a renderer with a single key light.
@@ -106,9 +110,9 @@ public final class Light {
                 1.0f,
                 0.85f,
                 0.55f, 14,
-                0xFF6B5A42, 0.22f,
+                0xFF6B5A42, 0.14f,
                 0.35f,
-                0xFF9FB6C9, 0.30f);
+                0xFF9FB6C9, 0.07f);
     }
 
     /** The same sun with the relief dialled, for looking at what the height field is doing. */

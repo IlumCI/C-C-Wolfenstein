@@ -176,8 +176,8 @@ public final class Pose {
      *
      * <p>The projection is two rows by three columns; scaled by the ellipsoid's own radii it
      * becomes a matrix whose image of the unit sphere is the ellipse wanted, and the shape of
-     * that ellipse is carried by {@code A·Aᵀ} — a symmetric two by two whose eigenvalues are the
-     * squared semi-axes and whose eigenvectors give the tilt. Closed form, no iteration, and it
+     * that ellipse is carried by {@code A·Aᵀ} — a symmetric two by two whose eigenvalues are
+     * the squared semi-axes and whose eigenvectors give the tilt. Closed form, no iteration, and it
      * turns every rounded body part into one call that stays correct at all eight facings.
      *
      * @param out filled with the major screen radius, the minor screen radius, and the rotation
