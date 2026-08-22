@@ -41,7 +41,33 @@ public final class Earthworks {
     public static final float MOVE_COST_PER_LEVEL = 0.45f;
 
     /** As much earth as a tile can hold, matching TileMap.MAX_COVER without depending on it. */
-    private static final int MAX_LEVELS = 4;
+    private static final int MAX_LEVELS = 5;
+
+    /**
+     * The depth at which a cut becomes a roofed dugout — timber over the top, spoil banked over
+     * that. Only Deep Works digs this far, and it is what the doctrine is for.
+     */
+    public static final int ROOFED = MAX_LEVELS;
+
+    /**
+     * What a roof leaves of a shell that came down on top of it.
+     *
+     * <p>Overhead cover does the one thing a deeper hole cannot: it stops the fragments that
+     * arrive from above. Against anything shooting flat it is worth nothing at all, which is why
+     * this is a separate reduction rather than a fifth step on the ordinary curve.
+     */
+    private static final float OVERHEAD = 0.55f;
+
+    /**
+     * Which classes arrive from above, and are therefore the ones a roof answers.
+     *
+     * <p>A table with a completeness check rather than a two-name test, for the third time in
+     * this file and for the same reason: a new weapon class that plunges and was not listed
+     * would be stopped by nothing, silently, and the only symptom would be a balance number
+     * nobody could explain.
+     */
+    private static final boolean[] PLUNGING = new boolean[WeaponClass.values().length];
+    private static final boolean[] PLUNGING_SET = new boolean[WeaponClass.values().length];
 
     /**
      * How many levels of earth one blast strips from the tiles it lands on, by weapon class.
@@ -74,6 +100,25 @@ public final class Earthworks {
         FLATTENING[WeaponClass.OCCULT.ordinal()] = MAX_LEVELS;
         FLATTENING[WeaponClass.ARTILLERY.ordinal()] = 2;
 
+        plunging(WeaponClass.SMALL_ARMS, false);
+        plunging(WeaponClass.SNIPER, false);
+        plunging(WeaponClass.CANNON, false);
+        plunging(WeaponClass.ROCKET, false);
+        plunging(WeaponClass.GRENADE, true);
+        plunging(WeaponClass.FLAME, false);
+        plunging(WeaponClass.MELEE, false);
+        // Whatever the Resonanzkanone is doing, it is not fragments falling on a roof.
+        plunging(WeaponClass.OCCULT, false);
+        plunging(WeaponClass.ARTILLERY, true);
+
+        for (WeaponClass w : WeaponClass.values()) {
+            if (!PLUNGING_SET[w.ordinal()]) {
+                throw new IllegalStateException("Earthworks does not say whether " + w
+                        + " arrives from above - say so, rather than letting a roof stop it "
+                        + "by accident or fail to stop it by accident");
+            }
+        }
+
         for (WeaponClass w : WeaponClass.values()) {
             if (FLATTENING[w.ordinal()] == UNSET) {
                 throw new IllegalStateException("Earthworks has no flattening entry for " + w
@@ -81,6 +126,24 @@ public final class Earthworks {
                         + "letting it default");
             }
         }
+    }
+
+    private static void plunging(WeaponClass weapon, boolean value) {
+        PLUNGING[weapon.ordinal()] = value;
+        PLUNGING_SET[weapon.ordinal()] = true;
+    }
+
+    /** True if this weapon's damage arrives from above, where a roof is between it and a man. */
+    public static boolean isPlunging(WeaponClass weapon) {
+        return PLUNGING[weapon.ordinal()];
+    }
+
+    /**
+     * What a tile's roof leaves of a shot, as a multiplier. One for everything unroofed, and one
+     * for everything shooting flat however deep the hole.
+     */
+    public static float overhead(WeaponClass weapon, int coverLevel) {
+        return coverLevel >= ROOFED && isPlunging(weapon) ? OVERHEAD : 1f;
     }
 
     public static int flattening(WeaponClass weapon) {

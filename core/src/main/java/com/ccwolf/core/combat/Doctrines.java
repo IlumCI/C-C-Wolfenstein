@@ -1,6 +1,7 @@
 package com.ccwolf.core.combat;
 
 import com.ccwolf.core.entity.Doctrine;
+import com.ccwolf.core.map.TileMap;
 
 /**
  * What each doctrine is actually worth, in one table.
@@ -41,23 +42,36 @@ public final class Doctrines {
     /** How much wider a Dispersal squad stands. */
     private static final float ZERSTREUUNG_SPREAD = 1.5f;
 
+    /**
+     * As deep as a side digs.
+     *
+     * <p>{@link TileMap#FULL_COVER} for everyone: four is where the ordinary protection curve
+     * tops out, and it is what every side could reach before doctrines existed. Deep Works goes
+     * one further, to a roofed dugout, and it is the only thing on the map that can.
+     */
+    public static final int PLAIN_MAX_DEPTH = TileMap.FULL_COVER;
+
     private static final int[] DIG_TICKS = new int[Doctrine.values().length];
     private static final boolean[] DIGS_UNDER_FIRE = new boolean[Doctrine.values().length];
     private static final float[] COVER_SCALE = new float[Doctrine.values().length];
     private static final float[] SPREAD = new float[Doctrine.values().length];
+    private static final int[] MAX_DEPTH = new int[Doctrine.values().length];
     private static final boolean[] FILLED = new boolean[Doctrine.values().length];
 
     static {
-        //   doctrine              digTicks              underFire  cover            spread
-        set(Doctrine.TIEFBAU,      TIEFBAU_DIG_TICKS,    true,      1f,              1f);
-        set(Doctrine.STAHLBETON,   PLAIN_DIG_TICKS,      false,     STAHLBETON_COVER, 1f);
-        set(Doctrine.ZERSTREUUNG,  PLAIN_DIG_TICKS,      false,     1f,   ZERSTREUUNG_SPREAD);
+        int plainTicks = PLAIN_DIG_TICKS;
+        int plainDepth = PLAIN_MAX_DEPTH;
+
+        //   doctrine             dig ticks    under fire  cover   spread  depth
+        set(Doctrine.TIEFBAU,     TIEFBAU_DIG_TICKS, true,  1f, 1f, Earthworks.ROOFED);
+        set(Doctrine.STAHLBETON,  plainTicks, false, STAHLBETON_COVER, 1f, plainDepth);
+        set(Doctrine.ZERSTREUUNG, plainTicks, false, 1f, ZERSTREUUNG_SPREAD, plainDepth);
 
         // The Regime's three do nothing to the ground or to the men holding it. They buy
         // something instead, and what they buy is a roster entry rather than a number here.
-        set(Doctrine.GASKRIEG,     PLAIN_DIG_TICKS,      false,     1f,              1f);
-        set(Doctrine.BRANDSTURM,   PLAIN_DIG_TICKS,      false,     1f,              1f);
-        set(Doctrine.AUSMERZUNG,   PLAIN_DIG_TICKS,      false,     1f,              1f);
+        set(Doctrine.GASKRIEG,    plainTicks, false, 1f, 1f, plainDepth);
+        set(Doctrine.BRANDSTURM,  plainTicks, false, 1f, 1f, plainDepth);
+        set(Doctrine.AUSMERZUNG,  plainTicks, false, 1f, 1f, plainDepth);
 
         for (Doctrine d : Doctrine.values()) {
             if (!FILLED[d.ordinal()]) {
@@ -69,12 +83,13 @@ public final class Doctrines {
     }
 
     private static void set(Doctrine d, int digTicks, boolean digsUnderFire, float coverScale,
-                            float spread) {
+                            float spread, int maxDepth) {
         int i = d.ordinal();
         DIG_TICKS[i] = digTicks;
         DIGS_UNDER_FIRE[i] = digsUnderFire;
         COVER_SCALE[i] = coverScale;
         SPREAD[i] = spread;
+        MAX_DEPTH[i] = maxDepth;
         FILLED[i] = true;
     }
 
@@ -106,5 +121,10 @@ public final class Doctrines {
     /** Multiplier on how far apart a squad's men stand. 1 is the formation as authored. */
     public static float spread(Doctrine d) {
         return d == null ? 1f : SPREAD[d.ordinal()];
+    }
+
+    /** How deep this side's men will dig, counting whatever the ground already offered. */
+    public static int maxDepth(Doctrine d) {
+        return d == null ? PLAIN_MAX_DEPTH : MAX_DEPTH[d.ordinal()];
     }
 }

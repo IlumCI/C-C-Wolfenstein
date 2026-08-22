@@ -98,7 +98,20 @@ public final class TileMap {
 
     /** Uranium remaining in this tile, 0 if it was never ore or has been mined out. */
     /** The most protection a tile can offer: a proper trench. */
-    public static final int MAX_COVER = 4;
+    public static final int MAX_COVER = 5;
+
+    /**
+     * The depth at which ordinary cover stops adding anything.
+     *
+     * <p>Deliberately not {@link #MAX_COVER}, and this is the whole reason a fifth level could
+     * be added without rebalancing the game. Damage in cover is a fraction of the way to the
+     * maximum, so raising the maximum to five would have turned today's deepest trench from
+     * four-quarters into four-fifths and quietly weakened rubble along with it. Instead the
+     * ordinary reduction still divides by four with the level clamped to four, so every depth
+     * that existed yesterday protects exactly as it did — and the fifth level is a different
+     * kind of protection rather than more of the same: a roof, which stops what comes down.
+     */
+    public static final int FULL_COVER = 4;
 
     /**
      * Protection for anything standing on a tile, 0 to {@link #MAX_COVER}.

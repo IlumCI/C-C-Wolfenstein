@@ -2495,9 +2495,16 @@ public final class GameWorld {
         Unit unit = (Unit) target;
         float multiplier = 1f;
         if (!unit.type().isVehicle()) {
+            int cover = map.cover(unit.tileX(), unit.tileY());
+            // Clamped to FULL_COVER, not MAX_COVER. The ordinary reduction is a fraction of the
+            // way to four and stays that way however deep tiles are allowed to get, so adding a
+            // fifth level did not quietly weaken every trench and every ruin on the map.
             multiplier *= Suppression.damageInCover(weapon.weaponClass(),
-                    map.cover(unit.tileX(), unit.tileY()), TileMap.MAX_COVER,
+                    Math.min(cover, TileMap.FULL_COVER), TileMap.FULL_COVER,
                     Doctrines.coverScale(player(unit.ownerId()).doctrine()));
+            // And a roof, which is a different thing rather than more of the same: it stops
+            // what comes down and nothing that comes flat.
+            multiplier *= Earthworks.overhead(weapon.weaponClass(), cover);
             if (unit.isProne()) {
                 multiplier *= Suppression.damageWhenProne();
             }
@@ -2511,8 +2518,8 @@ public final class GameWorld {
      * <p>The one place earthworks are created, so the conditions on them are stated once. A
      * vehicle has no shovel. A man with his head down is not using his - unless his side dug
      * that rule out from under itself, which is what Deep Works is. And a tile that is
-     * already as deep as tiles go takes no more work — checked before banking the tick, so a
-     * squad sitting on finished ground is not silently throwing away effort it could be
+     * already as deep as this side digs takes no more work — checked before banking the tick,
+     * so a squad sitting on finished ground is not silently throwing away effort it could be
      * spending a tile over.
      */
     public void digIn(Unit unit) {
@@ -2525,7 +2532,7 @@ public final class GameWorld {
         }
         int x = unit.tileX();
         int y = unit.tileY();
-        if (map.cover(x, y) >= TileMap.MAX_COVER) {
+        if (map.cover(x, y) >= Doctrines.maxDepth(doctrine)) {
             return;
         }
         if (unit.dig(Doctrines.digTicks(doctrine))) {

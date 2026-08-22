@@ -130,6 +130,15 @@ public final class Suppression {
      * <p>Clamped here rather than at the caller. A scale high enough to take the fraction past
      * one would make a shot heal, and the clamp belongs next to the arithmetic it protects.
      */
+    /**
+     * The fraction of a shot that full cover removes, for whoever needs to check the curve
+     * rather than reproduce it. Not used by the simulation, which goes through the methods
+     * below so that the clamping happens in one place.
+     */
+    public static float coverEffectFor(WeaponClass weapon) {
+        return coverEffect(weapon);
+    }
+
     public static float damageInCover(WeaponClass weapon, int coverLevel, int maxCover,
                                       float coverScale) {
         if (coverLevel <= 0 || maxCover <= 0) {

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.ccwolf.core.combat.Doctrines;
+import com.ccwolf.core.combat.Earthworks;
 import com.ccwolf.core.combat.Suppression;
 import com.ccwolf.core.combat.Weapon;
 import com.ccwolf.core.entity.BuildingType;
@@ -148,6 +149,55 @@ public class DoctrineEffectsTest {
         // A defensive doctrine that answered everything would not be a choice.
         assertEquals(shotDamage(null, TileMap.MAX_COVER, Weapon.HOUND_JAWS),
                 shotDamage(Doctrine.STAHLBETON, TileMap.MAX_COVER, Weapon.HOUND_JAWS));
+    }
+
+    // --- the fifth level ------------------------------------------------------------------
+
+    @Test
+    public void onlyDeepWorksReachesTheFifthLevel() {
+        assertEquals(Earthworks.ROOFED, Doctrines.maxDepth(Doctrine.TIEFBAU));
+        assertEquals(TileMap.FULL_COVER, Doctrines.maxDepth(null));
+        assertTrue(Earthworks.ROOFED > TileMap.FULL_COVER, "a fifth level that is not deeper");
+
+        for (Doctrine doctrine : new Doctrine[] {null, Doctrine.TIEFBAU}) {
+            GameWorld world = world(15L, doctrine, null);
+            int[] spot = quietGrass(world.map());
+            Unit digger = world.spawnUnit(0, UnitType.PARTISAN, spot[0] + 0.5f, spot[1] + 0.5f);
+            digger.setOrder(new EntrenchOrder(spot[0], spot[1]));
+            for (int i = 0; i < Doctrines.PLAIN_DIG_TICKS * 8; i++) {
+                world.step();
+            }
+            int dug = world.map().cover(spot[0], spot[1]);
+            assertEquals(Doctrines.maxDepth(doctrine), dug,
+                    "left alone forever, a man digs exactly as deep as his side digs");
+        }
+    }
+
+    @Test
+    public void aRoofStopsWhatComesDownAndNothingThatComesFlat() {
+        // The whole justification for a fifth level being a different kind of protection rather
+        // than more of the same. If this ever fails as an equality, the scale change has started
+        // rebalancing weapons it was never supposed to touch.
+        assertEquals(shotDamage(null, TileMap.FULL_COVER, Weapon.RIFLE),
+                shotDamage(null, Earthworks.ROOFED, Weapon.RIFLE),
+                "a roof is no help against a man shooting at you from across the field");
+
+        // A grenade bundle rather than a field gun: same plunging class of problem, and no
+        // minimum range to trip over at the one-tile spacing this harness fires at.
+        int open = shotDamage(null, TileMap.FULL_COVER, Weapon.GRENADE_BUNDLE);
+        int roofed = shotDamage(null, Earthworks.ROOFED, Weapon.GRENADE_BUNDLE);
+        assertTrue(roofed < open,
+                "overhead cover should stop some of a shell: " + roofed + " vs " + open);
+    }
+
+    @Test
+    public void theOrdinaryCoverCurveStillTopsOutWhereItAlwaysDid() {
+        // Cover is a fraction of the way to FULL_COVER, not to MAX_COVER. Divide by five here
+        // and every trench and every ruin on the map quietly gets worse.
+        assertEquals(1f - Suppression.coverEffectFor(com.ccwolf.core.combat.WeaponClass.SMALL_ARMS),
+                Suppression.damageInCover(com.ccwolf.core.combat.WeaponClass.SMALL_ARMS,
+                        TileMap.FULL_COVER, TileMap.FULL_COVER), 0.0001f,
+                "four should still be full cover");
     }
 
     // --- Dispersal ------------------------------------------------------------------------

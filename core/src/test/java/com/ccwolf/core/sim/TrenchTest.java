@@ -65,11 +65,16 @@ public class TrenchTest {
         assertEquals(1, world.map().cover(spot[0], spot[1]),
                 "one man, one uninterrupted stretch of digging, one level of cover");
 
-        for (int i = 0; i < Earthworks.TICKS_PER_LEVEL * 4; i++) {
+        for (int i = 0; i < Earthworks.TICKS_PER_LEVEL * 5; i++) {
             world.step();
         }
-        assertEquals(TileMap.MAX_COVER, world.map().cover(spot[0], spot[1]),
+        // FULL_COVER rather than MAX_COVER, and the difference is the point: the map now allows
+        // a fifth level, but only Deep Works digs one. A man with no doctrine stops where every
+        // man used to stop, in a proper trench with nothing over his head.
+        assertEquals(TileMap.FULL_COVER, world.map().cover(spot[0], spot[1]),
                 "left alone long enough he should end up in a proper trench");
+        assertTrue(TileMap.MAX_COVER > TileMap.FULL_COVER,
+                "and there should be somewhere deeper that he cannot reach");
     }
 
     @Test

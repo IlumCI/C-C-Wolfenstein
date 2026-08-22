@@ -47,7 +47,7 @@ public final class TerrainSprites {
     }
 
     /** How many depths of dug ground are drawn, matching TileMap.MAX_COVER. */
-    public static final int TRENCH_LEVELS = 4;
+    public static final int TRENCH_LEVELS = 5;
 
     /**
      * Digs a tile out, in place.
@@ -56,11 +56,18 @@ public final class TerrainSprites {
      * a man can stand on and there is no sense authoring a trench-in-grass, a trench-in-rubble
      * and a trench-in-a-uranium-seam separately.
      *
-     * <p>The four steps are meant to be readable at a glance from a long way out, because
+     * <p>The five steps are meant to be readable at a glance from a long way out, because
      * knowing which stretch of a line is properly dug and which is still a scrape is the whole
      * tactical use of looking at it: a scratch in the soil, a hollow with spoil beside it, a
-     * proper trough with a parapet, and finally a revetted trench with timber in the walls. The
-     * spoil always goes on the north lip, so a whole line reads as facing one way.
+     * proper trough with a parapet, a revetted trench with timber in the walls, and finally a
+     * roofed dugout. The spoil always goes on the north lip, so a whole line reads as facing
+     * one way.
+     *
+     * <p>The fifth step has to read as <em>covered</em> rather than as merely deeper, because
+     * that is exactly what it is worth in the rules: a roof stops what comes down and nothing
+     * that comes flat. So it is drawn as timber laid across the cut with earth banked over it
+     * and one dark mouth left open — the only step whose floor you cannot see into, which is
+     * the whole point of it.
      *
      * @param level dug depth above the ground's own, 1 to {@link #TRENCH_LEVELS}
      */
@@ -113,6 +120,60 @@ public final class TerrainSprites {
                 c.rect(x + 1, bottom + 1, 4, 2, WolfPalette.shade(WolfPalette.BONE, 3));
                 c.px(x + 1, bottom + 1, WolfPalette.shade(WolfPalette.BONE, 2));
             }
+        }
+        if (depth >= 5) {
+            roof(c, left, right, top, bottom, seed);
+        }
+    }
+
+    /**
+     * Lays a roof over a finished trench, turning it into a dugout.
+     *
+     * <p>Drawn over the cut rather than beside it, so the tile stops reading as a hole and
+     * starts reading as a lid — timber baulks across the span, earth banked on top catching the
+     * light from the north-west like every other raised surface in this game, and one mouth left
+     * open at the west end so it is obvious men are still in there.
+     *
+     * <p>The baulks run <em>across</em> the trench, which is the opposite of the revetment a
+     * level below. That is deliberate: at this size the direction of the lines is the only cue
+     * available, so along means walls and across means overhead, and the two steps can be told
+     * apart from a long way out.
+     */
+    private static void roof(PixelCanvas c, int left, int right, int top, int bottom, int seed) {
+        int[] timber = WolfPalette.LEATHER;
+        int[] dirt = WolfPalette.DIRT;
+        int width = right - left + 1;
+
+        // The lid, as a raised bank rather than a hole: brighter than the trench floor it
+        // replaces, with the light coming from the north-west like every other raised thing in
+        // this game, and a hard shadow along the south edge so it stands proud of the ground.
+        c.rect(left, top, width, bottom - top + 1, WolfPalette.shade(dirt, 1));
+        c.speckle(left, top, width, bottom - top + 1, WolfPalette.shade(dirt, 2), seed + 23, 5);
+        c.hLine(left, right, top, WolfPalette.shade(dirt, 0));
+        c.hLine(left, right, bottom, WolfPalette.shade(dirt, 4));
+        c.hLine(left, right, bottom - 1, WolfPalette.shade(dirt, 3));
+
+        // Beam ends showing under the north lip. Short, and only at the lip: full-height bars
+        // read as a picket fence standing in the trench, which is the opposite of the point.
+        for (int x = left + 1; x <= right - 1; x += 3) {
+            c.px(x, top + 1, WolfPalette.shade(timber, 2));
+            c.px(x, top + 2, WolfPalette.shade(timber, 3));
+        }
+
+        // The mouth, inset rather than flush with the tile edge - flush, it merges with the
+        // neighbouring tile and reads as that tile's shadow instead of as a way in.
+        int mouthX = left + 3;
+        int mouthW = Math.min(5, Math.max(3, width / 5));
+        int mouthTop = top + 3;
+        int mouthBottom = bottom - 2;
+        if (mouthBottom > mouthTop) {
+            c.rect(mouthX, mouthTop, mouthW, mouthBottom - mouthTop + 1,
+                    WolfPalette.shade(dirt, 4));
+            // A lintel and two posts: the one piece of built structure on the whole tile, and
+            // what stops the dark patch reading as a shell hole in the roof.
+            c.hLine(mouthX - 1, mouthX + mouthW, mouthTop - 1, WolfPalette.shade(timber, 1));
+            c.vLine(mouthX - 1, mouthTop, mouthBottom, WolfPalette.shade(timber, 2));
+            c.vLine(mouthX + mouthW, mouthTop, mouthBottom, WolfPalette.shade(timber, 3));
         }
     }
 
