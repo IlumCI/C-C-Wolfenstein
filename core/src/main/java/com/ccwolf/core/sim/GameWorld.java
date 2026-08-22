@@ -2062,7 +2062,7 @@ public final class GameWorld {
         if (!ready) {
             return false;
         }
-        if (!inWeaponRange(attacker, target)) {
+        if (!inWeaponRange(attacker, target, weapon)) {
             return false;
         }
 
@@ -2151,13 +2151,24 @@ public final class GameWorld {
      * which is the whole of the answer to a dug-in line until the guns arrive.
      */
     private void flattenGround(Entity epicentre, Weapon weapon) {
+        // tileX() is (int) x, not a rounding. Keeping the truncation is what makes this
+        // delegate identical to the code it replaced rather than merely equivalent.
+        flattenGroundAt(epicentre.tileX(), epicentre.tileY(), weapon);
+    }
+
+    /**
+     * The same, aimed at a tile rather than at whoever is standing on it.
+     *
+     * <p>A shell lands on ground. Everything else in this game hits a thing, which is why the
+     * blast routines were all written around an {@code Entity} — and why they all needed a
+     * point-keyed form before artillery could exist.
+     */
+    private void flattenGroundAt(int cx, int cy, Weapon weapon) {
         int levels = Earthworks.flattening(weapon.weaponClass());
         if (levels <= 0) {
             return;
         }
         int radius = (int) weapon.blastRadius();
-        int cx = epicentre.tileX();
-        int cy = epicentre.tileY();
         for (int y = cy - radius; y <= cy + radius; y++) {
             for (int x = cx - radius; x <= cx + radius; x++) {
                 int dx = x - cx;
@@ -2188,6 +2199,22 @@ public final class GameWorld {
      * AI that shells its own advancing infantry is an AI that loses to itself.
      */
     private void applyBlast(Entity attacker, Entity epicentre, Weapon weapon) {
+        applyBlastAt(attacker.ownerId(), attacker.id(), epicentre.x(), epicentre.y(),
+                weapon, epicentre);
+    }
+
+    /**
+     * The same, centred on a point.
+     *
+     * <p>The attacker is decomposed into the only two things the blast ever wanted from it —
+     * an owner, to decide who is an enemy, and an id, to attribute the kill. That is what lets
+     * a shell go on exploding correctly after the gun that fired it has been destroyed.
+     *
+     * @param directHit the entity that took the direct hit and has already been damaged, or
+     *     null for a shell, which lands on ground and hits nobody twice
+     */
+    private void applyBlastAt(int ownerId, int attackerId, float ex, float ey, Weapon weapon,
+                              Entity directHit) {
         float radius = weapon.blastRadius();
 
         // Scans the unit list rather than the spatial index on purpose: the index is only
@@ -2195,29 +2222,29 @@ public final class GameWorld {
         // depend on that having happened. Blasts are infrequent enough for a linear pass.
         for (int i = 0; i < units.size(); i++) {
             Unit other = units.get(i);
-            if (other == epicentre || !other.isAlive()
-                    || !areEnemies(attacker.ownerId(), other.ownerId())) {
+            if (other == directHit || !other.isAlive()
+                    || !areEnemies(ownerId, other.ownerId())) {
                 continue;
             }
-            if (Math.abs(other.x() - epicentre.x()) > radius + 1f
-                    || Math.abs(other.y() - epicentre.y()) > radius + 1f) {
+            if (Math.abs(other.x() - ex) > radius + 1f
+                    || Math.abs(other.y() - ey) > radius + 1f) {
                 continue;
             }
-            splashOne(attacker, other, weapon, epicentre, radius);
+            splashOne(attackerId, other, weapon, ex, ey, radius);
         }
         for (int i = 0; i < buildings.size(); i++) {
             Building other = buildings.get(i);
-            if (other == epicentre || !other.isAlive()
-                    || !areEnemies(attacker.ownerId(), other.ownerId())) {
+            if (other == directHit || !other.isAlive()
+                    || !areEnemies(ownerId, other.ownerId())) {
                 continue;
             }
-            splashOne(attacker, other, weapon, epicentre, radius);
+            splashOne(attackerId, other, weapon, ex, ey, radius);
         }
     }
 
-    private void splashOne(Entity attacker, Entity victim, Weapon weapon, Entity epicentre,
+    private void splashOne(int attackerId, Entity victim, Weapon weapon, float ex, float ey,
                            float radius) {
-        float distance = victim.distanceTo(epicentre.x(), epicentre.y()) - victim.radius();
+        float distance = victim.distanceTo(ex, ey) - victim.radius();
         if (distance > radius) {
             return;
         }
@@ -2226,7 +2253,7 @@ public final class GameWorld {
         // The beaten zone is wider than the killing zone: men near a blast keep their heads
         // down whether or not anything reached them.
         suppress(victim, Math.round(Suppression.perShot(weapon.weaponClass()) * falloff));
-        boolean killed = victim.applyDamage(damage, attacker.id(), tick);
+        boolean killed = victim.applyDamage(damage, attackerId, tick);
         events.add(GameEvent.at(GameEvent.Type.UNDER_ATTACK, victim.ownerId(), victim.id(),
                 victim.x(), victim.y()));
         if (killed) {
@@ -2246,7 +2273,18 @@ public final class GameWorld {
 
     /** Range is measured to the target's edge, so big structures are hittable from outside. */
     public boolean inWeaponRange(Entity attacker, Entity target) {
-        Weapon weapon = attacker.weapon();
+        return inWeaponRange(attacker, target, attacker.weapon());
+    }
+
+    /**
+     * The same, for a shot fired with something other than the attacker's own weapon.
+     *
+     * <p>This existed only in effect until now: {@code tryAttack} takes a weapon and then
+     * range-checked against {@code attacker.weapon()} regardless, so a shot fired with a
+     * borrowed weapon was measured against the wrong one. Nothing in the game does that — only
+     * tests — which is why it never showed, and why fixing it moves no digest.
+     */
+    public boolean inWeaponRange(Entity attacker, Entity target, Weapon weapon) {
         if (weapon == null) {
             return false;
         }
