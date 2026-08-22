@@ -41,6 +41,9 @@ public final class DamageTable {
         set(WeaponClass.FLAME, 1.40f, 0.80f, 0.40f, 0.90f);
         set(WeaponClass.MELEE, 1.35f, 0.70f, 0.30f, 0.25f);
         set(WeaponClass.OCCULT, 1.00f, 1.00f, 1.00f, 1.00f);
+        // Shellfire: murderous to men and masonry, and much less use against plate than its
+        // weight suggests - a howitzer is not an anti-tank gun and should not be bought as one.
+        set(WeaponClass.ARTILLERY, 1.50f, 0.90f, 0.55f, 1.35f);
 
         for (WeaponClass w : WeaponClass.values()) {
             for (ArmorClass a : ArmorClass.values()) {

@@ -3,6 +3,7 @@ package com.ccwolf.core.diag;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.sim.GameWorld;
+import com.ccwolf.core.sim.ShellLayer;
 import com.ccwolf.core.sim.Player;
 import java.util.List;
 
@@ -97,6 +98,21 @@ public final class StateDigest {
             hash = fold(hash, b.tileY());
             hash = fold(hash, b.hp());
             hash = fold(hash, flags(b));
+        }
+
+        // Rounds in the air are state, not a visual flourish. A shell decides damage two
+        // seconds after it is fired, so a bug in its timing or its aim point is invisible to
+        // everything else here until it lands - and invisible for good if it lands between two
+        // sample ticks. All integers, because the aim point is snapped to a tile.
+        ShellLayer shells = world.shells();
+        hash = fold(hash, shells.count());
+        for (int i = 0; i < shells.count(); i++) {
+            hash = fold(hash, shells.ownerId(i));
+            hash = fold(hash, shells.firedById(i));
+            hash = fold(hash, shells.weapon(i).ordinal());
+            hash = fold(hash, shells.toTileX(i));
+            hash = fold(hash, shells.toTileY(i));
+            hash = fold(hash, shells.impactTick(i));
         }
 
         List<Player> players = world.players();

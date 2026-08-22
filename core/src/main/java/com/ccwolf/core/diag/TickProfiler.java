@@ -27,6 +27,7 @@ public final class TickProfiler {
         SQUADS,
         UNITS,
         BUILDINGS,
+        SHELLS,
         REPAIRS,
         SEPARATION,
         REMOVE_DEAD,
@@ -37,6 +38,8 @@ public final class TickProfiler {
     }
 
     private static final Phase[] PHASES = Phase.values();
+
+    private int shellsInFlight;
 
     private final long[] nanos = new long[PHASES.length];
     private final long[] calls = new long[PHASES.length];
@@ -92,6 +95,21 @@ public final class TickProfiler {
     // asserts on them should not have to remember to switch profiling on first.
 
     /** A full search: no bound but the pathfinder's own, and the expensive kind. */
+    /**
+     * Rounds still in the air at the end of the tick.
+     *
+     * <p>A counter rather than a timing, so it is reproducible from a seed and safe to assert
+     * on — which matters more here than the nanoseconds do, since a shell that never lands is a
+     * leak the digest would not necessarily notice.
+     */
+    public void countShellsInFlight(int inFlight) {
+        this.shellsInFlight = inFlight;
+    }
+
+    public int shellsInFlight() {
+        return shellsInFlight;
+    }
+
     public void countAstarSearch(int nodesExpanded) {
         astarSearches++;
         astarNodes += nodesExpanded;

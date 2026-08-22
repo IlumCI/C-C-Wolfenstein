@@ -12,5 +12,12 @@ public enum WeaponClass {
     FLAME,
     MELEE,
     /** Regime wonder-weapons: unfashionably even-handed against everything. */
-    OCCULT
+    OCCULT,
+    /**
+     * Indirect fire: dropped on a place rather than aimed at a thing.
+     *
+     * <p>The only class delivered by something that takes time to arrive, and therefore the
+     * only one that can land where nobody is standing any more.
+     */
+    ARTILLERY
 }

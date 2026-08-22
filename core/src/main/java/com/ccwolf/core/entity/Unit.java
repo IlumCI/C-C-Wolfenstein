@@ -245,6 +245,19 @@ public final class Unit extends Entity {
     }
 
     /** Called when an enemy gets close enough to see through the concealment. */
+    /**
+     * Given away, and to everybody rather than only to whoever was already looking.
+     *
+     * <p>Separate from {@link #isConcealed} on purpose. That method answers "is this stealthy
+     * unit currently hidden", and short-circuits to false for anything that was never stealthy
+     * in the first place — so a howitzer, which is not stealthy and never was, could carry a
+     * reveal timer that no caller could ever read. Counter-battery needs the timer readable on
+     * its own: a gun that has fired is exposed whether or not it was ever hiding.
+     */
+    public boolean isRevealed(int currentTick) {
+        return currentTick < revealedUntilTick;
+    }
+
     public void markRevealed(int untilTick) {
         if (untilTick > revealedUntilTick) {
             revealedUntilTick = untilTick;

@@ -83,7 +83,13 @@ public final class Suppression {
         set(WeaponClass.FLAME, 24, 0.15f);
         // Nothing to hide behind when it is already on top of you.
         set(WeaponClass.MELEE, 9, 0f);
-        set(WeaponClass.OCCULT, 14, 0.30f);
+        // The alien gun does not care what you are hiding behind, and what it does to nerve is
+        // most of what it does at all. Its first user is the Resonanzkanone; until now nothing
+        // fired OCCULT, so these numbers were never load-bearing and were never chosen.
+        set(WeaponClass.OCCULT, 40, 0f);
+        // Shellfire is the loudest thing in the game and cover is very little help against
+        // something that arrives from above.
+        set(WeaponClass.ARTILLERY, 32, 0.12f);
 
         for (WeaponClass w : WeaponClass.values()) {
             if (PER_SHOT[w.ordinal()] == UNSET || Float.isNaN(COVER_EFFECT[w.ordinal()])) {

@@ -40,6 +40,9 @@ public final class Earthworks {
      */
     public static final float MOVE_COST_PER_LEVEL = 0.45f;
 
+    /** As much earth as a tile can hold, matching TileMap.MAX_COVER without depending on it. */
+    private static final int MAX_LEVELS = 4;
+
     /**
      * How many levels of earth one blast strips from the tiles it lands on, by weapon class.
      *
@@ -66,7 +69,10 @@ public final class Earthworks {
         FLATTENING[WeaponClass.GRENADE.ordinal()] = 1;
         FLATTENING[WeaponClass.FLAME.ordinal()] = 0;
         FLATTENING[WeaponClass.MELEE.ordinal()] = 0;
-        FLATTENING[WeaponClass.OCCULT.ordinal()] = 0;
+        // Not a crater. Whatever the Resonanzkanone does to ground, there is no ground left
+        // arranged in any useful way afterwards.
+        FLATTENING[WeaponClass.OCCULT.ordinal()] = MAX_LEVELS;
+        FLATTENING[WeaponClass.ARTILLERY.ordinal()] = 2;
 
         for (WeaponClass w : WeaponClass.values()) {
             if (FLATTENING[w.ordinal()] == UNSET) {

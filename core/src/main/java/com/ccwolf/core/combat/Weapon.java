@@ -41,7 +41,33 @@ public enum Weapon {
     NEST_MG("Nest MG", 11, 5.5f, 5, WeaponClass.SMALL_ARMS),
 
     /** Anti-tank gun: devastating to armour, hopeless against a running man. */
-    PAK_GUN("Pak Gun", 44, 6.8f, 33, WeaponClass.CANNON);
+    PAK_GUN("Pak Gun", 44, 6.8f, 33, WeaponClass.CANNON),
+
+    /**
+     * A Regime field piece the Resistance took and never gave back.
+     *
+     * <p>1945, and it shows: one shell at a time, a long wait between them, and a crew who have
+     * to be somewhere else before anyone works out where the shells came from.
+     */
+    FELDKANONE("Stolen Feldkanone", 42, 12f, 110, WeaponClass.ARTILLERY, 2.4f, 6f),
+
+    /**
+     * A rack of tubes that empties itself at a piece of ground.
+     *
+     * <p>Four rounds for one decision, spread across a frontage rather than stacked on a point.
+     * That makes it the wrong weapon for one man and the right one for a line of them — the
+     * first thing in the game that cares about the shape of what it is shooting at.
+     */
+    NEBELWERFER("Nebelwerfer-71", 26, 11f, 150, WeaponClass.ARTILLERY, 2.2f, 5f, 4),
+
+    /**
+     * Whatever the Regime dug up, mounted on a carriage.
+     *
+     * <p>It does not throw anything. Cover is no help, earth is no help, and what it mostly
+     * does is empty a position of men who are still alive. Slow, ruinously expensive, and it
+     * outranges every other thing on the map.
+     */
+    RESONANZKANONE("Resonanzkanone", 30, 15f, 200, WeaponClass.OCCULT, 3.0f, 8f);
 
     private final String displayName;
     private final int damage;
@@ -50,6 +76,7 @@ public enum Weapon {
     private final WeaponClass weaponClass;
     private final float blastRadius;
     private final float minRange;
+    private final int salvo;
 
     Weapon(String displayName, int damage, float range, int cooldownTicks,
            WeaponClass weaponClass) {
@@ -63,6 +90,11 @@ public enum Weapon {
 
     Weapon(String displayName, int damage, float range, int cooldownTicks,
            WeaponClass weaponClass, float blastRadius, float minRange) {
+        this(displayName, damage, range, cooldownTicks, weaponClass, blastRadius, minRange, 1);
+    }
+
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass, float blastRadius, float minRange, int salvo) {
         this.displayName = displayName;
         this.damage = damage;
         this.range = range;
@@ -70,6 +102,7 @@ public enum Weapon {
         this.weaponClass = weaponClass;
         this.blastRadius = blastRadius;
         this.minRange = minRange;
+        this.salvo = salvo;
     }
 
     public String displayName() {
@@ -125,6 +158,17 @@ public enum Weapon {
     /** True if this weapon has a dead zone at all — the cheap test before the expensive one. */
     public boolean hasMinRange() {
         return minRange > 0f;
+    }
+
+    /**
+     * How many rounds one pull of the trigger puts in the air. One for everything aimed.
+     *
+     * <p>A salvo is not several shots in quick succession — it is a single decision that lands
+     * across a frontage. That makes it the right answer to a line of men and the wrong answer
+     * to one man, which is a distinction the game did not previously have any way to express.
+     */
+    public int salvo() {
+        return salvo;
     }
 
     public int damageAgainst(ArmorClass armor) {

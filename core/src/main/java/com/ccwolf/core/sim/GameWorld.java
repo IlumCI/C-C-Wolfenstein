@@ -70,6 +70,15 @@ public final class GameWorld {
      */
     public static final int SPOTTING_MEMORY = 15 * TICKS_PER_SECOND;
 
+    /**
+     * How long a battery stays visible to the enemy after firing.
+     *
+     * <p>Ten seconds — long enough to be shot at, short enough that a gun which fires and moves
+     * has bought something. This is the whole of counter-battery: the price of shooting is that
+     * everyone now knows where you are.
+     */
+    public static final int COUNTER_BATTERY_TICKS = 10 * TICKS_PER_SECOND;
+
     /** How often uranium seams creep back, in ticks. */
     private static final int ORE_REGROW_INTERVAL = 100;
 
@@ -229,6 +238,9 @@ public final class GameWorld {
      * deliberately not part of them — see {@link SightMemory} for why.
      */
     private final List<SightMemory> sightMemories = new ArrayList<SightMemory>();
+
+    /** Rounds in the air. Empty until something fires indirectly. */
+    private final ShellLayer shells = new ShellLayer();
     private final List<GameEvent> events = new ArrayList<GameEvent>();
 
     private final List<Unit> queryScratch = new ArrayList<Unit>();
@@ -1123,6 +1135,13 @@ public final class GameWorld {
         profiler.begin(TickProfiler.Phase.BUILDINGS);
         updateBuildings();
         profiler.end(TickProfiler.Phase.BUILDINGS);
+
+        // After both things that can fire, so a shell from a gun and a shell from a structure of
+        // the same range land on the same tick; and well before removeDead, so anything a shell
+        // kills leaves the world on the tick it was killed rather than the one after.
+        profiler.begin(TickProfiler.Phase.SHELLS);
+        updateShells();
+        profiler.end(TickProfiler.Phase.SHELLS);
 
         profiler.begin(TickProfiler.Phase.REPAIRS);
         updateRepairs();
@@ -2249,6 +2268,115 @@ public final class GameWorld {
                 // trench loose, a direct hit fills it in.
                 boolean atCentre = dx * dx + dy * dy <= 1;
                 map.addCover(x, y, -(atCentre ? levels : Math.max(1, levels / 2)));
+            }
+        }
+    }
+
+    /** Rounds currently in the air, for the renderer and for the digest. */
+    public ShellLayer shells() {
+        return shells;
+    }
+
+    /**
+     * Lands everything whose time has come.
+     *
+     * <p>A shell holds a point and two integers, so it does not care whether the gun that fired
+     * it still exists. Ownership is read off the shell rather than off the firer, which means a
+     * battery captured mid-flight does not retrospectively change whose round is in the air.
+     */
+    private void updateShells() {
+        int landed = 0;
+        for (int i = 0; i < shells.count(); i++) {
+            if (shells.impactTick(i) > tick) {
+                continue;
+            }
+            impactShell(i);
+            landed++;
+        }
+        if (landed > 0) {
+            shells.removeLanded(tick);
+        }
+        profiler.countShellsInFlight(shells.count());
+    }
+
+    private void impactShell(int i) {
+        Weapon weapon = shells.weapon(i);
+        float x = shells.toX(i);
+        float y = shells.toY(i);
+
+        flattenGroundAt(shells.toTileX(i), shells.toTileY(i), weapon);
+        // No direct-hit victim: a shell lands on ground. Whoever is standing at the impact
+        // point takes the blast at full falloff, once - unlike every other blast weapon, which
+        // damages its target and then splashes it a second time.
+        applyBlastAt(shells.ownerId(i), shells.firedById(i), x, y, weapon, null);
+
+        events.add(GameEvent.at(GameEvent.Type.SHELL_IMPACT, shells.ownerId(i),
+                shells.firedById(i), x, y));
+    }
+
+    /**
+     * Puts a round in the air from a gun towards a tile.
+     *
+     * <p>The indirect-fire counterpart to {@code tryAttack}, and the differences are the whole
+     * design: it is aimed at a place rather than a thing, nothing is decided until it arrives,
+     * and firing gives the gun's own position away.
+     *
+     * @return true if the gun fired
+     */
+    public boolean tryBombard(Unit gun, int tileX, int tileY) {
+        return tryBombard(gun, tileX, tileY, gun.weapon());
+    }
+
+    /**
+     * The same, fired with something other than the gun's own weapon.
+     *
+     * <p>Mirrors {@code tryAttack}'s weapon-taking form, and exists for the same reason: it
+     * lets the shell layer be exercised without depending on which units happen to carry a
+     * gun this week.
+     */
+    public boolean tryBombard(Unit gun, int tileX, int tileY, Weapon weapon) {
+        if (weapon == null || !gun.isAlive() || !gun.weaponReady()
+                || !map.inBounds(tileX, tileY)) {
+            return false;
+        }
+        float gap = gun.distanceTo(tileX + 0.5f, tileY + 0.5f);
+        if (gap > weapon.range() || gap < weapon.minRange()) {
+            return false;
+        }
+
+        int rounds = shells.fire(gun.ownerId(), gun.id(), weapon, gun.x(), gun.y(),
+                tileX, tileY, weapon.salvo(), tick, TICKS_PER_SECOND);
+        gun.faceToward(tileX + 0.5f, tileY + 0.5f);
+        gun.startWeaponCooldown();
+        gun.noteFired(tick);
+        revealBattery(gun, weapon);
+
+        events.add(GameEvent.shot(gun.ownerId(), gun.id(), gun.x(), gun.y(),
+                tileX + 0.5f, tileY + 0.5f,
+                ShellLayer.flightTicks(gun.x(), gun.y(), tileX + 0.5f, tileY + 0.5f,
+                        TICKS_PER_SECOND),
+                weapon.weaponClass(), GameEvent.TargetKind.NONE));
+        return rounds > 0;
+    }
+
+    /**
+     * A gun that has fired has told everyone where it is.
+     *
+     * <p>Two halves, and the second is the one that makes counter-battery a real move rather
+     * than a line in a design document. Marking the gun revealed lets the enemy <em>see</em> it
+     * through fog; stamping their sight memory at its position lets them <em>shoot back at</em>
+     * it, because indirect fire needs somewhere it is allowed to aim. Without the second half
+     * the reveal would only help a player who already had eyes on the battery, which is exactly
+     * the player who did not need telling.
+     */
+    private void revealBattery(Unit gun, Weapon weapon) {
+        if (!weapon.hasMinRange()) {
+            return;
+        }
+        gun.markRevealed(tick + COUNTER_BATTERY_TICKS);
+        for (int i = 0; i < players.size(); i++) {
+            if (areEnemies(i, gun.ownerId())) {
+                sightMemories.get(i).markTile(gun.tileX(), gun.tileY(), tick);
             }
         }
     }

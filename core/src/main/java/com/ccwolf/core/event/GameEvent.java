@@ -14,6 +14,15 @@ public final class GameEvent {
     public enum Type {
         SHOT_FIRED,
         ENTITY_DESTROYED,
+    /**
+     * A shell has arrived somewhere.
+     *
+     * <p>Distinct from SHOT_FIRED because the two no longer happen together: an indirect round
+     * is fired on one tick and lands seconds later, so the presentation layer needs to be told
+     * about both ends separately. SHOT_FIRED carries the flight time in its amount, so the
+     * effects layer is told how long the round takes instead of guessing.
+     */
+    SHELL_IMPACT,
         UNIT_TRAINED,
 
         /** A squad came off the production line as one body. */
