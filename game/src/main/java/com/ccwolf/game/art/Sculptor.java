@@ -307,6 +307,130 @@ public final class Sculptor {
     }
 
     /**
+     * Cuts a groove into whatever is already there, without repainting it.
+     *
+     * <p>The counterpart to every primitive above, and the engine cannot make anything look
+     * manufactured without it. A stroke wins its pixels by standing <em>in front</em> of what is
+     * behind it — which is right for a rivet on a plate and useless for a panel line, a hatch
+     * seam, a bolt recess or a louvre, because all of those are places where the surface goes
+     * <em>away</em> from the viewer. Every one of them is the difference between a hull and a
+     * lozenge.
+     *
+     * <p>Colour is deliberately left alone. A panel line is the same steel as the panel; it reads
+     * as a line because the light cannot get into it, and painting it dark instead is the thing
+     * that makes hand-drawn mechanical art look like a sticker of a tank.
+     *
+     * @param depth how far below the existing surface the bottom of the cut sits
+     */
+    public Sculptor carveCapsule(float x0, float y0, float x1, float y1, float radius,
+                                 float depth, Form form) {
+        return carveTaper(x0, y0, radius, x1, y1, radius, depth, form);
+    }
+
+    /** A groove whose width changes along its length. */
+    public Sculptor carveTaper(float x0, float y0, float r0, float x1, float y1, float r1,
+                               float depth, Form form) {
+        float maxRadius = Math.max(r0, r1);
+        if (maxRadius <= 0f) {
+            return this;
+        }
+        float ax = x1 - x0;
+        float ay = y1 - y0;
+        float lengthSquared = ax * ax + ay * ay;
+
+        for (int y = Math.max(0, (int) (Math.min(y0, y1) - maxRadius - 1));
+                y <= Math.min(height - 1, (int) (Math.max(y0, y1) + maxRadius + 1)); y++) {
+            for (int x = Math.max(0, (int) (Math.min(x0, x1) - maxRadius - 1));
+                    x <= Math.min(width - 1, (int) (Math.max(x0, x1) + maxRadius + 1)); x++) {
+                float px = x + 0.5f - x0;
+                float py = y + 0.5f - y0;
+                float t = lengthSquared <= 0f ? 0f : (px * ax + py * ay) / lengthSquared;
+                t = t < 0f ? 0f : (t > 1f ? 1f : t);
+                float dx = px - ax * t;
+                float dy = py - ay * t;
+                float distance = (float) Math.sqrt(dx * dx + dy * dy);
+                float radius = r0 + (r1 - r0) * t;
+                if (radius <= 0f || distance > radius) {
+                    continue;
+                }
+                float d = distance / radius;
+                float ux = distance <= 1e-5f ? 0f : dx / distance;
+                float uy = distance <= 1e-5f ? 0f : dy / distance;
+                cut(x, y, d, ux, uy, depth / radius, depth, form);
+            }
+        }
+        return this;
+    }
+
+    /** A rectangular recess: a hatch seam, a louvre, a sunken plate. */
+    public Sculptor carveBox(float x, float y, float w, float h, float corner, float depth,
+                             Form form) {
+        if (w <= 0f || h <= 0f) {
+            return this;
+        }
+        float halfW = w / 2f;
+        float halfH = h / 2f;
+        float cx = x + halfW;
+        float cy = y + halfH;
+        float r = Math.min(corner, Math.min(halfW, halfH));
+        float reach = Math.min(halfW, halfH);
+
+        for (int py = Math.max(0, (int) y); py <= Math.min(height - 1, (int) (y + h)); py++) {
+            for (int px = Math.max(0, (int) x); px <= Math.min(width - 1, (int) (x + w)); px++) {
+                float sx = px + 0.5f - cx;
+                float sy = py + 0.5f - cy;
+                float dx = Math.abs(sx) - (halfW - r);
+                float dy = Math.abs(sy) - (halfH - r);
+                float outX = Math.max(dx, 0f);
+                float outY = Math.max(dy, 0f);
+                float outside = (float) Math.sqrt(outX * outX + outY * outY);
+                float distance = outside + Math.min(Math.max(dx, dy), 0f) - r;
+                if (distance > 0f) {
+                    continue;
+                }
+                float d = reach <= 0f ? 1f : 1f + distance / reach;
+                d = d < 0f ? 0f : (d > 1f ? 1f : d);
+                float ux;
+                float uy;
+                if (dx > dy) {
+                    ux = sx < 0f ? -1f : 1f;
+                    uy = 0f;
+                } else {
+                    ux = 0f;
+                    uy = sy < 0f ? -1f : 1f;
+                }
+                cut(px, py, d, ux, uy, reach <= 0f ? 0f : depth / reach, depth, form);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Lowers one pixel and turns its normal into the cut.
+     *
+     * <p>Sign is the whole subtlety. The walls of a groove face <em>inward</em>, which is the
+     * opposite of a stroke standing proud, so the outward direction is negated — get this wrong
+     * and every panel line lights up as a raised weld bead, which is a mistake that looks
+     * plausible enough to survive a long time.
+     */
+    private void cut(int x, int y, float d, float ux, float uy, float turn, float sinkBy,
+                     Form form) {
+        int index = y * width + x;
+        if (cover[index] <= 0.02f) {
+            return;
+        }
+        // Deepest down the middle of the cut and shallowing to nothing at its lip, which is the
+        // profile the right way up. Inverted, a groove is a pair of trenches with a ridge down
+        // the centre of it, and it reads as a weld bead rather than a panel line.
+        float sink = sinkBy * Math.abs(form.profile(d));
+        depth[index] -= sink;
+        float slope = form.slope(d) * turn;
+        normalX[index] = -ux * slope;
+        normalY[index] = -uy * slope;
+        step[index] = Math.max(step[index], Math.min(1f, sink * 0.5f));
+    }
+
+    /**
      * Roughens a region's surface without touching its colour.
      *
      * <p>This is the mechanism for texture, and it is not the same thing as speckle. Cast

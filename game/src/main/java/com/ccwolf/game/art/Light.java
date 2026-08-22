@@ -97,8 +97,8 @@ public final class Light {
      */
     public static Light overcast() {
         return new Light(-0.55f, -0.62f, 0.56f,
-                0xFFFFF0D8, 0.85f,
-                0xFF8FA6BC, 0xFF4A3E2E, 0.55f,
+                0xFFFFF0D8, 1.00f,
+                0xFF8FA6BC, 0xFF4A3E2E, 0.62f,
                 1.0f,
                 0.85f,
                 0.55f, 14,
