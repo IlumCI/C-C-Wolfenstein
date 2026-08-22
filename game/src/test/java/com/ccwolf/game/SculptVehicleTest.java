@@ -33,6 +33,31 @@ public class SculptVehicleTest {
     /** Big enough that panel lines, bolts and track links have somewhere to live. */
     private static final int SIZE = 256;
 
+    /**
+     * All eight facings, re-sculpted rather than rotated.
+     *
+     * <p>The thing to check is that the sun does not move. The old pipeline rotated a finished
+     * hull, which rotates its highlights with it — a tank pointing north-west lit like a tank
+     * pointing east. Here every facing is drawn in its own frame and lit afterwards, so the
+     * light stays in the north-west across the whole row and the hull turns underneath it.
+     *
+     * <p>Look along the row: the bright edge should stay on the same side of the screen in every
+     * cell, never on the same side of the tank.
+     */
+    @Test
+    public void theSunStaysPutAsTheHullTurns() throws IOException {
+        PixelCanvas sheet = new PixelCanvas(SIZE * 4 + 50, SIZE * 2 + 30);
+        sheet.fill(0xFF23251E);
+        for (int facing = 0; facing < 8; facing++) {
+            Sculptor s = new Sculptor(SIZE, SIZE);
+            s.facing((float) (facing * Math.PI / 4.0));
+            sturmpanzerInto(s, 0f);
+            PixelCanvas lit = s.light(Light.overcast());
+            sheet.blit(lit, 10 + (facing % 4) * (SIZE + 10), 10 + (facing / 4) * (SIZE + 10));
+        }
+        save(sheet, "sculpt-facings.png");
+    }
+
     @Test
     public void aHullWithEverythingOnIt() throws IOException {
         PixelCanvas lit = sturmpanzer(0f).light(Light.overcast());
@@ -56,6 +81,11 @@ public class SculptVehicleTest {
      */
     private Sculptor sturmpanzer(float treadPhase) {
         Sculptor s = new Sculptor(SIZE, SIZE);
+        sturmpanzerInto(s, treadPhase);
+        return s;
+    }
+
+    private void sturmpanzerInto(Sculptor s, float treadPhase) {
         // Albedo, not a shade index. The ramps are pre-shaded, so picking a middle index and
         // then lighting it shades the surface twice - which is how the first pass of this hull
         // came out as a black silhouette with a few grey scratches on it.
@@ -202,8 +232,6 @@ public class SculptVehicleTest {
                 WolfPalette.albedo(WolfPalette.DIRT), 0.18f);
         s.stain(cx - SIZE * 0.36f, cy + SIZE * 0.20f, SIZE * 0.72f, SIZE * 0.06f,
                 WolfPalette.albedo(WolfPalette.DIRT), 0.22f);
-
-        return s;
     }
 
     private int distinct(PixelCanvas c) {

@@ -76,6 +76,24 @@ public final class Sculptor {
     private final float[] emissive;
     private final float[] step;
 
+    /**
+     * The frame recipes are drawn in, as a rotation about the canvas centre.
+     *
+     * <p>How a vehicle gets eight facings. The old pipeline drew a hull facing east and rotated
+     * the finished bitmap, which rotates the sun with it — a tank pointing north-west carried
+     * highlights belonging to a tank pointing east, and nobody noticed only because the shading
+     * was too faint to read. Re-sculpting each facing in its own frame and lighting afterwards
+     * keeps the sun fixed where it belongs, and costs less than the supersampled rotation it
+     * replaces because there are no temporary buffers at all.
+     *
+     * <p>Applied by inverse-transforming each pixel into the recipe's frame rather than by
+     * transforming the shape into the canvas — which is what lets a box stay a box. Its distance
+     * function assumes axis alignment, and a rotated axis-aligned box is neither.
+     */
+    private float frameCos = 1f;
+    private float frameSin;
+    private boolean framed;
+
     /** What has actually been touched, so the lighting can skip the empty majority of a sprite. */
     private int dirtyX0;
     private int dirtyY0;
@@ -108,6 +126,69 @@ public final class Sculptor {
         return height;
     }
 
+    /**
+     * Draws everything after this rotated about the canvas centre.
+     *
+     * <p>Set once, before the recipe runs. Things that must stay upright in screen space
+     * whatever the unit is doing — a ground shadow, a faction decal — are drawn with the frame
+     * reset to zero.
+     */
+    public Sculptor facing(float radians) {
+        frameCos = (float) Math.cos(-radians);
+        frameSin = (float) Math.sin(-radians);
+        framed = radians != 0f;
+        return this;
+    }
+
+    /** Where a canvas pixel lands in the recipe's own frame. */
+    private float localX(float x, float y) {
+        if (!framed) {
+            return x;
+        }
+        float dx = x - width * 0.5f;
+        float dy = y - height * 0.5f;
+        return width * 0.5f + dx * frameCos - dy * frameSin;
+    }
+
+    private float localY(float x, float y) {
+        if (!framed) {
+            return y;
+        }
+        float dx = x - width * 0.5f;
+        float dy = y - height * 0.5f;
+        return height * 0.5f + dx * frameSin + dy * frameCos;
+    }
+
+    /**
+     * The canvas rectangle a shape drawn in the recipe's frame can possibly touch.
+     *
+     * <p>The circumscribing square of the rotated box, which over-covers by up to forty per cent
+     * on the diagonal. Cheaper than the alternative and the cost is only in pixels visited, not
+     * in pixels written — everything outside the shape fails its distance test anyway.
+     */
+    private int[] frameBounds(float x0, float y0, float x1, float y1) {
+        if (!framed) {
+            return new int[] {(int) Math.floor(x0), (int) Math.floor(y0),
+                    (int) Math.ceil(x1), (int) Math.ceil(y1)};
+        }
+        float cx = width * 0.5f;
+        float cy = height * 0.5f;
+        float mx = Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx));
+        float my = Math.max(Math.abs(y0 - cy), Math.abs(y1 - cy));
+        float reach = (float) Math.sqrt(mx * mx + my * my) + 2f;
+        return new int[] {(int) (cx - reach), (int) (cy - reach),
+                (int) Math.ceil(cx + reach), (int) Math.ceil(cy + reach)};
+    }
+
+    /** Turns a direction in the recipe's frame back into one in canvas space. */
+    private float frameDirX(float ux, float uy) {
+        return framed ? ux * frameCos + uy * frameSin : ux;
+    }
+
+    private float frameDirY(float ux, float uy) {
+        return framed ? -ux * frameSin + uy * frameCos : uy;
+    }
+
     // --- material presets ---------------------------------------------------------------------
 
     /** Cloth, earth, sandbags: no sheen at all. */
@@ -137,20 +218,18 @@ public final class Sculptor {
             return this;
         }
         float turn = stand / radius;
-        int lox = (int) Math.floor(cx - radius - 1);
-        int hix = (int) Math.ceil(cx + radius + 1);
-        int loy = (int) Math.floor(cy - radius - 1);
-        int hiy = (int) Math.ceil(cy + radius + 1);
-        for (int y = Math.max(0, loy); y <= Math.min(height - 1, hiy); y++) {
-            for (int x = Math.max(0, lox); x <= Math.min(width - 1, hix); x++) {
-                float dx = x + 0.5f - cx;
-                float dy = y + 0.5f - cy;
+        int[] box = frameBounds(cx - radius - 1, cy - radius - 1, cx + radius + 1,
+                cy + radius + 1);
+        for (int y = Math.max(0, box[1]); y <= Math.min(height - 1, box[3]); y++) {
+            for (int x = Math.max(0, box[0]); x <= Math.min(width - 1, box[2]); x++) {
+                float dx = localX(x + 0.5f, y + 0.5f) - cx;
+                float dy = localY(x + 0.5f, y + 0.5f) - cy;
                 float distance = (float) Math.sqrt(dx * dx + dy * dy);
                 float d = distance / radius;
                 float ux = distance <= 1e-5f ? 0f : dx / distance;
                 float uy = distance <= 1e-5f ? 0f : dy / distance;
-                deposit(x, y, distance - radius, d, ux, uy, turn, base, stand, form,
-                        albedo, material);
+                deposit(x, y, distance - radius, d, frameDirX(ux, uy), frameDirY(ux, uy), turn,
+                        base, stand, form, albedo, material);
             }
         }
         return this;
@@ -174,19 +253,17 @@ public final class Sculptor {
         if (maxRadius <= 0f) {
             return this;
         }
-        int lox = (int) Math.floor(Math.min(x0, x1) - maxRadius - 1);
-        int hix = (int) Math.ceil(Math.max(x0, x1) + maxRadius + 1);
-        int loy = (int) Math.floor(Math.min(y0, y1) - maxRadius - 1);
-        int hiy = (int) Math.ceil(Math.max(y0, y1) + maxRadius + 1);
+        int[] box = frameBounds(Math.min(x0, x1) - maxRadius - 1, Math.min(y0, y1) - maxRadius - 1,
+                Math.max(x0, x1) + maxRadius + 1, Math.max(y0, y1) + maxRadius + 1);
 
         float ax = x1 - x0;
         float ay = y1 - y0;
         float lengthSquared = ax * ax + ay * ay;
 
-        for (int y = Math.max(0, loy); y <= Math.min(height - 1, hiy); y++) {
-            for (int x = Math.max(0, lox); x <= Math.min(width - 1, hix); x++) {
-                float px = x + 0.5f - x0;
-                float py = y + 0.5f - y0;
+        for (int y = Math.max(0, box[1]); y <= Math.min(height - 1, box[3]); y++) {
+            for (int x = Math.max(0, box[0]); x <= Math.min(width - 1, box[2]); x++) {
+                float px = localX(x + 0.5f, y + 0.5f) - x0;
+                float py = localY(x + 0.5f, y + 0.5f) - y0;
                 // Where along the axis this pixel projects, clamped so the caps are round
                 // rather than the line running on forever.
                 float t = lengthSquared <= 0f ? 0f : (px * ax + py * ay) / lengthSquared;
@@ -200,8 +277,8 @@ public final class Sculptor {
                 }
                 float ux = distance <= 1e-5f ? 0f : dx / distance;
                 float uy = distance <= 1e-5f ? 0f : dy / distance;
-                deposit(x, y, distance - radius, distance / radius, ux, uy, stand / radius,
-                        base, stand, form, albedo, material);
+                deposit(x, y, distance - radius, distance / radius, frameDirX(ux, uy),
+                        frameDirY(ux, uy), stand / radius, base, stand, form, albedo, material);
             }
         }
         return this;
@@ -225,12 +302,11 @@ public final class Sculptor {
         float reach = Math.min(halfW, halfH);
         float turn = reach <= 0f ? 0f : stand / reach;
 
-        for (int py = Math.max(0, (int) Math.floor(y - 1));
-                py <= Math.min(height - 1, (int) Math.ceil(y + h + 1)); py++) {
-            for (int px = Math.max(0, (int) Math.floor(x - 1));
-                    px <= Math.min(width - 1, (int) Math.ceil(x + w + 1)); px++) {
-                float sx = px + 0.5f - cx;
-                float sy = py + 0.5f - cy;
+        int[] bounds = frameBounds(x - 1, y - 1, x + w + 1, y + h + 1);
+        for (int py = Math.max(0, bounds[1]); py <= Math.min(height - 1, bounds[3]); py++) {
+            for (int px = Math.max(0, bounds[0]); px <= Math.min(width - 1, bounds[2]); px++) {
+                float sx = localX(px + 0.5f, py + 0.5f) - cx;
+                float sy = localY(px + 0.5f, py + 0.5f) - cy;
                 float dx = Math.abs(sx) - (halfW - r);
                 float dy = Math.abs(sy) - (halfH - r);
                 float outX = Math.max(dx, 0f);
@@ -250,7 +326,8 @@ public final class Sculptor {
                     ux = 0f;
                     uy = sy < 0f ? -1f : 1f;
                 }
-                deposit(px, py, distance, d, ux, uy, turn, base, stand, form, albedo, material);
+                deposit(px, py, distance, d, frameDirX(ux, uy), frameDirY(ux, uy), turn, base,
+                        stand, form, albedo, material);
             }
         }
         return this;
@@ -283,13 +360,15 @@ public final class Sculptor {
         float reach = Math.max(1f, Math.min(hix - lox, hiy - loy) / 2f);
         float turn = stand / reach;
 
-        for (int y = Math.max(0, (int) loy - 1); y <= Math.min(height - 1, (int) hiy + 1); y++) {
-            for (int x = Math.max(0, (int) lox - 1); x <= Math.min(width - 1, (int) hix + 1);
-                    x++) {
+        int[] box = frameBounds(lox - 1, loy - 1, hix + 1, hiy + 1);
+        for (int y = Math.max(0, box[1]); y <= Math.min(height - 1, box[3]); y++) {
+            for (int x = Math.max(0, box[0]); x <= Math.min(width - 1, box[2]); x++) {
                 int hits = 0;
                 for (int sy = 0; sy < 4; sy++) {
                     for (int sx = 0; sx < 4; sx++) {
-                        if (inside(xy, x + (sx + 0.5f) / 4f, y + (sy + 0.5f) / 4f)) {
+                        float px = x + (sx + 0.5f) / 4f;
+                        float py = y + (sy + 0.5f) / 4f;
+                        if (inside(xy, localX(px, py), localY(px, py))) {
                             hits++;
                         }
                     }
@@ -297,10 +376,11 @@ public final class Sculptor {
                 if (hits == 0) {
                     continue;
                 }
-                float[] near = nearestEdge(xy, x + 0.5f, y + 0.5f);
+                float[] near = nearestEdge(xy, localX(x + 0.5f, y + 0.5f),
+                        localY(x + 0.5f, y + 0.5f));
                 float d = 1f - Math.min(1f, near[0] / reach);
-                place(x, y, hits / 16f, d, near[1], near[2], turn, base, stand, form,
-                        albedo, material);
+                place(x, y, hits / 16f, d, frameDirX(near[1], near[2]),
+                        frameDirY(near[1], near[2]), turn, base, stand, form, albedo, material);
             }
         }
         return this;
@@ -338,12 +418,12 @@ public final class Sculptor {
         float ay = y1 - y0;
         float lengthSquared = ax * ax + ay * ay;
 
-        for (int y = Math.max(0, (int) (Math.min(y0, y1) - maxRadius - 1));
-                y <= Math.min(height - 1, (int) (Math.max(y0, y1) + maxRadius + 1)); y++) {
-            for (int x = Math.max(0, (int) (Math.min(x0, x1) - maxRadius - 1));
-                    x <= Math.min(width - 1, (int) (Math.max(x0, x1) + maxRadius + 1)); x++) {
-                float px = x + 0.5f - x0;
-                float py = y + 0.5f - y0;
+        int[] box = frameBounds(Math.min(x0, x1) - maxRadius - 1, Math.min(y0, y1) - maxRadius - 1,
+                Math.max(x0, x1) + maxRadius + 1, Math.max(y0, y1) + maxRadius + 1);
+        for (int y = Math.max(0, box[1]); y <= Math.min(height - 1, box[3]); y++) {
+            for (int x = Math.max(0, box[0]); x <= Math.min(width - 1, box[2]); x++) {
+                float px = localX(x + 0.5f, y + 0.5f) - x0;
+                float py = localY(x + 0.5f, y + 0.5f) - y0;
                 float t = lengthSquared <= 0f ? 0f : (px * ax + py * ay) / lengthSquared;
                 t = t < 0f ? 0f : (t > 1f ? 1f : t);
                 float dx = px - ax * t;
@@ -356,7 +436,7 @@ public final class Sculptor {
                 float d = distance / radius;
                 float ux = distance <= 1e-5f ? 0f : dx / distance;
                 float uy = distance <= 1e-5f ? 0f : dy / distance;
-                cut(x, y, d, ux, uy, depth / radius, depth, form);
+                cut(x, y, d, frameDirX(ux, uy), frameDirY(ux, uy), depth / radius, depth, form);
             }
         }
         return this;
@@ -375,10 +455,11 @@ public final class Sculptor {
         float r = Math.min(corner, Math.min(halfW, halfH));
         float reach = Math.min(halfW, halfH);
 
-        for (int py = Math.max(0, (int) y); py <= Math.min(height - 1, (int) (y + h)); py++) {
-            for (int px = Math.max(0, (int) x); px <= Math.min(width - 1, (int) (x + w)); px++) {
-                float sx = px + 0.5f - cx;
-                float sy = py + 0.5f - cy;
+        int[] bounds = frameBounds(x - 1, y - 1, x + w + 1, y + h + 1);
+        for (int py = Math.max(0, bounds[1]); py <= Math.min(height - 1, bounds[3]); py++) {
+            for (int px = Math.max(0, bounds[0]); px <= Math.min(width - 1, bounds[2]); px++) {
+                float sx = localX(px + 0.5f, py + 0.5f) - cx;
+                float sy = localY(px + 0.5f, py + 0.5f) - cy;
                 float dx = Math.abs(sx) - (halfW - r);
                 float dy = Math.abs(sy) - (halfH - r);
                 float outX = Math.max(dx, 0f);
@@ -399,7 +480,8 @@ public final class Sculptor {
                     ux = 0f;
                     uy = sy < 0f ? -1f : 1f;
                 }
-                cut(px, py, d, ux, uy, reach <= 0f ? 0f : depth / reach, depth, form);
+                cut(px, py, d, frameDirX(ux, uy), frameDirY(ux, uy),
+                        reach <= 0f ? 0f : depth / reach, depth, form);
             }
         }
         return this;
