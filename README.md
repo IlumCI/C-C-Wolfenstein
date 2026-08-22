@@ -183,6 +183,36 @@ unit facing, walk frame, structure damage state, terrain variant and effect fram
 once at startup. Infantry are drawn per facing so the helmet stays on top; vehicle hulls are
 drawn once and rotated, because a hull genuinely does rotate.
 
+### The world it is set in
+
+Standing art direction, written down because it governs terrain, weather, structures and
+effects alike, and because it is the kind of thing that quietly drifts back toward the default
+of a nice sunny field.
+
+**This world is dystopian, not realistic.** It is never a clear day. There are three times of
+day and none of them are pleasant:
+
+- **Morning** — rain or low cloud. Wet, grey, visibility short.
+- **Midday** — ash. A washed-out sky and ash falling like snow, settling on everything.
+- **Night** — storm. Wind, rain, and lightning as the only real light.
+
+Ground follows from that. Grass is churned and muddy rather than green; bare earth is slurry;
+water is dirty and polluted, not blue. Nothing on this map has been maintained since the
+occupation.
+
+Structures come in exactly two registers, and the contrast between them is the point:
+
+- **Ruins** — what the bombing left. Broken walls, collapsed floors, rubble, rebar.
+- **Germania** — the Regime's city. Genuinely beautiful and entirely frightening: monumental
+  stone, vast blank facades, and tight alleyways cut between them at a scale that makes a
+  person feel like an error.
+
+And the Regime's supersoldiers are everywhere, and are *massive*. Scale is part of the horror:
+they should read as a head and shoulders above a rifleman at a glance, the way the
+Resonanzkanone reads as three and a half tiles of gun.
+
+The skull marks stay original throughout. No Nazi insignia anywhere in the art, at any size.
+
 ## Running and testing without a device
 
 ```bash
