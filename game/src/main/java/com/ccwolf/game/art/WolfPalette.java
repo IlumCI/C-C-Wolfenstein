@@ -148,7 +148,10 @@ public final class WolfPalette {
      * it. That happened on the first vehicle drawn this way.
      *
      * <p>So the top of the ramp is the albedo and {@code light()} generates everything below it.
-     * {@link #shade} stays for the HUD and the minimap, which are not lit and never will be.
+     * {@link #shade} is for everything that is not lit: the HUD, the minimap, and the drawn
+     * infantry pipeline in {@link Ink}, whose sprites carry their own shading because they were
+     * authored with it. The rule across the whole roster is <b>albedo for lit, shade for
+     * drawn</b>.
      */
     public static int albedo(int[] ramp) {
         return ramp[0];
