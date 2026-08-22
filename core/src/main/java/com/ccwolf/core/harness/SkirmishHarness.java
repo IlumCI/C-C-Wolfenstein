@@ -3,6 +3,7 @@ package com.ccwolf.core.harness;
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.diag.StateDigest;
 import com.ccwolf.core.entity.Building;
+import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.map.MapCatalog;
 import com.ccwolf.core.map.TileMap;
@@ -31,6 +32,8 @@ public final class SkirmishHarness {
         long seed = 7L;
         Difficulty difficulty = Difficulty.VETERAN;
         String mapName = MapCatalog.KREISAU_VALLEY;
+        Doctrine resistanceDoctrine = null;
+        Doctrine regimeDoctrine = null;
         boolean quiet = false;
         boolean profile = false;
         boolean digest = false;
@@ -50,6 +53,15 @@ public final class SkirmishHarness {
                 mapName = value;
             } else if ("--bench".equals(key)) {
                 benchUnits = Integer.parseInt(value);
+            } else if ("--doctrine".equals(key)) {
+                // One flag, either side: a doctrine already knows which faction it belongs to,
+                // and GameWorld.addPlayer refuses a mismatch, so there is nothing to get wrong.
+                Doctrine d = Doctrine.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+                if (d.faction() == com.ccwolf.core.entity.Faction.REGIME) {
+                    regimeDoctrine = d;
+                } else {
+                    resistanceDoctrine = d;
+                }
             }
         }
         for (int i = 0; i < args.length; i++) {
@@ -71,13 +83,18 @@ public final class SkirmishHarness {
         }
 
         TileMap map = MapCatalog.load(mapName);
-        Skirmish skirmish = Skirmish.createAiVersusAi(map, difficulty, seed);
+        Skirmish skirmish = Skirmish.createAiVersusAi(map, difficulty, seed,
+                resistanceDoctrine, regimeDoctrine);
         GameWorld world = skirmish.world();
         world.setFogEnabled(false);
         world.profiler().setEnabled(profile);
 
         System.out.println("Map: " + map.name() + " (" + map.width() + "x" + map.height() + ")");
         System.out.println("Difficulty: " + difficulty + "   seed: " + seed);
+        System.out.println("Doctrines: "
+                + (resistanceDoctrine == null ? "none" : resistanceDoctrine.displayName())
+                + " vs "
+                + (regimeDoctrine == null ? "none" : regimeDoctrine.displayName()));
         printHeader();
 
         long start = System.nanoTime();

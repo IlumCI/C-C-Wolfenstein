@@ -9,6 +9,7 @@ import com.ccwolf.core.api.PlayerCommand;
 import com.ccwolf.core.api.WorldView;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.BuildingType;
+import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
@@ -114,8 +115,19 @@ public final class GameSession {
     private long messageUntilMs;
 
     public GameSession(Faction faction, Difficulty difficulty, long seed) {
+        this(faction, difficulty, seed, null, null);
+    }
+
+    /**
+     * A match where one or both sides fight to a doctrine.
+     *
+     * <p>Either may be null, meaning that side fights the way everyone did before doctrines
+     * existed - which is what every existing test and the plain constructor above still do.
+     */
+    public GameSession(Faction faction, Difficulty difficulty, long seed,
+                       Doctrine doctrine, Doctrine opponentDoctrine) {
         this.skirmish = Skirmish.createVersusAi(MapCatalog.load(MapCatalog.KREISAU_VALLEY),
-                faction, difficulty, seed);
+                faction, difficulty, seed, doctrine, opponentDoctrine);
         this.world = skirmish.world();
         this.commands = skirmish.commands();
         this.playerId = skirmish.humanPlayerId();

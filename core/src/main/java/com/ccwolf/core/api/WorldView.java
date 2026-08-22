@@ -4,6 +4,7 @@ import com.ccwolf.core.economy.ProductionItem;
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.BuildingType;
+import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
@@ -47,6 +48,11 @@ public final class WorldView {
 
     public Faction faction() {
         return player().faction();
+    }
+
+    /** How this side fights, or null if it picked nothing. */
+    public Doctrine doctrine() {
+        return player().doctrine();
     }
 
     public TileMap map() {

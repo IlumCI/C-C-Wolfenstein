@@ -4,6 +4,7 @@ import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.ai.SkirmishAi;
 import com.ccwolf.core.api.CommandBus;
 import com.ccwolf.core.api.WorldView;
+import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.map.TileMap;
 import java.util.ArrayList;
@@ -31,10 +32,24 @@ public final class Skirmish {
     /** One human player against one AI. */
     public static Skirmish createVersusAi(TileMap map, Faction humanFaction, Difficulty difficulty,
                                           long seed) {
+        return createVersusAi(map, humanFaction, difficulty, seed, null, null);
+    }
+
+    /**
+     * One human player against one AI, both fighting to a doctrine.
+     *
+     * <p>Either may be null, meaning that side fights the way everyone did before doctrines.
+     * The AI's is passed in rather than chosen here so that whoever set the match up - the
+     * picker, the harness, a test - remains the only thing that decides.
+     */
+    public static Skirmish createVersusAi(TileMap map, Faction humanFaction, Difficulty difficulty,
+                                          long seed, Doctrine humanDoctrine,
+                                          Doctrine aiDoctrine) {
         GameWorld world = new GameWorld(map, seed);
-        Player human = world.addPlayer(humanFaction, false, humanFaction.displayName());
+        Player human = world.addPlayer(humanFaction, false, humanFaction.displayName(),
+                humanDoctrine);
         Player computer = world.addPlayer(humanFaction.other(), true,
-                humanFaction.other().displayName());
+                humanFaction.other().displayName(), aiDoctrine);
 
         placeBases(world);
 
@@ -45,9 +60,16 @@ public final class Skirmish {
 
     /** Two AIs, used by the headless harness to shake out balance and stalls. */
     public static Skirmish createAiVersusAi(TileMap map, Difficulty difficulty, long seed) {
+        return createAiVersusAi(map, difficulty, seed, null, null);
+    }
+
+    /** Two AIs, each fighting to a doctrine. This is what the balance sweep drives. */
+    public static Skirmish createAiVersusAi(TileMap map, Difficulty difficulty, long seed,
+                                            Doctrine resistance, Doctrine regime) {
         GameWorld world = new GameWorld(map, seed);
-        Player a = world.addPlayer(Faction.RESISTANCE, true, Faction.RESISTANCE.displayName());
-        Player b = world.addPlayer(Faction.REGIME, true, Faction.REGIME.displayName());
+        Player a = world.addPlayer(Faction.RESISTANCE, true, Faction.RESISTANCE.displayName(),
+                resistance);
+        Player b = world.addPlayer(Faction.REGIME, true, Faction.REGIME.displayName(), regime);
 
         placeBases(world);
 

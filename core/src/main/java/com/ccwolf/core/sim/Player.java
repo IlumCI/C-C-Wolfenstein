@@ -2,6 +2,7 @@ package com.ccwolf.core.sim;
 
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.BuildingType;
+import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Faction;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,6 +22,12 @@ public final class Player {
     private final Faction faction;
     private final boolean ai;
     private final String name;
+
+    /**
+     * How this side fights, chosen before the first tick. Null for a player who picked none,
+     * which is the game exactly as it played before doctrines existed.
+     */
+    private final Doctrine doctrine;
 
     private int credits;
     private int powerProduced;
@@ -55,12 +62,14 @@ public final class Player {
     private int unitsLost;
     private int buildingsLost;
 
-    Player(int id, Faction faction, boolean ai, String name, int startingCredits) {
+    Player(int id, Faction faction, boolean ai, String name, int startingCredits,
+           Doctrine doctrine) {
         this.id = id;
         this.faction = faction;
         this.ai = ai;
         this.name = name;
         this.credits = startingCredits;
+        this.doctrine = doctrine;
     }
 
     public int id() {
@@ -69,6 +78,16 @@ public final class Player {
 
     public Faction faction() {
         return faction;
+    }
+
+    /** How this side fights, or null if it picked nothing. Callers must handle the null. */
+    public Doctrine doctrine() {
+        return doctrine;
+    }
+
+    /** True if this side is fighting to the given doctrine. Null-safe, which is the point. */
+    public boolean follows(Doctrine d) {
+        return doctrine == d;
     }
 
     public boolean isAi() {

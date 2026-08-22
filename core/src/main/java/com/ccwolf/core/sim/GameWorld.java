@@ -8,6 +8,7 @@ import com.ccwolf.core.economy.ProductionItem;
 import com.ccwolf.core.economy.ProductionQueue;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.BuildingType;
+import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
@@ -633,7 +634,24 @@ public final class GameWorld {
     // --- setup ----------------------------------------------------------------------------
 
     public Player addPlayer(Faction faction, boolean ai, String name) {
-        Player p = new Player(players.size(), faction, ai, name, STARTING_CREDITS);
+        return addPlayer(faction, ai, name, null);
+    }
+
+    /**
+     * Adds a side fighting to a doctrine.
+     *
+     * <p>A null doctrine is the ordinary case and means the side fights the way everybody did
+     * before doctrines existed. A doctrine belonging to the other faction is refused here rather
+     * than quietly ignored: the picker, the harness flag and the tests all come through this
+     * door, and a Kreisau Circle in gas masks would otherwise be a bug three layers away from
+     * whatever caused it.
+     */
+    public Player addPlayer(Faction faction, boolean ai, String name, Doctrine doctrine) {
+        if (doctrine != null && !doctrine.availableTo(faction)) {
+            throw new IllegalArgumentException(
+                    doctrine + " belongs to " + doctrine.faction() + ", not " + faction);
+        }
+        Player p = new Player(players.size(), faction, ai, name, STARTING_CREDITS, doctrine);
         players.add(p);
         fogGrids.add(new FogGrid(map.width(), map.height()));
         sightMemories.add(new SightMemory(map.width(), map.height()));
