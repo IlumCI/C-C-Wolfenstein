@@ -4,6 +4,7 @@ import com.ccwolf.game.art.PixelCanvas;
 import com.ccwolf.game.art.SpriteAtlas;
 import com.ccwolf.game.art.TerrainSprites;
 import com.ccwolf.gfx.Image;
+import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.map.Terrain;
 import com.ccwolf.core.map.TileMap;
 import java.util.HashMap;
@@ -61,6 +62,10 @@ public final class TerrainCache {
         byte[] oreLevels;
         /** Dug depth per tile at bake time; null for a block nobody has broken ground in. */
         byte[] digLevels;
+        /** Which side's works were drawn, per tile. Alongside depth, because either can change. */
+        byte[] builders;
+        /** Pixels per tile this block was baked at, so a zoom change rebakes instead of blurs. */
+        int resolution;
         long lastUsed;
     }
 
@@ -83,7 +88,32 @@ public final class TerrainCache {
      *
      * @param blockX block column, i.e. tileX / BLOCK_TILES
      */
+    /**
+     * Pixels per tile to bake at, for a camera showing tiles this big.
+     *
+     * <p>Terrain is authored at {@link TerrainSprites#TILE}, which is sized for the closest the
+     * camera ever gets. Baking every block at that size regardless of zoom would be the worst of
+     * both worlds: fully zoomed out the whole map is on screen, a block would be a megabyte of
+     * pixels being squeezed into a thumbnail, and eighty of them resident is a third of a
+     * gigabyte. So blocks are baked at the smallest size that is still at least as big as the
+     * camera is asking for, and the choice is part of the cache key.
+     *
+     * <p>Powers of two only, so the box filter divides evenly and a downscale is an exact
+     * average rather than a resampling with its own artefacts.
+     */
+    static int resolutionFor(float tilePx) {
+        int res = TerrainSprites.TILE;
+        while (res > 32 && res / 2 >= tilePx) {
+            res /= 2;
+        }
+        return res;
+    }
+
     public Image block(TileMap map, int blockX, int blockY) {
+        return block(map, blockX, blockY, TerrainSprites.TILE);
+    }
+
+    public Image block(TileMap map, int blockX, int blockY, int resolution) {
         if (map.width() != mapWidth || map.height() != mapHeight) {
             // A different map: nothing cached can be about this one.
             clear();
@@ -93,26 +123,29 @@ public final class TerrainCache {
 
         Long key = Long.valueOf(((long) blockX << 32) ^ (blockY & 0xFFFFFFFFL));
         Block block = blocks.get(key);
-        if (block != null && !isStale(map, block, blockX, blockY)) {
+        if (block != null && block.resolution == resolution
+                && !isStale(map, block, blockX, blockY)) {
             block.lastUsed = ++useCounter;
             return block.image;
         }
 
-        Block baked = bake(map, blockX, blockY);
+        Block baked = bake(map, blockX, blockY, resolution);
         baked.lastUsed = ++useCounter;
         blocks.put(key, baked);
         evictIfCrowded();
         return baked.image;
     }
 
-    private Block bake(TileMap map, int blockX, int blockY) {
-        int tile = TerrainSprites.TILE;
+    private Block bake(TileMap map, int blockX, int blockY, int resolution) {
+        int tile = resolution;
+        int shrink = TerrainSprites.TILE / resolution;
         int originX = blockX * BLOCK_TILES;
         int originY = blockY * BLOCK_TILES;
 
         PixelCanvas canvas = new PixelCanvas(BLOCK_TILES * tile, BLOCK_TILES * tile);
         byte[] levels = null;
         byte[] digs = null;
+        byte[] builders = null;
 
         for (int dy = 0; dy < BLOCK_TILES; dy++) {
             for (int dx = 0; dx < BLOCK_TILES; dx++) {
@@ -136,23 +169,30 @@ public final class TerrainCache {
                 }
 
                 int dug = map.entrenchment(x, y);
+                Faction built = map.builderOf(x, y);
                 if (dug > 0) {
                     if (digs == null) {
                         digs = new byte[BLOCK_TILES * BLOCK_TILES];
+                        builders = new byte[BLOCK_TILES * BLOCK_TILES];
+                        java.util.Arrays.fill(builders, (byte) -1);
                     }
                     digs[dy * BLOCK_TILES + dx] = (byte) dug;
+                    builders[dy * BLOCK_TILES + dx] =
+                            built == null ? (byte) -1 : (byte) built.ordinal();
                     // Safe to cut into directly: both branches above hand back a canvas they
                     // just made. If either ever starts returning a shared atlas sprite this
                     // needs a copy first, or one trench would appear on every grass tile.
-                    TerrainSprites.entrench(sprite, dug, variant);
+                    TerrainSprites.entrench(sprite, dug, variant, built);
                 }
-                canvas.blit(sprite, dx * tile, dy * tile);
+                canvas.blit(sprite.downscaled(shrink), dx * tile, dy * tile);
             }
         }
 
         bakes++;
         Block block = new Block();
         block.digLevels = digs;
+        block.builders = builders;
+        block.resolution = resolution;
         // Opaque by construction: every tile of a block is a full terrain sprite, so there is
         // no transparency to composite and the backend can copy instead.
         block.image = canvas.toOpaqueImage();
@@ -175,6 +215,13 @@ public final class TerrainCache {
                 byte bakedDig = block.digLevels == null ? 0 : block.digLevels[index];
                 if (map.entrenchment(originX + dx, originY + dy) != bakedDig) {
                     return true;
+                }
+                if (block.builders != null) {
+                    Faction built = map.builderOf(originX + dx, originY + dy);
+                    byte now = built == null ? (byte) -1 : (byte) built.ordinal();
+                    if (now != block.builders[index]) {
+                        return true;
+                    }
                 }
                 if (block.oreLevels == null) {
                     continue;

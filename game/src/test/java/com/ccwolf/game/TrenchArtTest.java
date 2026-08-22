@@ -2,6 +2,7 @@ package com.ccwolf.game;
 
 import com.ccwolf.game.art.PixelCanvas;
 import com.ccwolf.game.art.TerrainSprites;
+import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.map.Terrain;
 import java.io.IOException;
 import org.junit.Test;
@@ -20,7 +21,31 @@ public class TrenchArtTest {
     }
 
     private static final int TILE = TerrainSprites.TILE;
-    private static final int ZOOM = 3;
+    private static final int ZOOM = 1;
+
+    /**
+     * The two idioms side by side, which is the only way to judge whether they read as two.
+     *
+     * <p>A trench records who built it, never who holds it, so these are two different things
+     * on the map at the same time rather than a recolour of one thing. What is being checked is
+     * that a glance from across a table tells them apart: earth, timber and sandbags against
+     * poured concrete, steel plate and, at the deepest level, a bunker that was never going to
+     * be dug out again.
+     */
+    @Test
+    public void theTwoSidesBuildDifferentThings() throws IOException {
+        Faction[] sides = {Faction.RESISTANCE, Faction.REGIME};
+        int cols = TerrainSprites.TRENCH_LEVELS;
+        PixelCanvas sheet = new PixelCanvas(cols * TILE, sides.length * TILE);
+        for (int row = 0; row < sides.length; row++) {
+            for (int level = 1; level <= cols; level++) {
+                PixelCanvas tile = TerrainSprites.render(Terrain.GRASS, level);
+                TerrainSprites.entrench(tile, level, level, sides[row]);
+                sheet.blit(tile, (level - 1) * TILE, row * TILE);
+            }
+        }
+        save(sheet, "trench-factions.png");
+    }
 
     @Test
     public void trenchesAtEveryDepthAndOnEveryGround() throws IOException {

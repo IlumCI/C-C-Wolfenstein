@@ -190,6 +190,10 @@ public final class WorldRenderer {
 
         // Blocks, not tiles. Drawing the ground a tile at a time was 84% of a frame and cost
         // exactly as much with four units on the map as with a thousand.
+        // Baked no finer than the camera is actually showing. At this authoring resolution a
+        // full-size block is a megabyte of pixels, and eighty of them resident would be a third
+        // of a gigabyte of thumbnails.
+        int blockResolution = TerrainCache.resolutionFor(session.camera().tilePx());
         int bx0 = Math.floorDiv(x0, TerrainCache.BLOCK_TILES);
         int by0 = Math.floorDiv(y0, TerrainCache.BLOCK_TILES);
         int bx1 = Math.floorDiv(x1, TerrainCache.BLOCK_TILES);
@@ -198,7 +202,7 @@ public final class WorldRenderer {
         int drawn = 0;
         for (int by = by0; by <= by1; by++) {
             for (int bx = bx0; bx <= bx1; bx++) {
-                Image block = terrainCache.block(map, bx, by);
+                Image block = terrainCache.block(map, bx, by, blockResolution);
                 int tileX = bx * TerrainCache.BLOCK_TILES;
                 int tileY = by * TerrainCache.BLOCK_TILES;
                 surface.drawImage(block,

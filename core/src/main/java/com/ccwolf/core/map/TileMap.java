@@ -1,6 +1,7 @@
 package com.ccwolf.core.map;
 
 import com.ccwolf.core.combat.Earthworks;
+import com.ccwolf.core.entity.Faction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,6 +33,22 @@ public final class TileMap {
      * Men dig in and raise it; shellfire flattens it back down.
      */
     private final byte[] cover;
+
+    /**
+     * Which side cut the works on each tile, or {@link #UNBUILT} where nobody has.
+     *
+     * <p>Who <em>built</em> it, deliberately, and never who holds it. A trench outlives the men
+     * who dug it — that is stated in {@code InfluenceGrid}'s javadoc and is why earthworks are
+     * not a source of control — so this is a record of construction, which cannot change, rather
+     * than of occupation, which changes constantly. A Regime bunker taken by partisans is still
+     * a concrete bunker; keying the look to whoever is standing in it would make a line flicker
+     * between two styles as men walked past.
+     *
+     * <p>It exists for the picture and only for the picture. Nothing in the simulation reads it,
+     * and in particular the influence field must not: control is worked out from units and
+     * buildings, and letting held ground vouch for itself is a feedback loop, not a front.
+     */
+    private final byte[] builder;
     private final String name;
     private final List<int[]> spawnPoints;
 
@@ -43,6 +60,8 @@ public final class TileMap {
         this.ore = new int[tiles.length];
         this.spawnPoints = Collections.unmodifiableList(new ArrayList<int[]>(spawnPoints));
         this.cover = new byte[tiles.length];
+        this.builder = new byte[tiles.length];
+        java.util.Arrays.fill(this.builder, UNBUILT);
         for (int i = 0; i < tiles.length; i++) {
             if (tiles[i] == Terrain.ORE) {
                 ore[i] = ORE_PER_TILE;
@@ -100,6 +119,9 @@ public final class TileMap {
     /** The most protection a tile can offer: a proper trench. */
     public static final int MAX_COVER = 5;
 
+    /** Nobody has broken ground here. Not a faction ordinal, so it cannot be mistaken for one. */
+    private static final byte UNBUILT = -1;
+
     /**
      * The depth at which ordinary cover stops adding anything.
      *
@@ -126,7 +148,38 @@ public final class TileMap {
     public void setCover(int x, int y, int value) {
         if (contains(x, y)) {
             cover[y * width + x] = (byte) Math.max(0, Math.min(MAX_COVER, value));
+            if (entrenchment(x, y) <= 0) {
+                // Flattened back to what the ground itself offers: whatever was built here is
+                // gone, and the next side to break ground gets to claim it.
+                builder[y * width + x] = UNBUILT;
+            }
         }
+    }
+
+    /**
+     * Records which side cut the works on a tile, if nobody has yet.
+     *
+     * <p>First to break ground keeps it. Deepening someone else's trench does not repaint it —
+     * a line changing hands and being improved is still the line that was built there, and a
+     * style that flipped halfway through a fight would read as a rendering bug.
+     */
+    public void setBuilder(int x, int y, Faction faction) {
+        if (!contains(x, y) || faction == null) {
+            return;
+        }
+        int i = y * width + x;
+        if (builder[i] == UNBUILT) {
+            builder[i] = (byte) faction.ordinal();
+        }
+    }
+
+    /** Which side cut the works here, or null if the ground is as it was found. */
+    public Faction builderOf(int x, int y) {
+        if (!contains(x, y)) {
+            return null;
+        }
+        byte b = builder[y * width + x];
+        return b == UNBUILT ? null : Faction.values()[b];
     }
 
     /** Raises or lowers a tile's cover, clamped. Digging in adds; shellfire takes away. */

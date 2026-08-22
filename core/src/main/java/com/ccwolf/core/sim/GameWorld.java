@@ -2537,6 +2537,8 @@ public final class GameWorld {
         }
         if (unit.dig(Doctrines.digTicks(doctrine))) {
             map.addCover(x, y, 1);
+            // Whose works these are, for the look of them. First to break ground keeps it.
+            map.setBuilder(x, y, player(unit.ownerId()).faction());
         }
     }
 

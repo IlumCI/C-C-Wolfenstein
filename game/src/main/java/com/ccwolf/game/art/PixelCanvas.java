@@ -279,6 +279,54 @@ public final class PixelCanvas {
     }
 
     /** Copies another canvas on top, skipping its transparent pixels. */
+    /**
+     * A smaller copy, averaging each {@code factor}x{@code factor} block down to one pixel.
+     *
+     * <p>A box filter rather than nearest-neighbour, and the difference matters at these ratios:
+     * dropping three pixels in four throws away most of the detail that was the reason for
+     * authoring at a high resolution in the first place, and does it unevenly, so a cobbled road
+     * sampled by nearest neighbour turns into a moire pattern that crawls as the camera moves.
+     * Averaging is what makes a high-resolution sprite still look right when it is shown small.
+     *
+     * <p>Alpha is averaged with the colour and the colour is weighted by it, so a sprite with
+     * transparent edges does not pick up a dark halo from averaging in the zeroes.
+     */
+    public PixelCanvas downscaled(int factor) {
+        if (factor <= 1) {
+            return this;
+        }
+        int w = Math.max(1, width / factor);
+        int h = Math.max(1, height / factor);
+        PixelCanvas out = new PixelCanvas(w, h);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int a = 0;
+                int r = 0;
+                int g = 0;
+                int b = 0;
+                int n = 0;
+                for (int sy = y * factor; sy < (y + 1) * factor && sy < height; sy++) {
+                    for (int sx = x * factor; sx < (x + 1) * factor && sx < width; sx++) {
+                        int p = pixels[sy * width + sx];
+                        int pa = (p >>> 24) & 0xFF;
+                        a += pa;
+                        r += ((p >> 16) & 0xFF) * pa;
+                        g += ((p >> 8) & 0xFF) * pa;
+                        b += (p & 0xFF) * pa;
+                        n++;
+                    }
+                }
+                if (n == 0 || a == 0) {
+                    out.pixels[y * w + x] = 0;
+                    continue;
+                }
+                out.pixels[y * w + x] = ((a / n) << 24) | ((r / a) << 16) | ((g / a) << 8)
+                        | (b / a);
+            }
+        }
+        return out;
+    }
+
     public PixelCanvas blit(PixelCanvas source, int ox, int oy) {
         for (int y = 0; y < source.height; y++) {
             for (int x = 0; x < source.width; x++) {

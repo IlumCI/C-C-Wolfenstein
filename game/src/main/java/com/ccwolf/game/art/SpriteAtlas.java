@@ -21,11 +21,39 @@ public final class SpriteAtlas {
 
     private final Map<String, Image> sprites = new HashMap<String, Image>();
 
+    /** Pixels baked, and how long it took. Both are budgets rather than curiosities. */
+    private long pixels;
+    private long bakeMillis;
+
     private SpriteAtlas() {
+        long start = System.nanoTime();
         bakeUnits();
         bakeBuildings();
         bakeTerrain();
         bakeEffects();
+        bakeMillis = (System.nanoTime() - start) / 1_000_000L;
+    }
+
+    /** Every sprite goes through here, so the pixel count cannot drift from what was baked. */
+    private void put(String key, PixelCanvas canvas) {
+        pixels += (long) canvas.width() * canvas.height();
+        sprites.put(key, canvas.toImage());
+    }
+
+    /**
+     * Roughly how much memory the atlas holds, at four bytes a pixel.
+     *
+     * <p>Worth measuring rather than assuming: raising the authoring resolution multiplies this
+     * by the square of the change, and an eager bake a desktop shrugs at is a phone running out
+     * of heap behind the splash screen.
+     */
+    public long bytes() {
+        return pixels * 4L;
+    }
+
+    /** How long the eager bake took. The reason it is eager is that it is supposed to be short. */
+    public long bakeMillis() {
+        return bakeMillis;
     }
 
     /** The atlas is shared: the sprites are immutable once baked. */
@@ -50,8 +78,8 @@ public final class SpriteAtlas {
                 }
                 for (int facing = 0; facing < UnitSprites.FACINGS; facing++) {
                     for (int frame = 0; frame < frameCount(type); frame++) {
-                        sprites.put(unitKey(type, faction, facing, frame),
-                                UnitSprites.render(type, faction, facing, frame).toImage());
+                        put(unitKey(type, faction, facing, frame),
+                                UnitSprites.render(type, faction, facing, frame));
                     }
                 }
             }
@@ -67,40 +95,38 @@ public final class SpriteAtlas {
         for (BuildingType type : BuildingType.values()) {
             for (Faction faction : Faction.values()) {
                 for (int damage = 0; damage < BuildingSprites.DAMAGE_STATES; damage++) {
-                    sprites.put(buildingKey(type, faction, damage),
-                            BuildingSprites.render(type, faction, damage).toImage());
+                    put(buildingKey(type, faction, damage),
+                            BuildingSprites.render(type, faction, damage));
                 }
             }
         }
         for (int facing = 0; facing < UnitSprites.FACINGS; facing++) {
-            sprites.put("barrel:" + facing, BuildingSprites.flakBarrel(facing).toImage());
+            put("barrel:" + facing, BuildingSprites.flakBarrel(facing));
         }
     }
 
     private void bakeTerrain() {
         for (Terrain terrain : Terrain.values()) {
             for (int variant = 0; variant < TerrainSprites.VARIANTS; variant++) {
-                sprites.put(terrainKey(terrain, variant),
-                        TerrainSprites.render(terrain, variant).toImage());
+                put(terrainKey(terrain, variant), TerrainSprites.render(terrain, variant));
             }
         }
         for (int variant = 0; variant < TerrainSprites.VARIANTS; variant++) {
             for (int level = 0; level < TerrainSprites.ORE_LEVELS; level++) {
-                sprites.put(oreKey(variant, level),
-                        TerrainSprites.renderOre(variant, level).toImage());
+                put(oreKey(variant, level), TerrainSprites.renderOre(variant, level));
             }
         }
     }
 
     private void bakeEffects() {
         for (int frame = 0; frame < EffectSprites.EXPLOSION_FRAMES; frame++) {
-            sprites.put("boom:" + frame, EffectSprites.explosion(frame).toImage());
+            put("boom:" + frame, EffectSprites.explosion(frame));
         }
         for (int frame = 0; frame < 2; frame++) {
-            sprites.put("flash:" + frame, EffectSprites.muzzleFlash(frame).toImage());
+            put("flash:" + frame, EffectSprites.muzzleFlash(frame));
         }
         for (int variant = 0; variant < 4; variant++) {
-            sprites.put("wreck:" + variant, EffectSprites.wreck(variant).toImage());
+            put("wreck:" + variant, EffectSprites.wreck(variant));
         }
     }
 
