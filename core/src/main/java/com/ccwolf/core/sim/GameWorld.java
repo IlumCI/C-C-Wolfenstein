@@ -52,6 +52,24 @@ public final class GameWorld {
     /** How often (in ticks) fog is recomputed. Cheap enough at 4 Hz, invisible to the eye. */
     private static final int FOG_INTERVAL = 5;
 
+    /**
+     * How often each side's record of what it has seen is refreshed.
+     *
+     * <p>The same cadence as fog, and for the same reason — nothing about it needs to be exact.
+     * Unlike fog, it runs whether or not fog is switched on, because the harness and every AI
+     * test play with fog off and a rule that vanished there would be a rule measured in a world
+     * it does not apply to.
+     */
+    private static final int SPOTTING_INTERVAL = 5;
+
+    /**
+     * How long a piece of ground stays worth shelling after the last man saw it.
+     *
+     * <p>Fifteen seconds: long enough that a spotter can look, duck back and still call the
+     * shot, short enough that a battery cannot keep firing at a map it walked across once.
+     */
+    public static final int SPOTTING_MEMORY = 15 * TICKS_PER_SECOND;
+
     /** How often uranium seams creep back, in ticks. */
     private static final int ORE_REGROW_INTERVAL = 100;
 
@@ -205,6 +223,12 @@ public final class GameWorld {
     private final List<Unit> units = new ArrayList<Unit>();
     private final List<Building> buildings = new ArrayList<Building>();
     private final List<FogGrid> fogGrids = new ArrayList<FogGrid>();
+
+    /**
+     * What each side has seen, and when. One per player, alongside the fog grids but
+     * deliberately not part of them — see {@link SightMemory} for why.
+     */
+    private final List<SightMemory> sightMemories = new ArrayList<SightMemory>();
     private final List<GameEvent> events = new ArrayList<GameEvent>();
 
     private final List<Unit> queryScratch = new ArrayList<Unit>();
@@ -545,6 +569,7 @@ public final class GameWorld {
         Player p = new Player(players.size(), faction, ai, name, STARTING_CREDITS);
         players.add(p);
         fogGrids.add(new FogGrid(map.width(), map.height()));
+        sightMemories.add(new SightMemory(map.width(), map.height()));
         return p;
     }
 
@@ -1116,6 +1141,12 @@ public final class GameWorld {
             map.regrowOre(ORE_REGROW_AMOUNT);
         }
         profiler.end(TickProfiler.Phase.ORE);
+
+        profiler.begin(TickProfiler.Phase.SPOTTING);
+        if (tick == 1 || tick % SPOTTING_INTERVAL == 0) {
+            updateSpotting();
+        }
+        profiler.end(TickProfiler.Phase.SPOTTING);
 
         profiler.begin(TickProfiler.Phase.FOG);
         // Also on tick 1: waiting for the first interval leaves the opening frames black.
@@ -1983,6 +2014,41 @@ public final class GameWorld {
                 player(b.ownerId()).noteBuildingLost();
             }
         }
+    }
+
+    /**
+     * Refreshes each side's memory of the ground it can see.
+     *
+     * <p>Buildings stamp as well as units. Without that a base with its army away could not
+     * call fire on somebody walking up to its own gate, which is the one moment it most wants
+     * to.
+     */
+    private void updateSpotting() {
+        for (int i = 0; i < units.size(); i++) {
+            Unit u = units.get(i);
+            sightMemories.get(u.ownerId()).see(u.x(), u.y(), tick);
+        }
+        for (int i = 0; i < buildings.size(); i++) {
+            Building b = buildings.get(i);
+            sightMemories.get(b.ownerId()).see(b.x(), b.y(), tick);
+        }
+    }
+
+    /** What this player has seen, and when. */
+    public SightMemory sightMemory(int playerId) {
+        return sightMemories.get(playerId);
+    }
+
+    /**
+     * True if this player may call fire on a tile: seen recently, whether or not seen now.
+     *
+     * <p>The loose rule rather than the strict one. Requiring a spotter to be looking at the
+     * moment of firing would make artillery a two-unit combination and nothing else; requiring
+     * only that somebody has been there lately makes reconnaissance worth doing without making
+     * it mandatory.
+     */
+    public boolean canObserve(int playerId, int tileX, int tileY) {
+        return sightMemories.get(playerId).seenWithin(tileX, tileY, tick, SPOTTING_MEMORY);
     }
 
     private void updateFog() {
