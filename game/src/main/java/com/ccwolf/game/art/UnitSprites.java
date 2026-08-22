@@ -25,6 +25,22 @@ public final class UnitSprites {
     /** Source pixels per tile. Everything is authored at this scale. */
     public static final int TILE = 32;
 
+    /**
+     * How many real pixels each authored one becomes.
+     *
+     * <p>Men, vehicles and guns are composed in the sizes below — a rifleman on a
+     * thirty-two-pixel square, a hull on forty-eight — and those numbers are the drawing. The
+     * canvas underneath is what grew, so the roster matches the ground it stands on without a
+     * single figure being redrawn. Same mechanism as the structures, and the same reason: the
+     * composition is the art, and the resolution is not.
+     */
+    private static final int SCALE = Math.max(1, TerrainSprites.TILE / TILE);
+
+    /** Every sprite starts here, so none of them can be made at the wrong scale by accident. */
+    private static PixelCanvas canvas(int size) {
+        return new PixelCanvas(size, size, SCALE);
+    }
+
     public static final int INFANTRY_SIZE = 32;
     public static final int VEHICLE_SIZE = 48;
 
@@ -57,6 +73,24 @@ public final class UnitSprites {
      * @param frame walk or tread frame; cargo level for the harvester
      */
     public static PixelCanvas render(UnitType type, Faction faction, int facing, int frame) {
+        return round(figure(type, faction, facing, frame));
+    }
+
+    /**
+     * How much the rim is lifted and dropped to give a figure volume.
+     *
+     * <p>Restrained on purpose. Enough to say which way a shoulder turns, not enough to make
+     * every man look like he is standing in a spotlight - and the same numbers for everyone, so
+     * the roster is lit by one sun.
+     */
+    private static final float RIM_LIGHT = 0.16f;
+    private static final float RIM_SHADOW = 0.22f;
+
+    private static PixelCanvas round(PixelCanvas c) {
+        return c.roundEdges(RIM_LIGHT, RIM_SHADOW);
+    }
+
+    private static PixelCanvas figure(UnitType type, Faction faction, int facing, int frame) {
         switch (type) {
             case SCOUT_JEEP:
                 return vehicle(jeep(faction, frame), facing, 15, 5);
@@ -155,13 +189,21 @@ public final class UnitSprites {
      * Outlining first tears the outline apart; rotating the shadow sends the sun spinning.
      */
     private static PixelCanvas vehicle(PixelCanvas east, int facing, int shadowRx, int shadowRy) {
+        // Supersampling the rotation matters much less than it did: the hull is drawn at four
+        // times the resolution now, so the stair-stepping the factor exists to hide is already
+        // a quarter the size. Two instead of three keeps the bake from spending seconds on
+        // temporary buffers of two million pixels a facing.
+        int smoothing = east.scale() > 1 ? 1 : 3;
         PixelCanvas hull = facing == 0 ? east
-                : east.rotatedSmooth((float) (facing * Math.PI / 4.0), 3);
+                : east.rotatedSmooth((float) (facing * Math.PI / 4.0), smoothing);
         hull.outline(OUTLINE);
 
-        PixelCanvas out = new PixelCanvas(east.width(), east.height());
+        // Composed at the hull's own scale so the shadow keeps the coordinates it was authored
+        // in, then the finished hull is laid over it one real pixel at a time - it has already
+        // been rotated at full resolution and must not be planted in blocks a second time.
+        PixelCanvas out = new PixelCanvas(east.width(), east.height(), east.scale());
         out.groundShadow(east.width() / 2, east.height() / 2 + 7, shadowRx, shadowRy);
-        out.blit(hull, 0, 0);
+        out.fine().blit(hull, 0, 0);
         return out;
     }
 
@@ -173,7 +215,7 @@ public final class UnitSprites {
      */
     private static PixelCanvas infantry(Faction faction, int facing, int frame,
                                         Loadout loadout) {
-        PixelCanvas c = new PixelCanvas(INFANTRY_SIZE, INFANTRY_SIZE);
+        PixelCanvas c = canvas(INFANTRY_SIZE);
         boolean regime = faction == Faction.REGIME;
 
         int[] coat = loadout.civilian ? WolfPalette.LEATHER
@@ -609,7 +651,7 @@ public final class UnitSprites {
      * top edges; lit from the pale end of the ramp it glowed like white plastic.
      */
     private static PixelCanvas ubersoldat(int facing, int frame) {
-        PixelCanvas c = new PixelCanvas(INFANTRY_SIZE, INFANTRY_SIZE);
+        PixelCanvas c = canvas(INFANTRY_SIZE);
         int[] plate = WolfPalette.STEEL;
         int[] shade = WolfPalette.NIGHT;
         float angle = facing * (float) (Math.PI / 4.0);
@@ -822,7 +864,7 @@ public final class UnitSprites {
      * agrees, which is the whole story of how the Kreisau Circle came to own artillery.
      */
     private static PixelCanvas feldkanone(int frame) {
-        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        PixelCanvas c = canvas(VEHICLE_SIZE);
         int[] metal = WolfPalette.GUNMETAL;
         int[] steel = WolfPalette.STEEL;
         int[] timber = WolfPalette.LEATHER;
@@ -899,7 +941,7 @@ public final class UnitSprites {
      * Four is also what the weapon's salvo actually is, so the sprite says what the gun does.
      */
     private static PixelCanvas nebelwerfer(int frame) {
-        PixelCanvas c = new PixelCanvas(HEAVY_SIZE, HEAVY_SIZE);
+        PixelCanvas c = canvas(HEAVY_SIZE);
         int[] body = WolfPalette.NIGHT;
         int[] metal = WolfPalette.GUNMETAL;
         int[] brass = WolfPalette.BRASS;
@@ -993,7 +1035,7 @@ public final class UnitSprites {
      * purpose: what you see is the containment, not the thing contained.
      */
     private static PixelCanvas resonanzkanone(int frame) {
-        PixelCanvas c = new PixelCanvas(SUPERWEAPON_SIZE, SUPERWEAPON_SIZE);
+        PixelCanvas c = canvas(SUPERWEAPON_SIZE);
         int[] glow = WolfPalette.RESONANCE;
         int[] steel = WolfPalette.STEEL;
         int[] metal = WolfPalette.GUNMETAL;
@@ -1201,7 +1243,7 @@ public final class UnitSprites {
     }
 
     private static PixelCanvas jeep(Faction faction, int frame) {
-        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        PixelCanvas c = canvas(VEHICLE_SIZE);
         int[] body = faction == Faction.REGIME ? WolfPalette.NIGHT : WolfPalette.OLIVE;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = 24;
@@ -1274,7 +1316,7 @@ public final class UnitSprites {
      * glacis, a turret with a cupola hatch, stowage, and a long gun with a muzzle brake.
      */
     private static PixelCanvas panzer(Faction faction, int frame) {
-        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        PixelCanvas c = canvas(VEHICLE_SIZE);
         int[] hull = faction == Faction.REGIME ? WolfPalette.NIGHT : WolfPalette.OLIVE;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = 24;
@@ -1351,7 +1393,7 @@ public final class UnitSprites {
      * read as bigger than the Captured Panzer at a glance, or stealing one means nothing.
      */
     private static PixelCanvas sturmpanzer(int frame) {
-        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        PixelCanvas c = canvas(VEHICLE_SIZE);
         int[] hull = WolfPalette.NIGHT;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = 24;
@@ -1423,7 +1465,7 @@ public final class UnitSprites {
      * animal, with a hinged jaw, a flame nozzle behind the teeth and one red optic.
      */
     private static PixelCanvas hound(int frame) {
-        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        PixelCanvas c = canvas(VEHICLE_SIZE);
         int[] armour = WolfPalette.NIGHT;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = 20;
@@ -1544,7 +1586,7 @@ public final class UnitSprites {
      * and the whole vehicle read as an empty picture frame with a hole in the middle.
      */
     private static PixelCanvas harvester(Faction faction, int frame) {
-        PixelCanvas c = new PixelCanvas(VEHICLE_SIZE, VEHICLE_SIZE);
+        PixelCanvas c = canvas(VEHICLE_SIZE);
         int[] body = faction == Faction.REGIME ? WolfPalette.NIGHT : WolfPalette.OLIVE;
         int[] metal = WolfPalette.GUNMETAL;
         int cx = 24;

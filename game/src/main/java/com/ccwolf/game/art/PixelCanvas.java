@@ -569,6 +569,45 @@ public final class PixelCanvas {
     }
 
     /** Multiplies every opaque pixel towards a colour — scorching, team tinting, fading. */
+    /**
+     * Shades the inside of the silhouette so a flat figure reads as a solid one.
+     *
+     * <p>Cheap volume: a pixel with nothing to its north-west is catching the light and is
+     * lifted, a pixel with nothing to its south-east is turning away from it and is dropped.
+     * Two rings, the second at half strength, which is what makes it read as a curved surface
+     * rather than as a second outline.
+     *
+     * <p>Only worth doing on a canvas drawn at a scale, and this is why: at one real pixel to
+     * the authored pixel the rim is as thick as an arm and the figure just gets a halo. At four,
+     * the rim is a quarter of an authored pixel — thin enough to be shading rather than a mark,
+     * which is a thing that could not be drawn at all before the resolution went up.
+     *
+     * <p>Runs over the finished buffer, so it must be called after the figure is composed and
+     * before any outline is laid on: outlining first gives the outline itself a highlight.
+     */
+    public PixelCanvas roundEdges(float light, float dark) {
+        int[] copy = pixels.clone();
+        for (int y = 0; y < pixelHeight; y++) {
+            for (int x = 0; x < pixelWidth; x++) {
+                int index = y * pixelWidth + x;
+                int color = copy[index];
+                if ((color >>> 24) == 0) {
+                    continue;
+                }
+                if (!opaqueAt(copy, x - 1, y - 1)) {
+                    pixels[index] = WolfPalette.mix(color, 0xFFFFFFFF, light);
+                } else if (!opaqueAt(copy, x - 2, y - 2)) {
+                    pixels[index] = WolfPalette.mix(color, 0xFFFFFFFF, light * 0.5f);
+                } else if (!opaqueAt(copy, x + 1, y + 1)) {
+                    pixels[index] = WolfPalette.mix(color, 0xFF000000, dark);
+                } else if (!opaqueAt(copy, x + 2, y + 2)) {
+                    pixels[index] = WolfPalette.mix(color, 0xFF000000, dark * 0.5f);
+                }
+            }
+        }
+        return this;
+    }
+
     public PixelCanvas tint(int color, float amount) {
         for (int i = 0; i < pixels.length; i++) {
             if ((pixels[i] >>> 24) != 0) {
