@@ -96,6 +96,7 @@ Structures are shared. The Command Post is pre-placed; everything else needs it 
 | Infiltrator | 600 | Unarmed. Hijacks an enemy vehicle permanently. Stealthy |
 | Scout Jeep | 400 | Fast, thin-skinned |
 | Captured Panzer | 1000 | Heavy armour |
+| Stolen Feldkanone | 650 | Artillery. A Regime field gun on a farm cart — their heaviest punch is somebody else's |
 
 **Totenkopf Division** — four infantry, heavy and expensive, and the armour to match.
 
@@ -107,8 +108,34 @@ Structures are shared. The Command Post is pre-placed; everything else needs it 
 | Ubersoldat | 800 | Armoured walker |
 | Panzerhund | 500 | Fast mech-hound |
 | Sturmpanzer | 900 | Heavy tank. The Resistance has no equivalent — and every reason to steal one |
+| Nebelwerfer-71 | 950 | Artillery. Four rounds for one decision, spread across a frontage |
+| Resonanzkanone | 1800 | Artillery, three and a half tiles of it. Ignores cover, erases earthworks, outranges everything |
 
 Both sides also build the Harvester (1000).
+
+### Artillery
+
+The only weapons that are aimed at a *place*. A shell is put in the air and lands seconds
+later, so it is also the only thing in the game that can miss — a squad that moves walks out
+from under one, and a squad that has stopped to dig does not.
+
+Four things are traded for that reach, and together they are what make a battery a position
+rather than a weapon:
+
+- **A dead zone.** Every gun has a minimum range as well as a maximum, and is helpless inside
+  it. Ordered to attack something too close, it gives ground instead of closing.
+- **Spotting.** You may only shell ground your side has seen in the last fifteen seconds. A
+  scout who looks and ducks back has done his job; a battery on its own is nearly blind.
+- **Firing gives you away.** A gun that shoots is visible to the enemy for ten seconds
+  afterwards *and* marks its own position on their map, which is what makes counter-battery a
+  real move rather than a phrase.
+- **A long reload**, so a mission that lands on nobody is a mission wasted.
+
+Guns fire on their own when idle, but only at a crowd — at least two men inside one blast
+radius, scoring dug-in and stationary targets higher. That threshold is deliberate: it makes
+artillery the answer to massed infantry and a waste of a reload against skirmishers.
+
+Select a gun and the STOP plate becomes BOMBARD; the next tap on the ground is a fire mission.
 
 Rifles shred infantry and bounce off plate; rockets do the reverse; sniper rounds are savage
 against flesh and near-useless against anything plated. The whole matrix lives in
@@ -192,6 +219,19 @@ four-tab sidebar, and a combat effects layer with its own visual language per we
 Balance after the roster change, over ten seeds of forty simulated minutes each: Kreisau 3,
 Totenkopf 5, two that ran the clock out. Both of those were live attrition — full economies,
 eleven structures a side, twenty units in the field — not an economic deadlock.
+
+**Part 2.5 is the advanced combat system**, and is in progress: squads that break and rout,
+cover and suppression, army exhaustion, trenches that men dig and shells flatten, and artillery
+with real shells, spotting and counter-battery. What remains of it is fronts, doctrines and an
+operational AI, a larger map, and the final balance pass.
+
+A finding worth recording from that work: **artillery on its own does not break a stalemate.**
+Across four twenty-seed sweeps, the more evenly matched the two sides' guns, the *more* matches
+ran the clock out — symmetric artillery is mutual suppression, where both lines dig, both get
+shelled and neither moves. The one configuration that broke the deadlock was the one where a
+side had a tool the other could not answer. That is what doctrines are for: the Resistance
+digging deeper and fanning a line into layered positions, the Regime flooding a trench rather
+than cratering it.
 
 **Part 3 is the air layer**: helicopters, AA weapons, air-only defences. Then, each its own
 part: audio, campaign and mission scripting, more maps, save/load, veterancy and stances,
