@@ -36,7 +36,7 @@ public final class SpriteAtlas {
 
     /** Every sprite goes through here, so the pixel count cannot drift from what was baked. */
     private void put(String key, PixelCanvas canvas) {
-        pixels += (long) canvas.width() * canvas.height();
+        pixels += (long) canvas.pixelWidth() * canvas.pixelHeight();
         sprites.put(key, canvas.toImage());
     }
 

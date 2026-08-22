@@ -16,7 +16,21 @@ import com.ccwolf.core.entity.Faction;
  */
 public final class BuildingSprites {
 
-    public static final int TILE = UnitSprites.TILE;
+    /**
+     * The tile these recipes are composed in. Deliberately unchanged.
+     *
+     * <p>Everything below is written in whole pixels — a wall twelve high, a slit four by three
+     * — and those numbers are the architecture. What changed is the canvas underneath: see
+     * {@link #SCALE}.
+     */
+    public static final int TILE = 32;
+
+    /**
+     * How many real pixels each authored one becomes, so structures match the ground they stand
+     * on. Terrain moved to 128 pixels a tile; a three-by-three Command Post is now a 384-pixel
+     * sprite composed in the same 96-pixel space it always was.
+     */
+    private static final int SCALE = Math.max(1, TerrainSprites.TILE / TILE);
 
     /** 0 intact, 1 scarred, 2 burning. */
     public static final int DAMAGE_STATES = 3;
@@ -29,7 +43,7 @@ public final class BuildingSprites {
     public static PixelCanvas render(BuildingType type, Faction faction, int damageState) {
         int w = type.tilesWide() * TILE;
         int h = type.tilesHigh() * TILE;
-        PixelCanvas c = new PixelCanvas(w, h);
+        PixelCanvas c = new PixelCanvas(w, h, SCALE);
         boolean regime = faction == Faction.REGIME;
 
         groundPad(c, w, h, regime);
@@ -84,6 +98,13 @@ public final class BuildingSprites {
         c.ellipse(w / 2, h - 8, w / 2 - 3, h / 4, WolfPalette.shade(ground, 3));
         c.speckle(4, h / 2, w - 8, h / 2 - 2, WolfPalette.shade(ground, 2), 41, 7);
         c.speckle(4, h / 2, w - 8, h / 2 - 2, WolfPalette.shade(ground, 4), 17, 11);
+        // Grit, at real resolution rather than in blocks, so the pad has a surface instead of
+        // a pattern. This is the difference between a bigger picture and a better one.
+        PixelCanvas f = c.fine();
+        f.speckle(0, f.height() / 2, f.width(), f.height() / 2,
+                WolfPalette.shade(ground, 1), 91, 23);
+        f.speckle(0, f.height() / 2, f.width(), f.height() / 2,
+                WolfPalette.shade(ground, 4), 53, 19);
     }
 
     /**
@@ -114,6 +135,57 @@ public final class BuildingSprites {
             c.hLine(x + 1, x + w - 2, y + 3, WolfPalette.shade(wall, 0));
             c.speckle(x + 1, y + 1, w - 2, h - 2, WolfPalette.shade(wall, 4), 23, 29);
         }
+        weather(c, x, y, w, h, wall, regime);
+    }
+
+    /**
+     * The fine pass over a wall: grain, joints, and the dirt that gathers where water runs.
+     *
+     * <p>Drawn one real pixel at a time over a face composed in the coarse grid. Everything here
+     * is a line thinner than a composed mark can be, which is exactly why it belongs in this
+     * pass and not in the one above.
+     */
+    private static void weather(PixelCanvas c, int x, int y, int w, int h, int[] wall,
+                                boolean regime) {
+        PixelCanvas f = c.fine();
+        int s = c.scale();
+        if (s == 1) {
+            return;
+        }
+        int fx = x * s;
+        int fy = y * s;
+        int fw = w * s;
+        int fh = h * s;
+
+        // Grime gathering at the foot of the wall, heaviest in the corners.
+        for (int i = 0; i < fh / 3; i++) {
+            int alpha = fh / 3 - i;
+            f.speckle(fx, fy + fh - 1 - i, fw, 1, WolfPalette.shade(wall, 4), 700 + i, 2 + alpha);
+        }
+
+        if (regime) {
+            // Rain streaks below each lift joint, and hairline cracks running down from them.
+            for (int i = 0; i < fw / 9; i++) {
+                int sx = fx + (i * 37 + 11) % Math.max(1, fw - 2);
+                int len = fh / 3 + (i * 13) % Math.max(1, fh / 2);
+                f.vLine(sx, fy + fh - len, fy + fh - 2, WolfPalette.shade(WolfPalette.DIRT, 4));
+                if ((i & 3) == 0) {
+                    f.vLine(sx + 1, fy + fh - len, fy + fh - 2, WolfPalette.shade(wall, 4));
+                }
+            }
+        } else {
+            // Grain along each plank, and rust weeping from the nail heads.
+            for (int i = 0; i < fw / 3; i++) {
+                int sx = fx + (i * 17 + 5) % Math.max(1, fw - 1);
+                int top = fy + (i * 29) % Math.max(1, fh / 2);
+                f.vLine(sx, top, top + fh / 3, WolfPalette.shade(wall, 4));
+            }
+            for (int i = 0; i < fw / 12; i++) {
+                int sx = fx + (i * 43 + 7) % Math.max(1, fw - 1);
+                int top = fy + fh / 4;
+                f.vLine(sx, top, top + 5, WolfPalette.shade(WolfPalette.BRASS, 3));
+            }
+        }
     }
 
     /** A flat roof with a parapet lip, lit from the north-west. */
@@ -125,6 +197,19 @@ public final class BuildingSprites {
         c.hLine(x, x + w - 1, y + h - 1, WolfPalette.shade(roof, 4));
         c.vLine(x + w - 1, y, y + h - 1, WolfPalette.shade(roof, 4));
         c.speckle(x + 1, y + 1, w - 2, h - 2, WolfPalette.shade(roof, 3), 13, 9);
+
+        // Felt seams running across the deck, and damp pooling along the low edge. One real
+        // pixel wide, which is thinner than the composition grid can draw.
+        PixelCanvas f = c.fine();
+        int s = c.scale();
+        if (s > 1) {
+            for (int sy = (y + 3) * s; sy < (y + h - 1) * s; sy += 7 * s) {
+                f.hLine(x * s + 1, (x + w) * s - 2, sy, WolfPalette.shade(roof, 4));
+                f.hLine(x * s + 1, (x + w) * s - 2, sy + 1, WolfPalette.shade(roof, 1));
+            }
+            f.speckle(x * s, (y + h - 3) * s, w * s, 3 * s,
+                    WolfPalette.shade(WolfPalette.DIRT, 4), 61, 5);
+        }
     }
 
     /** A doorway with a lintel, a dark interior and a worn step. */

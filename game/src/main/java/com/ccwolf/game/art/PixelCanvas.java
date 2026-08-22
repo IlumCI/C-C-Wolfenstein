@@ -18,20 +18,93 @@ public final class PixelCanvas {
 
     private final int width;
     private final int height;
+    private final int scale;
+    private final int pixelWidth;
+    private final int pixelHeight;
     private final int[] pixels;
 
     public PixelCanvas(int width, int height) {
-        this.width = width;
-        this.height = height;
-        this.pixels = new int[width * height];
+        this(width, height, 1);
     }
 
+    /**
+     * A canvas that draws at {@code scale} real pixels to the coordinate.
+     *
+     * <p>Recipes are written in a coordinate space and think in whole pixels: a wall twelve
+     * high, a vent nine across, a slit four by three. Those numbers are the composition, and
+     * they are what makes a Command Post a Command Post rather than a slab. Raising the output
+     * resolution by editing them is a rewrite of every structure in the game, and the first
+     * attempt at exactly that produced nine flat rectangles — a roof that swallowed its own
+     * sprite and a guard tower twenty pixels tall on a canvas of three hundred and eighty-four.
+     *
+     * <p>So the coordinate space stays where it was authored and the canvas underneath it grows
+     * instead. Every drawing primitive here composes down to {@link #px}, which plants a
+     * {@code scale} by {@code scale} block, so a recipe drawing a twelve-high wall draws a
+     * forty-eight-high wall on a canvas of scale four without knowing it. What the recipe reads
+     * back — {@link #width}, {@link #height}, {@link #inBounds} — stays in its own coordinates,
+     * so nothing it computes from them changes either.
+     *
+     * <p>The methods that work on finished pixels rather than on drawing — {@link #outline},
+     * {@link #blit}, {@link #downscaled}, the rotations and {@link #toImage} — deliberately do
+     * not scale. They are about the buffer, not about the composition, and an outline is better
+     * one real pixel thick than four.
+     */
+    public PixelCanvas(int width, int height, int scale) {
+        this.width = width;
+        this.height = height;
+        this.scale = Math.max(1, scale);
+        this.pixelWidth = width * this.scale;
+        this.pixelHeight = height * this.scale;
+        this.pixels = new int[pixelWidth * pixelHeight];
+    }
+
+    /** Shares another canvas's buffer at a different drawing scale. See {@link #fine}. */
+    private PixelCanvas(PixelCanvas source, int scale) {
+        this.scale = Math.max(1, scale);
+        this.pixelWidth = source.pixelWidth;
+        this.pixelHeight = source.pixelHeight;
+        this.width = pixelWidth / this.scale;
+        this.height = pixelHeight / this.scale;
+        this.pixels = source.pixels;
+    }
+
+    /**
+     * The same picture, addressed one real pixel at a time.
+     *
+     * <p>A scaled canvas keeps a recipe's composition — where the wall is, how tall the tower
+     * stands — in the coordinates it was authored in, and that is what makes raising the
+     * resolution possible at all. But it also means every mark is a block, so the result is
+     * upscaled art rather than detailed art: the same picture with bigger pixels.
+     *
+     * <p>This is the other half. Composition in the coarse grid, texture in the fine one, both
+     * writing the same buffer. It is what weathering streaks, bolt heads, mortar joints and
+     * shading gradients are drawn through — the detail that only exists because there is now
+     * room for it, laid over a layout that did not have to be rewritten to make room.
+     */
+    public PixelCanvas fine() {
+        return scale == 1 ? this : new PixelCanvas(this, 1);
+    }
+
+    /** Width in the coordinates a recipe draws in, which is not always the buffer's width. */
     public int width() {
         return width;
     }
 
     public int height() {
         return height;
+    }
+
+    /** Width of the actual buffer. This is what an image made from it will be. */
+    public int pixelWidth() {
+        return pixelWidth;
+    }
+
+    public int pixelHeight() {
+        return pixelHeight;
+    }
+
+    public int scale() {
+        return scale;
     }
 
     public int[] pixels() {
@@ -43,7 +116,19 @@ public final class PixelCanvas {
     }
 
     public int get(int x, int y) {
-        return inBounds(x, y) ? pixels[y * width + x] : WolfPalette.CLEAR;
+        return inBounds(x, y) ? pixels[y * scale * pixelWidth + x * scale] : WolfPalette.CLEAR;
+    }
+
+    /** Plants one coordinate as a block of real pixels. Every primitive comes through here. */
+    private void plot(int x, int y, int color) {
+        int px0 = x * scale;
+        int py0 = y * scale;
+        for (int yy = py0; yy < py0 + scale; yy++) {
+            int row = yy * pixelWidth;
+            for (int xx = px0; xx < px0 + scale; xx++) {
+                pixels[row + xx] = color;
+            }
+        }
     }
 
     public boolean isOpaque(int x, int y) {
@@ -53,7 +138,7 @@ public final class PixelCanvas {
     /** Plots a pixel. Fully transparent colours are ignored rather than punching holes. */
     public PixelCanvas px(int x, int y, int color) {
         if (inBounds(x, y) && (color >>> 24) != 0) {
-            pixels[y * width + x] = color;
+            plot(x, y, color);
         }
         return this;
     }
@@ -61,7 +146,7 @@ public final class PixelCanvas {
     /** Plots a pixel, transparency included — this one does punch holes. */
     public PixelCanvas set(int x, int y, int color) {
         if (inBounds(x, y)) {
-            pixels[y * width + x] = color;
+            plot(x, y, color);
         }
         return this;
     }
@@ -239,22 +324,24 @@ public final class PixelCanvas {
     /** Draws a 1px outline around every opaque pixel, the classic sprite-readability trick. */
     public PixelCanvas outline(int color) {
         int[] copy = pixels.clone();
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                if ((copy[y * width + x] >>> 24) != 0) {
+        for (int y = 0; y < pixelHeight; y++) {
+            for (int x = 0; x < pixelWidth; x++) {
+                if ((copy[y * pixelWidth + x] >>> 24) != 0) {
                     continue;
                 }
                 if (opaqueAt(copy, x - 1, y) || opaqueAt(copy, x + 1, y)
                         || opaqueAt(copy, x, y - 1) || opaqueAt(copy, x, y + 1)) {
-                    set(x, y, color);
+                    pixels[y * pixelWidth + x] = color;
                 }
             }
         }
         return this;
     }
 
+    /** Raw-buffer coordinates: a silhouette is about pixels, not about the drawing grid. */
     private boolean opaqueAt(int[] buffer, int x, int y) {
-        return inBounds(x, y) && (buffer[y * width + x] >>> 24) != 0;
+        return x >= 0 && y >= 0 && x < pixelWidth && y < pixelHeight
+                && (buffer[y * pixelWidth + x] >>> 24) != 0;
     }
 
     /**
@@ -295,8 +382,8 @@ public final class PixelCanvas {
         if (factor <= 1) {
             return this;
         }
-        int w = Math.max(1, width / factor);
-        int h = Math.max(1, height / factor);
+        int w = Math.max(1, pixelWidth / factor);
+        int h = Math.max(1, pixelHeight / factor);
         PixelCanvas out = new PixelCanvas(w, h);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
@@ -305,9 +392,9 @@ public final class PixelCanvas {
                 int g = 0;
                 int b = 0;
                 int n = 0;
-                for (int sy = y * factor; sy < (y + 1) * factor && sy < height; sy++) {
-                    for (int sx = x * factor; sx < (x + 1) * factor && sx < width; sx++) {
-                        int p = pixels[sy * width + sx];
+                for (int sy = y * factor; sy < (y + 1) * factor && sy < pixelHeight; sy++) {
+                    for (int sx = x * factor; sx < (x + 1) * factor && sx < pixelWidth; sx++) {
+                        int p = pixels[sy * pixelWidth + sx];
                         int pa = (p >>> 24) & 0xFF;
                         a += pa;
                         r += ((p >> 16) & 0xFF) * pa;
@@ -338,10 +425,10 @@ public final class PixelCanvas {
 
     /** Mirrors the buffer left-to-right in place. */
     public PixelCanvas mirrorX() {
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width / 2; x++) {
-                int left = y * width + x;
-                int right = y * width + (width - 1 - x);
+        for (int y = 0; y < pixelHeight; y++) {
+            for (int x = 0; x < pixelWidth / 2; x++) {
+                int left = y * pixelWidth + x;
+                int right = y * pixelWidth + (pixelWidth - 1 - x);
                 int tmp = pixels[left];
                 pixels[left] = pixels[right];
                 pixels[right] = tmp;
@@ -358,19 +445,19 @@ public final class PixelCanvas {
      * the player sees at 40 pixels across.
      */
     public PixelCanvas rotated(float radians) {
-        PixelCanvas out = new PixelCanvas(width, height);
-        float cx = (width - 1) / 2f;
-        float cy = (height - 1) / 2f;
+        PixelCanvas out = new PixelCanvas(pixelWidth, pixelHeight);
+        float cx = (pixelWidth - 1) / 2f;
+        float cy = (pixelHeight - 1) / 2f;
         float cos = (float) Math.cos(-radians);
         float sin = (float) Math.sin(-radians);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        for (int y = 0; y < pixelHeight; y++) {
+            for (int x = 0; x < pixelWidth; x++) {
                 float dx = x - cx;
                 float dy = y - cy;
                 int sx = Math.round(cx + dx * cos - dy * sin);
                 int sy = Math.round(cy + dx * sin + dy * cos);
-                if (inBounds(sx, sy)) {
-                    out.set(x, y, pixels[sy * width + sx]);
+                if (sx >= 0 && sy >= 0 && sx < pixelWidth && sy < pixelHeight) {
+                    out.set(x, y, pixels[sy * pixelWidth + sx]);
                 }
             }
         }
@@ -390,10 +477,10 @@ public final class PixelCanvas {
         if (factor <= 1) {
             return rotated(radians);
         }
-        PixelCanvas big = new PixelCanvas(width * factor, height * factor);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int color = pixels[y * width + x];
+        PixelCanvas big = new PixelCanvas(pixelWidth * factor, pixelHeight * factor);
+        for (int y = 0; y < pixelHeight; y++) {
+            for (int x = 0; x < pixelWidth; x++) {
+                int color = pixels[y * pixelWidth + x];
                 for (int by = 0; by < factor; by++) {
                     for (int bx = 0; bx < factor; bx++) {
                         big.set(x * factor + bx, y * factor + by, color);
@@ -403,12 +490,12 @@ public final class PixelCanvas {
         }
 
         PixelCanvas rotated = big.rotated(radians);
-        PixelCanvas out = new PixelCanvas(width, height);
+        PixelCanvas out = new PixelCanvas(pixelWidth, pixelHeight);
         int[] colors = new int[factor * factor];
         int[] counts = new int[factor * factor];
 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        for (int y = 0; y < pixelHeight; y++) {
+            for (int x = 0; x < pixelWidth; x++) {
                 int distinct = 0;
                 for (int by = 0; by < factor; by++) {
                     for (int bx = 0; bx < factor; bx++) {
@@ -492,11 +579,11 @@ public final class PixelCanvas {
     }
 
     public Image toImage() {
-        return Gfx.image(pixels, width, height);
+        return Gfx.image(pixels, pixelWidth, pixelHeight);
     }
 
     /** For artwork with no transparency in it, which a backend can draw more cheaply. */
     public Image toOpaqueImage() {
-        return Gfx.opaqueImage(pixels, width, height);
+        return Gfx.opaqueImage(pixels, pixelWidth, pixelHeight);
     }
 }
