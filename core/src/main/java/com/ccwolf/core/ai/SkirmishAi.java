@@ -11,6 +11,7 @@ import com.ccwolf.core.order.BombardOrder;
 import com.ccwolf.core.order.HarvestOrder;
 import com.ccwolf.core.order.SabotageOrder;
 import com.ccwolf.core.sim.GameWorld;
+import com.ccwolf.core.sim.InfluenceGrid;
 import com.ccwolf.core.squad.Squad;
 import com.ccwolf.core.squad.SquadOrder;
 import com.ccwolf.core.sim.Player;
@@ -36,14 +37,20 @@ public final class SkirmishAi {
     /** Ticks between sabotage runs, so the AI does not spend its whole economy on charges. */
     private static final int SABOTAGE_INTERVAL = 50 * GameWorld.TICKS_PER_SECOND;
 
+    /** How many weak points on the front a wave is split between. */
+    private static final int WEAK_POINTS = 3;
+
+    /** How far past the front to look when judging how thick the enemy is behind it, in cells. */
+    private static final int PROBE_CELLS = 4;
+
+    /** How far out from the base to walk looking for the front, in cells. */
+    private static final int DIG_WALK_CELLS = 3;
+
     /** A structure hit within this many ticks counts as "under attack" for the defence check. */
     private static final int RECENT_DAMAGE_TICKS = 5 * GameWorld.TICKS_PER_SECOND;
 
     /** How many squads are kept in the ground at once, out of the pool waves are drawn from. */
     private static final int DUG_IN_SQUADS = 2;
-
-    /** How far out from the command post the line is dug, in tiles. */
-    private static final float TRENCH_LINE_DISTANCE = 9f;
 
     /** How many guns one side keeps. They are expensive and they do not defend themselves. */
     private static final int MAX_GUNS = 2;
@@ -61,6 +68,15 @@ public final class SkirmishAi {
     private int nextWaveTick;
     private int placementFailures;
     private final int rallyJitter;
+
+    /**
+     * The thinnest places on the front, best first. Fixed arrays and a bounded insertion, so
+     * finding them allocates nothing and sorts nothing.
+     */
+    private final int[] weakCellX = new int[WEAK_POINTS];
+    private final int[] weakCellY = new int[WEAK_POINTS];
+    private final float[] weakCrust = new float[WEAK_POINTS];
+    private int weakCount;
     private int nextGunTick = 120 * GameWorld.TICKS_PER_SECOND;
 
     private int nextGunOrderTick;
@@ -509,6 +525,120 @@ public final class SkirmishAi {
     }
 
     /**
+     * The thinnest places on the front, found by looking at what is behind it.
+     *
+     * <p>A front cell alone says nothing about whether attacking there is a good idea — the
+     * enemy's strongest point is a front cell too. What matters is the crust: march from the
+     * front cell toward the enemy for a few cells and add up how much of theirs is stacked
+     * along the way. A low total is a thin shell with nothing behind it; a high one is the
+     * approach to their base.
+     *
+     * <p>Row-major, strictly-less insertion into a fixed three-slot array, so ties go to the
+     * first cell found and there is no sort, no allocation and no dependence on iteration
+     * order. Nothing here touches the random number generator, and nothing here may: the AI
+     * runs before the world steps, so on the first decision of a match the field is all zeros
+     * and this finds nothing at all. Every caller falls through to its old target in that case
+     * rather than returning, because a return would make the number of draws per tick depend
+     * on the state of the influence field.
+     */
+    private void findWeakPoints(GameWorld world) {
+        weakCount = 0;
+        int across = world.controlCellsAcross();
+        int down = world.controlCellsDown();
+        for (int cy = 0; cy < down; cy++) {
+            for (int cx = 0; cx < across; cx++) {
+                if (!world.isFrontCell(playerId, cx, cy)) {
+                    continue;
+                }
+                // Which way the enemy lies: the neighbour that is most theirs. Fixed order,
+                // strictly less, so a tie keeps the earlier direction.
+                int stepX = 0;
+                int stepY = 0;
+                float deepest = 0f;
+                float west = world.controlAtCell(playerId, cx - 1, cy);
+                if (west < deepest) {
+                    deepest = west;
+                    stepX = -1;
+                    stepY = 0;
+                }
+                float east = world.controlAtCell(playerId, cx + 1, cy);
+                if (east < deepest) {
+                    deepest = east;
+                    stepX = 1;
+                    stepY = 0;
+                }
+                float north = world.controlAtCell(playerId, cx, cy - 1);
+                if (north < deepest) {
+                    deepest = north;
+                    stepX = 0;
+                    stepY = -1;
+                }
+                float south = world.controlAtCell(playerId, cx, cy + 1);
+                if (south < deepest) {
+                    deepest = south;
+                    stepX = 0;
+                    stepY = 1;
+                }
+                if (stepX == 0 && stepY == 0) {
+                    continue;
+                }
+
+                float crust = 0f;
+                for (int step = 1; step <= PROBE_CELLS; step++) {
+                    float ahead = world.controlAtCell(
+                            playerId, cx + stepX * step, cy + stepY * step);
+                    if (ahead < 0f) {
+                        crust -= ahead;
+                    }
+                }
+                keepWeakPoint(cx, cy, crust);
+            }
+        }
+    }
+
+    /** Bounded insertion into the three slots, thinnest first. */
+    private void keepWeakPoint(int cellX, int cellY, float crust) {
+        int slot = weakCount < WEAK_POINTS ? weakCount : WEAK_POINTS - 1;
+        if (weakCount == WEAK_POINTS && crust >= weakCrust[slot]) {
+            return;
+        }
+        while (slot > 0 && crust < weakCrust[slot - 1]) {
+            weakCrust[slot] = weakCrust[slot - 1];
+            weakCellX[slot] = weakCellX[slot - 1];
+            weakCellY[slot] = weakCellY[slot - 1];
+            slot--;
+        }
+        weakCrust[slot] = crust;
+        weakCellX[slot] = cellX;
+        weakCellY[slot] = cellY;
+        if (weakCount < WEAK_POINTS) {
+            weakCount++;
+        }
+    }
+
+    /**
+     * Where the nth attacker should be sent: round-robin across the weak points found.
+     *
+     * <p>Round-robin rather than all-on-the-best, because a wave that piles onto one cell is
+     * the {@code manageGuns} mistake — every gun sent to the same spot — with more men.
+     */
+    private int weakAimX(int index, int fallbackTileX) {
+        if (weakCount == 0) {
+            return fallbackTileX;
+        }
+        return weakCellX[index % weakCount] * InfluenceGrid.CELL_TILES
+                + InfluenceGrid.CELL_TILES / 2;
+    }
+
+    private int weakAimY(int index, int fallbackTileY) {
+        if (weakCount == 0) {
+            return fallbackTileY;
+        }
+        return weakCellY[index % weakCount] * InfluenceGrid.CELL_TILES
+                + InfluenceGrid.CELL_TILES / 2;
+    }
+
+    /**
      * Puts the squads that are standing about to work with a shovel.
      *
      * <p>An army waiting for the next wave used to stand in a heap by the factory doing
@@ -519,6 +649,12 @@ public final class SkirmishAi {
      * the whole army in would empty the pool that waves are drawn from, and a line dug behind
      * the command post defends nothing, in exactly the way turrets built behind it defend
      * nothing.
+     *
+     * <p>Where the line goes is now walked out of the control field rather than measured off
+     * the vector to the nearest enemy. Steepest fall in control, a whole cell at a time, until
+     * it reaches the front or runs out of steps — so the trench is cut where the ground
+     * actually changes hands, which is not usually on the straight line to the nearest thing
+     * that shoots. It also takes no square root: whole cells and signs throughout.
      */
     private void digInTheGarrison(GameWorld world) {
         Building post = world.findBuilding(playerId, BuildingType.COMMAND_POST);
@@ -538,26 +674,78 @@ public final class SkirmishAi {
             }
         }
 
-        // A frontage rather than a point: two squads on the same tile would be two squads
-        // fighting each other's separation, and one hole between them.
-        float dx = enemy.x() - post.x();
-        float dy = enemy.y() - post.y();
-        float length = (float) Math.sqrt(dx * dx + dy * dy);
-        if (length < 1f) {
-            return;
+        int cellX = post.tileX() / InfluenceGrid.CELL_TILES;
+        int cellY = post.tileY() / InfluenceGrid.CELL_TILES;
+        int stepX = 0;
+        int stepY = 0;
+        for (int step = 0; step < DIG_WALK_CELLS; step++) {
+            int nextX = 0;
+            int nextY = 0;
+            float lowest = world.controlAtCell(playerId, cellX, cellY);
+            float west = world.controlAtCell(playerId, cellX - 1, cellY);
+            float east = world.controlAtCell(playerId, cellX + 1, cellY);
+            float north = world.controlAtCell(playerId, cellX, cellY - 1);
+            float south = world.controlAtCell(playerId, cellX, cellY + 1);
+            // Fixed order, strictly less, so a tie keeps the earlier direction.
+            if (west < lowest) {
+                lowest = west;
+                nextX = -1;
+                nextY = 0;
+            }
+            if (east < lowest) {
+                lowest = east;
+                nextX = 1;
+                nextY = 0;
+            }
+            if (north < lowest) {
+                lowest = north;
+                nextX = 0;
+                nextY = -1;
+            }
+            if (south < lowest) {
+                lowest = south;
+                nextX = 0;
+                nextY = 1;
+            }
+            if (nextX == 0 && nextY == 0) {
+                break;
+            }
+            cellX += nextX;
+            cellY += nextY;
+            stepX = nextX;
+            stepY = nextY;
+            if (world.isFrontCell(playerId, cellX, cellY)) {
+                break;
+            }
         }
-        dx /= length;
-        dy /= length;
+
+        if (stepX == 0 && stepY == 0) {
+            // No gradient to follow - the field is flat here, or this is the first decision of
+            // the match and it is all zeros. Head for the enemy's cell instead, which is the
+            // old behaviour reduced to whole cells and signs.
+            stepX = Integer.signum(enemy.tileX() / InfluenceGrid.CELL_TILES - cellX);
+            stepY = Integer.signum(enemy.tileY() / InfluenceGrid.CELL_TILES - cellY);
+            if (stepX == 0 && stepY == 0) {
+                return;
+            }
+            cellX += stepX * DIG_WALK_CELLS;
+            cellY += stepY * DIG_WALK_CELLS;
+        }
+
+        int lineX = cellX * InfluenceGrid.CELL_TILES + InfluenceGrid.CELL_TILES / 2;
+        int lineY = cellY * InfluenceGrid.CELL_TILES + InfluenceGrid.CELL_TILES / 2;
 
         for (int i = 0; i < squadScratch.size() && dug < DUG_IN_SQUADS; i++) {
             Squad squad = squadScratch.get(i);
             if (squad.order() == SquadOrder.ENTRENCH) {
                 continue;
             }
-            // Along the line to the enemy, then offset sideways so the squads sit abreast.
+            // A frontage rather than a point: two squads on the same tile would be two squads
+            // fighting each other's separation, and one hole between them. Sideways means
+            // across the direction of the walk.
             int spread = dug * 2 - 1;
-            int tileX = (int) (post.x() + dx * TRENCH_LINE_DISTANCE - dy * spread * 3f);
-            int tileY = (int) (post.y() + dy * TRENCH_LINE_DISTANCE + dx * spread * 3f);
+            int tileX = lineX - stepY * spread * 3;
+            int tileY = lineY + stepX * spread * 3;
             if (!world.map().inBounds(tileX, tileY) || !world.map().isPassable(tileX, tileY)) {
                 continue;
             }
@@ -593,18 +781,25 @@ public final class SkirmishAi {
             return;
         }
 
+        // Through the thinnest part of what is left of their line, rather than at whatever
+        // happens to be nearest. When their army really is broken there is barely a front to
+        // find, and this falls back to the nearest enemy, which is the old behaviour.
+        findWeakPoints(world);
+
         // Everything, not just what is idle.
         List<Squad> all = world.squads().all();
         for (int i = 0; i < all.size(); i++) {
             Squad squad = all.get(i);
             if (squad.ownerId() == playerId && !squad.isWipedOut()) {
                 world.orderSquadTo(playerId, squad, SquadOrder.ATTACK_MOVE,
-                        target.tileX() + (i % 3) * 2 - 2, target.tileY() + (i / 3 % 3) * 2 - 2);
+                        weakAimX(i, target.tileX()) + (i % 3) * 2 - 2,
+                        weakAimY(i, target.tileY()) + (i / 3 % 3) * 2 - 2);
             }
         }
         collectIdleFighters(world, scratch);
         for (int i = 0; i < scratch.size(); i++) {
-            scratch.get(i).setOrder(new AttackMoveOrder(target.tileX(), target.tileY()));
+            scratch.get(i).setOrder(new AttackMoveOrder(
+                    weakAimX(i, target.tileX()), weakAimY(i, target.tileY())));
         }
     }
 
@@ -641,17 +836,27 @@ public final class SkirmishAi {
             return;
         }
 
+        // Where the enemy is thinnest, not where they are nearest. Up to three points, with
+        // squads round-robined across them, so the wave arrives genuinely abreast instead of
+        // all on one tile.
+        //
+        // No return between here and the cooldown draw below, whatever the field says. That
+        // draw is unconditional once the guards above have passed, so bailing out on an empty
+        // front would make the number of draws per tick a function of the influence field -
+        // which is exactly the invariant that keeps two runs of the same seed identical.
+        findWeakPoints(world);
+
         // Spread the aim points so the wave arrives across a frontage rather than piling onto
         // one tile. A squad already spreads its own men, so this is per squad, not per man.
         for (int i = 0; i < squadScratch.size(); i++) {
-            int spreadX = target.tileX() + (i % 3) * 2 - 2 + rallyJitter % 2;
-            int spreadY = target.tileY() + (i / 3 % 3) * 2 - 2;
+            int spreadX = weakAimX(i, target.tileX()) + (i % 3) * 2 - 2 + rallyJitter % 2;
+            int spreadY = weakAimY(i, target.tileY()) + (i / 3 % 3) * 2 - 2;
             world.orderSquadTo(playerId, squadScratch.get(i), SquadOrder.ATTACK_MOVE,
                     spreadX, spreadY);
         }
         for (int i = 0; i < scratch.size(); i++) {
-            int spreadX = target.tileX() + (i % 3) - 1 + rallyJitter % 2;
-            int spreadY = target.tileY() + (i / 3 % 3) - 1;
+            int spreadX = weakAimX(i, target.tileX()) + (i % 3) - 1 + rallyJitter % 2;
+            int spreadY = weakAimY(i, target.tileY()) + (i / 3 % 3) - 1;
             scratch.get(i).setOrder(new AttackMoveOrder(spreadX, spreadY));
         }
         // Jitter the next wave so two AIs on the same map do not march in lockstep forever.
