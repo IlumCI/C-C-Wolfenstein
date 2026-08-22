@@ -1758,7 +1758,10 @@ public final class GameWorld {
         if (w == null) {
             return;
         }
-        Entity target = findNearestEnemy(u.ownerId(), u.x(), u.y(), w.range(), true);
+        // The ring, not the disc: a gun with a scout at one tile and a section at six must not
+        // pick the scout, fail its own range check and then stand there saying nothing.
+        Entity target = findNearestEnemyBetween(u.ownerId(), u.x(), u.y(), w.minRange(),
+                w.range(), true);
         if (target != null) {
             u.faceToward(target.x(), target.y());
             tryAttack(u, target);
@@ -2355,7 +2358,14 @@ public final class GameWorld {
             return false;
         }
         float gap = attacker.distanceTo(target) - target.radius();
-        return gap <= weapon.range();
+        if (gap > weapon.range()) {
+            return false;
+        }
+        // A minimum of zero has to mean "no minimum", not "no closer than zero". The gap is
+        // measured to the target's edge and goes negative when two things overlap, so a plain
+        // gap >= minRange comparison would have stopped a man hitting what he is standing on -
+        // which is to say, it would have switched melee off.
+        return !weapon.hasMinRange() || gap >= weapon.minRange();
     }
 
     /**
@@ -2366,6 +2376,21 @@ public final class GameWorld {
      */
     public Entity findNearestEnemy(int ownerId, float x, float y, float radius,
                                    boolean includeBuildings) {
+        return findNearestEnemyBetween(ownerId, x, y, 0f, radius, includeBuildings);
+    }
+
+    /**
+     * Nearest hostile entity in a ring around a point, rather than a disc.
+     *
+     * <p>A weapon with a dead zone cannot use "nearest": a gun with a scout at one tile and a
+     * whole section at six would pick the scout, fail its own range check and then stand there
+     * saying nothing. Searching the ring it can actually reach is the difference between a
+     * drawback and a bug.
+     *
+     * @param minRadius nothing closer than this counts, measured to the target's edge
+     */
+    public Entity findNearestEnemyBetween(int ownerId, float x, float y, float minRadius,
+                                          float radius, boolean includeBuildings) {
         Entity best = null;
         float bestDist = Float.MAX_VALUE;
 
@@ -2381,7 +2406,7 @@ public final class GameWorld {
             if (u.isConcealed(tick) && d > STEALTH_REVEAL_RADIUS) {
                 continue;
             }
-            if (d <= radius && d < bestDist) {
+            if (d <= radius && (minRadius <= 0f || d >= minRadius) && d < bestDist) {
                 bestDist = d;
                 best = u;
             }
@@ -2393,13 +2418,48 @@ public final class GameWorld {
                     continue;
                 }
                 float d = b.distanceTo(x, y) - b.radius();
-                if (d <= radius && d < bestDist) {
+                if (d <= radius && (minRadius <= 0f || d >= minRadius) && d < bestDist) {
                     bestDist = d;
                     best = b;
                 }
             }
         }
         return best;
+    }
+
+    /**
+     * Somewhere to stand that is far enough back to shoot from.
+     *
+     * <p>Everything else in the game reads "out of range" as "walk closer". A weapon with a
+     * dead zone needs the opposite, and this is the one place that knows how: step directly
+     * away from whatever is crowding the gun until it is a tile clear of the minimum, and give
+     * up rather than walk into a wall.
+     *
+     * <p>Straight-line and square-root only — no trig — because where a unit stands feeds the
+     * state digest, and {@code Math.sqrt} is exactly specified where {@code atan2} is not.
+     *
+     * @param out receives the tile; untouched if there is nowhere sensible to go
+     * @return true if a tile was found
+     */
+    public boolean standOffTile(Unit unit, float fromX, float fromY, float minRange, int[] out) {
+        float dx = unit.x() - fromX;
+        float dy = unit.y() - fromY;
+        float length = (float) Math.sqrt(dx * dx + dy * dy);
+        if (length < 0.001f) {
+            // Standing exactly on it. Any direction will do; pick one deterministically.
+            dx = 1f;
+            dy = 0f;
+            length = 1f;
+        }
+        float standOff = minRange + 1.5f;
+        int tileX = (int) (fromX + dx / length * standOff);
+        int tileY = (int) (fromY + dy / length * standOff);
+        if (!map.inBounds(tileX, tileY) || !map.isPassable(tileX, tileY)) {
+            return false;
+        }
+        out[0] = tileX;
+        out[1] = tileY;
+        return true;
     }
 
     /**

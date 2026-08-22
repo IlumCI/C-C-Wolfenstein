@@ -573,8 +573,12 @@ public final class SkirmishAi {
         out.clear();
         for (int i = 0; i < world.units().size(); i++) {
             Unit u = world.units().get(i);
+            // A weapon with a dead zone is excluded on purpose. Everything downstream of this
+            // list - defendBase, pressAdvantage, launchWave - issues an attack-move, and an
+            // attack-move walks a unit onto its target. Send a gun on one and it marches into
+            // the enemy base at point-blank range and dies without firing a shot.
             if (u.ownerId() == playerId && !u.type().isHarvester() && u.weapon() != null
-                    && u.isIdle() && !u.isInSquad()) {
+                    && !u.weapon().hasMinRange() && u.isIdle() && !u.isInSquad()) {
                 out.add(u);
             }
         }

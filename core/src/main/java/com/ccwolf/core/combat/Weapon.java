@@ -49,20 +49,27 @@ public enum Weapon {
     private final int cooldownTicks;
     private final WeaponClass weaponClass;
     private final float blastRadius;
+    private final float minRange;
 
     Weapon(String displayName, int damage, float range, int cooldownTicks,
            WeaponClass weaponClass) {
-        this(displayName, damage, range, cooldownTicks, weaponClass, 0f);
+        this(displayName, damage, range, cooldownTicks, weaponClass, 0f, 0f);
     }
 
     Weapon(String displayName, int damage, float range, int cooldownTicks,
            WeaponClass weaponClass, float blastRadius) {
+        this(displayName, damage, range, cooldownTicks, weaponClass, blastRadius, 0f);
+    }
+
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass, float blastRadius, float minRange) {
         this.displayName = displayName;
         this.damage = damage;
         this.range = range;
         this.cooldownTicks = cooldownTicks;
         this.weaponClass = weaponClass;
         this.blastRadius = blastRadius;
+        this.minRange = minRange;
     }
 
     public String displayName() {
@@ -97,6 +104,27 @@ public enum Weapon {
 
     public boolean hasBlast() {
         return blastRadius > 0f;
+    }
+
+    /**
+     * How close is too close, in tiles. Zero for everything that can shoot what it can reach.
+     *
+     * <p>A gun with a dead zone in the middle of its range is a different weapon from a gun
+     * without one, and not only because of the hole: every piece of code in the game reads
+     * "out of range" as "walk closer", so a weapon with a lower bound needs callers that know
+     * to back off instead. See {@code GameWorld.standOffTile}.
+     *
+     * <p>Measured to the target's edge, exactly as maximum range is, which means a wide
+     * structure counts as too close from further out than a man does. That is the right answer
+     * for indirect fire — you cannot depress a howitzer over the wall it is parked against.
+     */
+    public float minRange() {
+        return minRange;
+    }
+
+    /** True if this weapon has a dead zone at all — the cheap test before the expensive one. */
+    public boolean hasMinRange() {
+        return minRange > 0f;
     }
 
     public int damageAgainst(ArmorClass armor) {

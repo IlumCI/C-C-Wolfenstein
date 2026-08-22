@@ -19,6 +19,9 @@ public final class AttackMoveOrder implements Order {
     private int engagedTargetId = -1;
     private final ChaseTile chase = new ChaseTile();
 
+    /** Reused so that backing off allocates nothing. */
+    private final int[] standOff = new int[2];
+
     public AttackMoveOrder(int tileX, int tileY) {
         this.tileX = tileX;
         this.tileY = tileY;
@@ -61,6 +64,15 @@ public final class AttackMoveOrder implements Order {
                 world.mover().stop(unit);
                 unit.faceToward(target.x(), target.y());
                 world.tryAttack(unit, target);
+            } else if (weapon.hasMinRange()
+                    && unit.distanceTo(target) - target.radius() < weapon.minRange()) {
+                // Too close rather than too far: give ground instead of taking it.
+                if (world.standOffTile(unit, target.x(), target.y(), weapon.minRange(),
+                        standOff)) {
+                    world.mover().moveTowards(world.grid(), unit, standOff[0], standOff[1], dt);
+                } else {
+                    world.mover().stop(unit);
+                }
             } else {
                 chase.follow(target);
                 world.mover().moveTowards(world.grid(), unit, chase.tileX(), chase.tileY(), dt);

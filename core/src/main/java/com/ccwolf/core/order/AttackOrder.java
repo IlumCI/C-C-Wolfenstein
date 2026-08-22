@@ -16,6 +16,9 @@ public final class AttackOrder implements Order {
     private final int targetId;
     private final ChaseTile chase = new ChaseTile();
 
+    /** Reused so that backing off allocates nothing. */
+    private final int[] standOff = new int[2];
+
     public AttackOrder(int targetId) {
         this.targetId = targetId;
     }
@@ -40,6 +43,19 @@ public final class AttackOrder implements Order {
             world.mover().stop(unit);
             unit.faceToward(target.x(), target.y());
             world.tryAttack(unit, target);
+            return false;
+        }
+
+        // Out of range means walk closer for every weapon in the game except one kind. A gun
+        // with a dead zone that closed on something already inside it would walk further in
+        // forever, never firing, which is how a drawback becomes a bug.
+        if (weapon.hasMinRange()
+                && unit.distanceTo(target) - target.radius() < weapon.minRange()) {
+            if (world.standOffTile(unit, target.x(), target.y(), weapon.minRange(), standOff)) {
+                world.mover().moveTowards(world.grid(), unit, standOff[0], standOff[1], dt);
+            } else {
+                world.mover().stop(unit);
+            }
             return false;
         }
 
