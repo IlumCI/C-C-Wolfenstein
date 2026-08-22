@@ -24,7 +24,19 @@ public final class ProjectileLayer {
     public static final int CAPACITY = 160;
 
     /** How a round looks and moves. */
-    public enum Kind { BULLET, SNIPER_ROUND, SHELL, ROCKET, GRENADE, PLASMA }
+    public enum Kind {
+        BULLET, SNIPER_ROUND, SHELL, ROCKET, GRENADE, PLASMA,
+        /**
+         * An artillery round, and the only one whose flight this layer does not invent.
+         *
+         * <p>Every other kind here is a decoration over a hitscan shot: the damage landed the
+         * tick the trigger was pulled and the round is drawn crossing afterwards for the look
+         * of it. A shell is real. The simulation decides when it arrives, tells this layer how
+         * long that takes, and plays the impact itself — so this kind is told its duration and
+         * stays silent when it lands, or the explosion happens twice.
+         */
+        LOBBED
+    }
 
     private final float[] fromX = new float[CAPACITY];
     private final float[] fromY = new float[CAPACITY];
@@ -33,6 +45,8 @@ public final class ProjectileLayer {
     private final float[] progress = new float[CAPACITY];
     private final float[] speed = new float[CAPACITY];
     private final Kind[] kind = new Kind[CAPACITY];
+    /** How high this round arcs, in tiles. Zero for anything that goes in a straight line. */
+    private final float[] arc = new float[CAPACITY];
     private final int[] targetKind = new int[CAPACITY];
     private final boolean[] alive = new boolean[CAPACITY];
 
@@ -73,8 +87,13 @@ public final class ProjectileLayer {
                 return Kind.ROCKET;
             case GRENADE:
                 return Kind.GRENADE;
+            case ARTILLERY:
+                return Kind.LOBBED;
             case OCCULT:
-                return Kind.PLASMA;
+                // The Resonanzkanone throws nothing, so what it sends is drawn as a bolt
+                // rather than as a shell - but it still takes time to arrive, so it is lobbed
+                // like one and told its own flight time.
+                return Kind.LOBBED;
             case SMALL_ARMS:
             case FLAME:
             case MELEE:
@@ -96,6 +115,9 @@ public final class ProjectileLayer {
                 return 5f;
             case GRENADE:
                 return 3.2f;
+            case LOBBED:
+                // Never used: a lobbed round is always told its duration by the simulation.
+                return 1f;
             case ROCKET:
             default:
                 return 3.6f;
@@ -104,6 +126,20 @@ public final class ProjectileLayer {
 
     public void fire(Kind what, float sx, float sy, float tx, float ty,
                      GameEvent.TargetKind hit) {
+        fire(what, sx, sy, tx, ty, hit, 0f);
+    }
+
+    /**
+     * The same, for a round whose flight time is not this layer's to invent.
+     *
+     * <p>{@code speedFor} is a guess that looks right; a shell's is a fact the simulation
+     * already knows, because it decided two seconds ago which tick the thing lands on. Passing
+     * it in is what keeps the picture and the damage on the same schedule.
+     *
+     * @param seconds how long the round takes, or 0 to use this layer's own guess
+     */
+    public void fire(Kind what, float sx, float sy, float tx, float ty,
+                     GameEvent.TargetKind hit, float seconds) {
         int slot = -1;
         for (int i = 0; i < CAPACITY; i++) {
             int candidate = (cursor + i) % CAPACITY;
@@ -122,8 +158,15 @@ public final class ProjectileLayer {
         toX[slot] = tx;
         toY[slot] = ty;
         progress[slot] = 0f;
-        speed[slot] = speedFor(what);
+        speed[slot] = seconds > 0f ? 1f / seconds : speedFor(what);
         kind[slot] = what;
+        // A long shot should climb higher than a short one, so a barrage across the map reads
+        // differently from one across the street. Scaled off the journey, capped so it does not
+        // leave the top of the screen.
+        float dx = tx - sx;
+        float dy = ty - sy;
+        arc[slot] = what == Kind.LOBBED
+                ? Math.min(7f, 1.5f + (float) Math.sqrt(dx * dx + dy * dy) * 0.35f) : 0f;
         targetKind[slot] = hit == null ? 0 : hit.ordinal();
         alive[slot] = true;
     }
@@ -150,12 +193,19 @@ public final class ProjectileLayer {
                 particles.spawn(ParticleSystem.Kind.FLAME, px, py, 0f, 0f, 0.1f, 0.06f);
             } else if (kind[i] == Kind.PLASMA) {
                 particles.puff(ParticleSystem.Kind.PLASMA, px, py, 2, 0.6f, 0.22f, 0.06f);
+            } else if (kind[i] == Kind.LOBBED) {
+                particles.puff(ParticleSystem.Kind.SMOKE, px, py, 1, 0.3f, 0.7f, 0.07f);
             }
 
             if (progress[i] >= 1f) {
                 alive[i] = false;
-                director.onImpact(kind[i], toX[i], toY[i],
-                        GameEvent.TargetKind.values()[targetKind[i]]);
+                // A lobbed round stays silent. The simulation raises its own impact event at
+                // the tick it actually lands, and that is what plays the blast - letting this
+                // one speak too would explode everything twice.
+                if (kind[i] != Kind.LOBBED) {
+                    director.onImpact(kind[i], toX[i], toY[i],
+                            GameEvent.TargetKind.values()[targetKind[i]]);
+                }
             }
         }
     }
@@ -170,6 +220,8 @@ public final class ProjectileLayer {
         float base = fromY[i] + (toY[i] - fromY[i]) * t;
         if (kind[i] == Kind.GRENADE) {
             base -= 4f * t * (1f - t);
+        } else if (kind[i] == Kind.LOBBED) {
+            base -= arc[i] * 4f * t * (1f - t);
         }
         return base;
     }
@@ -227,6 +279,24 @@ public final class ProjectileLayer {
                     float r = tile * 0.07f;
                     surface.fillRect(screenX - r, screenY - r * 1.4f, screenX + r,
                             screenY + r * 1.4f, paint);
+                    break;
+                }
+                case LOBBED: {
+                    // The shadow is the whole trick. Without something on the ground tracking
+                    // underneath it, a round drawn higher up the screen is not a round climbing
+                    // - it is a round somewhere else.
+                    float groundY = camera.screenY(fromY[i] + (toY[i] - fromY[i]) * t);
+                    paint.setColor(0x66000000);
+                    float sr = tile * 0.08f;
+                    surface.fillRect(screenX - sr, groundY - sr * 0.5f, screenX + sr,
+                            groundY + sr * 0.5f, paint);
+                    paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 4));
+                    float r = tile * 0.1f;
+                    surface.fillRect(screenX - r, screenY - r * 1.5f, screenX + r,
+                            screenY + r * 1.5f, paint);
+                    paint.setColor(WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+                    surface.fillRect(screenX - r * 0.5f, screenY - r * 1.5f, screenX + r * 0.5f,
+                            screenY - r * 0.4f, paint);
                     break;
                 }
                 case PLASMA:

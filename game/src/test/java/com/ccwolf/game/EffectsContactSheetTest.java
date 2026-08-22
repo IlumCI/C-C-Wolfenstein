@@ -5,6 +5,7 @@ import com.ccwolf.core.combat.WeaponClass;
 import com.ccwolf.core.event.GameEvent;
 import com.ccwolf.game.fx.DecalLayer;
 import com.ccwolf.game.fx.FxDirector;
+import com.ccwolf.game.fx.ProjectileLayer;
 import com.ccwolf.game.fx.ParticleSystem;
 import com.ccwolf.game.render.Camera;
 import com.ccwolf.game.render.Palette;
@@ -89,10 +90,22 @@ public class EffectsContactSheetTest {
                     public void stage(FxDirector fx, float x, float y) {
                         // Fired from the left edge of the cell into its centre, so the
                         // impact lands where the eye is and the flight is still visible.
+                        // The shot's amount is the flight time in ticks for anything lobbed,
+                        // and the damage for everything else. Twenty of either is fine here.
                         fx.consume(Collections.singletonList(GameEvent.shot(
                                 0, 1, x - range, y, x, y, 20, weapon, target)), 0);
                         if (inFlight) {
                             run(fx, 4);
+                        } else if (ProjectileLayer.kindFor(weapon)
+                                == ProjectileLayer.Kind.LOBBED) {
+                            // Indirect fire is the one case where the impact is not the
+                            // projectile layer's to announce: the simulation raises it at the
+                            // tick the shell actually lands. Staging only the shot would leave
+                            // these cells blank, which is what the sheet caught.
+                            run(fx, 6);
+                            fx.consume(Collections.singletonList(GameEvent.at(
+                                    GameEvent.Type.SHELL_IMPACT, 0, 1, x, y)), 0);
+                            run(fx, 10);
                         } else {
                             waitForImpact(fx);
                             // Far enough past the impact to see the effect open out, close
@@ -105,10 +118,12 @@ public class EffectsContactSheetTest {
         }
         // Two of the classes have nothing to show in flight: the flamethrower has no round
         // and melee has no projectile at all.
+        // Saved before the assertion, not after. A sheet is a thing you look at, and the one
+        // time you most want to look at it is the time it failed.
+        sheet.frame.save("sheet-effects-weapons.png");
         assertTrue("a weapon sheet with no effects on it is not evidence of anything: "
                         + sheet.litCells() + " of " + classes.length * columns.length,
                 sheet.litCells() >= classes.length * columns.length - 2);
-        sheet.frame.save("sheet-effects-weapons.png");
     }
 
     /**

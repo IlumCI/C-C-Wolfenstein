@@ -533,9 +533,15 @@ public final class Hud {
 
     private void drawControls(Surface surface, GameSession session) {
         GameSession.PointerMode mode = session.pointerMode();
-        // A squad told to stop digs in, so the plate says what it will actually do.
+        // The same plate, saying what it will actually do. A squad told to stop digs in; a
+        // battery told to stop has nothing useful to stop doing, so it offers the one order
+        // that only it can take. There is no room for a fifth button - buildSlots reserves
+        // exactly two rows, with a comment recording that an earlier attempt pushed SELL and
+        // REPAIR off the bottom of the screen.
         drawButton(surface, stopButton,
-                session.hasSquadSelection() ? "DIG IN" : "STOP", session.hasSelection(), false);
+                session.hasArtillerySelection() ? "BOMBARD"
+                        : session.hasSquadSelection() ? "DIG IN" : "STOP",
+                session.hasSelection(), mode == GameSession.PointerMode.BOMBARD);
         drawButton(surface, pauseButton, session.isPaused() ? "RESUME" : "PAUSE", true, false);
         // With a squad up, the two structure controls give way to the two that act on it.
         // There is no room on a phone for both sets, and they are never wanted at once.
@@ -602,7 +608,12 @@ public final class Hud {
         }
 
         if (stopButton.contains(x, y)) {
-            session.stopSelection();
+            // Kept in step with drawControls, which the file's own comment warns about.
+            if (session.hasArtillerySelection()) {
+                session.togglePointerMode(GameSession.PointerMode.BOMBARD);
+            } else {
+                session.stopSelection();
+            }
             return true;
         }
         if (pauseButton.contains(x, y)) {

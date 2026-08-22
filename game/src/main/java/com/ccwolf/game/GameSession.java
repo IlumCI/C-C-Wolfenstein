@@ -41,7 +41,11 @@ public final class GameSession {
     private static final long PING_MS = 550;
 
     /** What a tap on the battlefield currently means. */
-    public enum PointerMode { COMMAND, SELL, REPAIR }
+    public enum PointerMode {
+        COMMAND, SELL, REPAIR,
+        /** Armed with guns selected: the next tap on the ground becomes a fire mission. */
+        BOMBARD
+    }
 
     /** One short-lived thing to draw on top of the world. */
     public static final class Effect {
@@ -170,7 +174,8 @@ public final class GameSession {
         this.pointerMode = mode;
         this.placing = null;
         showMessage(mode == PointerMode.SELL ? "Sell: tap one of your structures"
-                : mode == PointerMode.REPAIR ? "Repair: tap one of your structures" : "");
+                : mode == PointerMode.REPAIR ? "Repair: tap one of your structures"
+                : mode == PointerMode.BOMBARD ? "Bombard: tap the ground to shell it" : "");
     }
 
     public void togglePointerMode(PointerMode mode) {
@@ -485,6 +490,16 @@ public final class GameSession {
         int tileY = (int) worldY;
         Entity target = entityAt(worldX, worldY);
 
+        if (pointerMode == PointerMode.BOMBARD) {
+            // A fire mission names a place. Whether anything is standing on it is not the
+            // gunner's business, so this deliberately ignores whatever is under the tap.
+            if (report(commands.submit(playerId,
+                    new PlayerCommand.Bombard(selectedIds(), tileX, tileY)))) {
+                addPing(tileX, tileY, true);
+            }
+            setPointerMode(PointerMode.COMMAND);
+            return;
+        }
         if (pointerMode == PointerMode.SELL || pointerMode == PointerMode.REPAIR) {
             if (target == null || !target.isBuilding() || !view.isMine(target)) {
                 showMessage("Tap one of your own structures");
@@ -629,6 +644,20 @@ public final class GameSession {
      * strictly worse option offered next to a strictly better one, so the button issues the
      * better one and says so.
      */
+    /** True when everything selected is a gun, which is what puts BOMBARD on the plate. */
+    public boolean hasArtillerySelection() {
+        if (selection.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < selection.size(); i++) {
+            Entity e = view.entity(selection.get(i).intValue());
+            if (!(e instanceof Unit) || !((Unit) e).type().isArtillery()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public void stopSelection() {
         if (hasSquadSelection()) {
             if (report(commands.submit(playerId,

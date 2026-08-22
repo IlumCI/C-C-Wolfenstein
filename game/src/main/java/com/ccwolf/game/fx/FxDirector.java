@@ -4,6 +4,7 @@ import com.ccwolf.gfx.Surface;
 import com.ccwolf.game.render.Camera;
 import com.ccwolf.core.combat.WeaponClass;
 import com.ccwolf.core.event.GameEvent;
+import com.ccwolf.core.sim.GameWorld;
 import java.util.List;
 import java.util.Random;
 
@@ -73,6 +74,9 @@ public final class FxDirector {
                 case SHOT_FIRED:
                     onShot(e);
                     break;
+                case SHELL_IMPACT:
+                    onShellImpact(e);
+                    break;
                 case ENTITY_DESTROYED:
                     onDeath(e);
                     break;
@@ -120,8 +124,25 @@ public final class FxDirector {
         }
 
         ProjectileLayer.Kind round = ProjectileLayer.kindFor(weapon);
-        projectiles.fire(round, e.x(), e.y(), e.toX(), e.toY(), e.targetKind());
+        if (round == ProjectileLayer.Kind.LOBBED) {
+            // The one round whose flight this layer does not invent. The simulation put it in
+            // the air seconds before it lands and knows exactly when that is; it passes the
+            // flight time in the event's amount, so the picture and the damage stay on the
+            // same schedule instead of drifting apart.
+            float seconds = Math.max(0.05f, e.amount() / (float) GameWorld.TICKS_PER_SECOND);
+            projectiles.fire(round, e.x(), e.y(), e.toX(), e.toY(), e.targetKind(), seconds);
 
+            // A gun going off is the loudest thing on the field and should look it.
+            particles.burst(ParticleSystem.Kind.FLAME, e.x() + dx * 0.7f, e.y() + dy * 0.7f,
+                    dx, dy, 10, 3.2f, 0.5f, 0.28f, 0.11f);
+            particles.burst(ParticleSystem.Kind.SMOKE, e.x() + dx * 1.0f, e.y() + dy * 1.0f,
+                    dx, dy, 14, 1.8f, 1.0f, 1.4f, 0.16f);
+            particles.puff(ParticleSystem.Kind.DUST, e.x(), e.y(), 8, 1.1f, 0.8f, 0.12f);
+            shake(0.16f);
+            return;
+        }
+
+        projectiles.fire(round, e.x(), e.y(), e.toX(), e.toY(), e.targetKind());
         particles.burst(ParticleSystem.Kind.SPARK, e.x() + dx * 0.45f, e.y() + dy * 0.45f,
                 dx, dy, round == ProjectileLayer.Kind.BULLET ? 3 : 6, 2.2f, 0.8f, 0.16f, 0.05f);
         if (round == ProjectileLayer.Kind.SHELL || round == ProjectileLayer.Kind.ROCKET) {
@@ -130,6 +151,25 @@ public final class FxDirector {
                     dx, dy, 5, 1.2f, 1.1f, 0.75f, 0.11f);
             shake(0.05f);
         }
+    }
+
+    /**
+     * A shell arriving, raised by the simulation rather than by the projectile layer.
+     *
+     * <p>The only impact in the game that is driven by the sim, because it is the only one that
+     * happens at a tick nothing on this side chose. Everything else here decorates a hitscan
+     * shot after the fact.
+     */
+    private void onShellImpact(GameEvent e) {
+        // Earth first, so the crater sits under the smoke rather than on top of it.
+        decals.add(DecalLayer.Kind.CRATER, e.x(), e.y(), 1.9f, 90f);
+        decals.add(DecalLayer.Kind.SCORCH, e.x(), e.y(), 1.3f, 45f);
+
+        particles.puff(ParticleSystem.Kind.DUST, e.x(), e.y(), 26, 3.2f, 1.1f, 0.16f);
+        particles.puff(ParticleSystem.Kind.DEBRIS, e.x(), e.y(), 14, 3.6f, 1.0f, 0.1f);
+        particles.puff(ParticleSystem.Kind.FLAME, e.x(), e.y(), 10, 1.8f, 0.42f, 0.2f);
+        particles.puff(ParticleSystem.Kind.SMOKE, e.x(), e.y(), 18, 1.2f, 2.0f, 0.26f);
+        shake(0.34f);
     }
 
     /** Called by the projectile layer when a round arrives. */
