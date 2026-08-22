@@ -79,6 +79,19 @@ public final class GameWorld {
      */
     public static final int COUNTER_BATTERY_TICKS = 10 * TICKS_PER_SECOND;
 
+    /** How often an idle gun goes looking for a fire mission. Staggered by unit id. */
+    private static final int ARTILLERY_ACQUIRE_INTERVAL = 10;
+
+    /**
+     * How many men have to be standing together before a gun will spend a shell on them.
+     *
+     * <p>The most load-bearing number in the artillery model. At one, a battery plinks away at
+     * every lone scout on the map and becomes miserable to play against; at two, it is
+     * something you provoke by massing - which is what makes it the answer to a dug-in line
+     * rather than a tax on moving at all.
+     */
+    private static final int MIN_WORTHWHILE_CLUSTER = 2;
+
     /** How often uranium seams creep back, in ticks. */
     private static final int ORE_REGROW_INTERVAL = 100;
 
@@ -244,6 +257,16 @@ public final class GameWorld {
     private final List<GameEvent> events = new ArrayList<GameEvent>();
 
     private final List<Unit> queryScratch = new ArrayList<Unit>();
+
+    /**
+     * Its own list, not queryScratch.
+     *
+     * <p>Choosing a fire mission scores every candidate against every other candidate, which
+     * means holding one list while walking it twice. Borrowing the shared scratch would work
+     * until the day something inside that loop calls findNearestEnemy, and then it would fail
+     * in a way that only shows up under load.
+     */
+    private final List<Unit> bombardScratch = new ArrayList<Unit>();
 
     private int nextEntityId = 1;
     private int tick;
@@ -1764,7 +1787,9 @@ public final class GameWorld {
                 }
             } else {
                 u.setVelocity(0f, 0f);
-                if ((tick + u.id()) % ACQUIRE_INTERVAL == 0) {
+                if (u.type().isArtillery()) {
+                    autoBombard(u);
+                } else if ((tick + u.id()) % ACQUIRE_INTERVAL == 0) {
                     autoDefend(u);
                 }
             }
@@ -1784,6 +1809,93 @@ public final class GameWorld {
         if (target != null) {
             u.faceToward(target.x(), target.y());
             tryAttack(u, target);
+        }
+    }
+
+    /**
+     * An idle gun looks for somewhere worth shelling.
+     *
+     * <p>Deliberately not {@code autoDefend}. Nearest-target is exactly the wrong rule for a
+     * weapon with a hole in the middle of its range, and it is the wrong rule for indirect fire
+     * generally: a gun does not spend a five-second reload on whoever happens to be closest.
+     *
+     * <p>What it looks for instead is a <b>crowd</b>. Every candidate is scored by how many
+     * other enemies are standing inside one blast radius of it, and a mission is only fired if
+     * at least two men would be caught. That single threshold is most of the balance of the
+     * whole weapon: it makes artillery the answer to massed infantry and a waste of a reload
+     * against skirmishers, which is exactly the deadlock it was built to break.
+     *
+     * <p>Stationary and dug-in targets score higher, which turns the chosen drawback - shells
+     * land where they were aimed, so a moving squad walks out from under them - from a pure
+     * miss into a targeting incentive. A gun prefers a line that has stopped to dig.
+     */
+    private void autoBombard(Unit gun) {
+        Weapon weapon = gun.weapon();
+        // Cheapest possible gate first: a gun on a two-hundred-tick reload spends almost all of
+        // its life here, and the scan below is the expensive part.
+        if (weapon == null || !gun.weaponReady()) {
+            return;
+        }
+        if ((tick + gun.id()) % ARTILLERY_ACQUIRE_INTERVAL != 0) {
+            return;
+        }
+
+        bombardScratch.clear();
+        spatialIndex.query(gun.x(), gun.y(), weapon.range() + 1f, bombardScratch);
+
+        int bestScore = 0;
+        int bestId = Integer.MAX_VALUE;
+        int bestTileX = -1;
+        int bestTileY = -1;
+        float blast = Math.max(1f, weapon.blastRadius());
+
+        for (int i = 0; i < bombardScratch.size(); i++) {
+            Unit candidate = bombardScratch.get(i);
+            if (!candidate.isAlive() || !areEnemies(gun.ownerId(), candidate.ownerId())) {
+                continue;
+            }
+            float gap = gun.distanceTo(candidate);
+            if (gap > weapon.range() || gap < weapon.minRange()) {
+                continue;
+            }
+            int tileX = candidate.tileX();
+            int tileY = candidate.tileY();
+            // Somewhere nobody of ours has seen lately is somewhere we may not fire on.
+            if (!canObserve(gun.ownerId(), tileX, tileY)) {
+                continue;
+            }
+
+            int caught = 0;
+            for (int j = 0; j < bombardScratch.size(); j++) {
+                Unit other = bombardScratch.get(j);
+                if (other.isAlive() && areEnemies(gun.ownerId(), other.ownerId())
+                        && other.distanceTo(candidate.x(), candidate.y()) <= blast) {
+                    caught++;
+                }
+            }
+            if (caught < MIN_WORTHWHILE_CLUSTER) {
+                continue;
+            }
+
+            int score = caught;
+            if (!candidate.isMoving()) {
+                score += 2;
+            }
+            if (map.cover(tileX, tileY) > 0) {
+                score += 1;
+            }
+            // Ties break on the lowest entity id, never on a float distance: the same crowd
+            // must produce the same aim point on a replay.
+            if (score > bestScore || (score == bestScore && candidate.id() < bestId)) {
+                bestScore = score;
+                bestId = candidate.id();
+                bestTileX = tileX;
+                bestTileY = tileY;
+            }
+        }
+
+        if (bestTileX >= 0) {
+            tryBombard(gun, bestTileX, bestTileY);
         }
     }
 
@@ -2579,15 +2691,35 @@ public final class GameWorld {
             dy = 0f;
             length = 1f;
         }
+        dx /= length;
+        dy /= length;
         float standOff = minRange + 1.5f;
-        int tileX = (int) (fromX + dx / length * standOff);
-        int tileY = (int) (fromY + dy / length * standOff);
-        if (!map.inBounds(tileX, tileY) || !map.isPassable(tileX, tileY)) {
-            return false;
+
+        // Straight back first, then fanned to either side. Giving up because the one tile
+        // directly behind happens to be a rock would leave a battery standing in the open being
+        // eaten, which is not a drawback, it is the gun failing to obey a sensible order.
+        for (int attempt = 0; attempt < 5; attempt++) {
+            float ax = dx;
+            float ay = dy;
+            if (attempt > 0) {
+                // Blend in the perpendicular, alternating sides and widening. All arithmetic:
+                // a rotation would want trig, and where a unit stands feeds the digest.
+                float lean = (attempt + 1) / 2 * 0.5f * ((attempt % 2 == 0) ? -1f : 1f);
+                ax = dx - dy * lean;
+                ay = dy + dx * lean;
+                float len = (float) Math.sqrt(ax * ax + ay * ay);
+                ax /= len;
+                ay /= len;
+            }
+            int tileX = (int) (fromX + ax * standOff);
+            int tileY = (int) (fromY + ay * standOff);
+            if (map.inBounds(tileX, tileY) && map.isPassable(tileX, tileY)) {
+                out[0] = tileX;
+                out[1] = tileY;
+                return true;
+            }
         }
-        out[0] = tileX;
-        out[1] = tileY;
-        return true;
+        return false;
     }
 
     /**

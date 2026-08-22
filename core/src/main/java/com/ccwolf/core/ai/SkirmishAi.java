@@ -7,6 +7,7 @@ import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
 import com.ccwolf.core.order.AttackMoveOrder;
+import com.ccwolf.core.order.BombardOrder;
 import com.ccwolf.core.order.HarvestOrder;
 import com.ccwolf.core.order.SabotageOrder;
 import com.ccwolf.core.sim.GameWorld;
@@ -44,6 +45,15 @@ public final class SkirmishAi {
     /** How far out from the command post the line is dug, in tiles. */
     private static final float TRENCH_LINE_DISTANCE = 9f;
 
+    /** How many guns one side keeps. They are expensive and they do not defend themselves. */
+    private static final int MAX_GUNS = 2;
+
+    /** How long between buying one gun and considering the next. */
+    private static final int GUN_COOLDOWN = 60 * GameWorld.TICKS_PER_SECOND;
+
+    /** How often a battery is given a fresh aim point. */
+    private static final int GUN_RETASK = 20 * GameWorld.TICKS_PER_SECOND;
+
     private final int playerId;
     private final Difficulty difficulty;
 
@@ -51,6 +61,10 @@ public final class SkirmishAi {
     private int nextWaveTick;
     private int placementFailures;
     private final int rallyJitter;
+    private int nextGunTick = 120 * GameWorld.TICKS_PER_SECOND;
+
+    private int nextGunOrderTick;
+
     private int nextSabotageTick = 90 * GameWorld.TICKS_PER_SECOND;
 
     private final List<Unit> scratch = new ArrayList<Unit>();
@@ -95,8 +109,12 @@ public final class SkirmishAi {
         manageEconomy(world, me);
         manageRepairs(world, me);
         manageConstruction(world, me);
-        manageArmy(world, me);
         reinforceWornSquads(world, me);
+        // Guns get first refusal on the vehicle queue, before manageArmy refills it with a
+        // tank. Running after it meant the queue was never empty on the tick this looked, so
+        // the AI went a whole match without ever buying one.
+        manageGuns(world, me);
+        manageArmy(world, me);
         manageSpecialOperations(world, me);
         defendBase(world);
         digInTheGarrison(world);
@@ -358,6 +376,109 @@ public final class SkirmishAi {
         }
         world.enqueueUnit(playerId, UnitType.SABOTEUR);
         nextSabotageTick = world.tick() + SABOTAGE_INTERVAL / 2;
+    }
+
+    /**
+     * Buys guns, and points them at something.
+     *
+     * <p>Shaped like {@code manageSpecialOperations}: gated on a cooldown, on prerequisites and
+     * on having money spare, and it reuses a gun it already owns before paying for another.
+     *
+     * <p>Which gun is a credit threshold rather than a roll. {@code pickInfantry} spends exactly
+     * one {@code nextInt(100)} per decision, and the invariant the whole simulation rests on is
+     * that the number of draws per tick cannot depend on which branch was taken - so nothing
+     * here touches the random number generator at all.
+     */
+    private void manageGuns(GameWorld world, Player me) {
+        int guns = countGuns(world);
+
+        if (guns < MAX_GUNS && world.tick() >= nextGunTick
+                && me.vehicleQueue().isEmpty()) {
+            UnitType pick = gunFor(world, me);
+            if (pick != null && world.canProduce(playerId, pick)
+                    && me.credits() > difficulty.creditReserve() + pick.cost()) {
+                world.enqueueUnit(playerId, pick);
+                nextGunTick = world.tick() + GUN_COOLDOWN;
+            }
+        }
+        if (guns == 0) {
+            return;
+        }
+
+        // Re-task on an interval. A gun left on its original order goes on shelling a field
+        // that the war moved away from twenty minutes ago.
+        if (world.tick() < nextGunOrderTick) {
+            return;
+        }
+        nextGunOrderTick = world.tick() + GUN_RETASK;
+
+        Entity aim = counterBatteryTarget(world);
+        if (aim == null) {
+            Building post = world.findBuilding(playerId, BuildingType.COMMAND_POST);
+            float fromX = post != null ? post.x() : anyAttackerX();
+            float fromY = post != null ? post.y() : anyAttackerY();
+            aim = world.findNearestEnemyAnywhere(playerId, fromX, fromY, false);
+        }
+        if (aim == null) {
+            return;
+        }
+
+        for (int i = 0; i < world.units().size(); i++) {
+            Unit u = world.units().get(i);
+            if (u.ownerId() == playerId && u.type().isArtillery()) {
+                world.issueOrder(playerId, u, new BombardOrder(aim.tileX(), aim.tileY()));
+            }
+        }
+    }
+
+    /**
+     * An enemy battery that has fired recently, if there is one.
+     *
+     * <p>Counter-battery, made real for the side that cannot see. The reveal that firing causes
+     * is a fog rule, and the AI has never read fog - so for it the mechanic has to be an
+     * explicit preference, keyed on the same thing the reveal is: a gun that has just fired.
+     */
+    private Entity counterBatteryTarget(GameWorld world) {
+        Entity best = null;
+        int firedLatest = -1;
+        for (int i = 0; i < world.units().size(); i++) {
+            Unit u = world.units().get(i);
+            if (u.ownerId() == playerId || !u.isAlive() || !u.type().isArtillery()) {
+                continue;
+            }
+            if (world.tick() - u.lastFiredTick() > GameWorld.COUNTER_BATTERY_TICKS) {
+                continue;
+            }
+            if (u.lastFiredTick() > firedLatest) {
+                firedLatest = u.lastFiredTick();
+                best = u;
+            }
+        }
+        return best;
+    }
+
+    /** The heaviest gun we can afford now, or the cheap one, or nothing. */
+    private UnitType gunFor(GameWorld world, Player me) {
+        if (me.faction() == Faction.REGIME) {
+            boolean rich = me.credits()
+                    > difficulty.creditReserve() + UnitType.RESONANZKANONE.cost();
+            if (rich && world.canProduce(playerId, UnitType.RESONANZKANONE)) {
+                return UnitType.RESONANZKANONE;
+            }
+            return UnitType.NEBELWERFER;
+        }
+        return UnitType.FELDKANONE;
+    }
+
+    private int countGuns(GameWorld world) {
+        int n = 0;
+        for (int i = 0; i < world.units().size(); i++) {
+            Unit u = world.units().get(i);
+            if (u.ownerId() == playerId && u.isAlive() && u.type().isArtillery()) {
+                n++;
+            }
+        }
+        return n;
     }
 
     /** Anything shooting at our base pulls every idle defender towards it. */

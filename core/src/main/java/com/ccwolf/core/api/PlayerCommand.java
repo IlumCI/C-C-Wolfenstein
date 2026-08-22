@@ -7,6 +7,7 @@ import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
 import com.ccwolf.core.order.AttackMoveOrder;
 import com.ccwolf.core.order.AttackOrder;
+import com.ccwolf.core.order.BombardOrder;
 import com.ccwolf.core.order.EntrenchOrder;
 import com.ccwolf.core.order.HarvestOrder;
 import com.ccwolf.core.order.HijackOrder;
@@ -453,6 +454,49 @@ public abstract class PlayerCommand {
         }
     }
 
+    /**
+     * Put a barrage on a piece of ground.
+     *
+     * <p>The one order in the game that names a place rather than a target, which is what
+     * indirect fire is: by the time the shells arrive, whether anybody is still standing there
+     * is no longer the gunner's business.
+     */
+    public static final class Bombard extends PlayerCommand {
+        private final int[] unitIds;
+        private final int tileX;
+        private final int tileY;
+
+        public Bombard(int[] unitIds, int tileX, int tileY) {
+            this.unitIds = unitIds.clone();
+            this.tileX = tileX;
+            this.tileY = tileY;
+        }
+
+        @Override
+        CommandResult execute(GameWorld world, int playerId) {
+            if (!world.map().inBounds(tileX, tileY)) {
+                return CommandResult.rejected("Off the map");
+            }
+            // Refused out loud, at the moment of asking. A gun that silently declined to fire
+            // because nobody had been over there lately would be the most confusing thing in
+            // the game - the player would read it as the order not registering.
+            if (!world.canObserve(playerId, tileX, tileY)) {
+                return CommandResult.rejected("Nobody can see that");
+            }
+            return applyToUnits(world, playerId, unitIds, new OrderFactory() {
+                @Override
+                public Order create(GameWorld world, Unit unit) {
+                    return unit.type().isArtillery() ? new BombardOrder(tileX, tileY) : null;
+                }
+            }, false);
+        }
+
+        @Override
+        public String describe() {
+            return "Bombard " + tileX + "," + tileY;
+        }
+    }
+
     /** Chase and shoot one specific entity. */
     public static final class Attack extends PlayerCommand {
         private final int[] unitIds;
@@ -475,7 +519,16 @@ public abstract class PlayerCommand {
             return applyToUnits(world, playerId, unitIds, new OrderFactory() {
                 @Override
                 public Order create(GameWorld world, Unit unit) {
-                    return unit.weapon() == null ? null : new AttackOrder(targetId);
+                    if (unit.weapon() == null) {
+                        return null;
+                    }
+                    // Tapping an enemy with a gun selected means "put your shells there", not
+                    // "drive at it". An AttackOrder would have the battery close on its target
+                    // until the target was inside the one range it cannot fire at.
+                    if (unit.type().isArtillery()) {
+                        return new BombardOrder(target.tileX(), target.tileY());
+                    }
+                    return new AttackOrder(targetId);
                 }
             }, false);
         }

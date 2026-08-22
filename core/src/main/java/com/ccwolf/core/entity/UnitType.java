@@ -105,7 +105,7 @@ public enum UnitType {
      * thing the Kreisau Circle can field, which is the point — their heaviest punch is
      * something they stole.
      */
-    FELDKANONE("Stolen Feldkanone", Faction.RESISTANCE, 850, 280, 100, 1.3f, 5,
+    FELDKANONE("Stolen Feldkanone", Faction.RESISTANCE, 650, 240, 100, 1.3f, 5,
             ArmorClass.FLESH, Weapon.FELDKANONE, false, 0,
             BuildingType.WAR_WORKS, BuildingType.REFINERY),
 
@@ -128,7 +128,7 @@ public enum UnitType {
      * are alive and will not stay. Ponderous, ruinously expensive, and it outranges everything
      * else on the map — which is the whole argument for building one.
      */
-    RESONANZKANONE("Resonanzkanone", Faction.REGIME, 1600, 420, 130, 0.9f, 6,
+    RESONANZKANONE("Resonanzkanone", Faction.REGIME, 1800, 440, 130, 0.9f, 6,
             ArmorClass.FLESH, Weapon.RESONANZKANONE, false, 0,
             BuildingType.WAR_WORKS, BuildingType.REFINERY);
 
