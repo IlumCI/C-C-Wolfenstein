@@ -62,6 +62,9 @@ public final class Light {
     public final int bounceColor;
     public final float bounce;
 
+    /** How strongly flesh passes light through itself. See {@code Sculptor.flesh}. */
+    public final float subsurface;
+
     /** A cold edge on the side facing away, which is what holds a silhouette against the ground. */
     public final int rimColor;
     public final float rim;
@@ -69,7 +72,7 @@ public final class Light {
     private Light(float dirX, float dirY, float dirZ, int keyColor, float keyStrength,
                   int skyColor, int groundColor, float ambientStrength, float relief,
                   float occlusion, float shadow, int shadowSteps, int bounceColor, float bounce,
-                  int rimColor, float rim) {
+                  float subsurface, int rimColor, float rim) {
         float length = (float) Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
         this.dirX = dirX / length;
         this.dirY = dirY / length;
@@ -85,6 +88,7 @@ public final class Light {
         this.shadowSteps = shadowSteps;
         this.bounceColor = bounceColor;
         this.bounce = bounce;
+        this.subsurface = subsurface;
         this.rimColor = rimColor;
         this.rim = rim;
     }
@@ -103,6 +107,7 @@ public final class Light {
                 0.85f,
                 0.55f, 14,
                 0xFF6B5A42, 0.22f,
+                0.35f,
                 0xFF9FB6C9, 0.30f);
     }
 
@@ -110,6 +115,6 @@ public final class Light {
     public Light withRelief(float newRelief) {
         return new Light(dirX, dirY, dirZ, keyColor, keyStrength, skyColor, groundColor,
                 ambientStrength, newRelief, occlusion, shadow, shadowSteps, bounceColor, bounce,
-                rimColor, rim);
+                subsurface, rimColor, rim);
     }
 }

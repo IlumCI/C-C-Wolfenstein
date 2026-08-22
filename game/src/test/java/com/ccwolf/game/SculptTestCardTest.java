@@ -3,6 +3,7 @@ package com.ccwolf.game;
 import com.ccwolf.game.art.Form;
 import com.ccwolf.game.art.Light;
 import com.ccwolf.game.art.PixelCanvas;
+import com.ccwolf.game.art.Pose;
 import com.ccwolf.game.art.Sculptor;
 import com.ccwolf.game.art.WolfPalette;
 import java.io.IOException;
@@ -34,7 +35,9 @@ public class SculptTestCardTest {
     @Test
     public void everyFormAndMaterialLit() throws IOException {
         int cols = 6;
-        int rows = 4;
+        // Derived, not guessed. Adding cells past a hard-coded row count draws them off the
+        // bottom of the sheet, where they pass the test and are never looked at.
+        int rows = (testCells().size() + cols - 1) / cols;
         PixelCanvas sheet = new PixelCanvas(cols * (CELL + PAD) + PAD,
                 rows * (CELL + PAD) * 2 + PAD * 3);
         sheet.fill(DARK);
@@ -142,6 +145,36 @@ public class SculptTestCardTest {
         lamp.glow(CELL / 2f, CELL / 2f, 30f, 1.1f);
         cells.add(lamp.light(light));
 
+        // --- ovoids: the shape almost everything organic actually is ---
+        for (float squash : new float[] {1f, 0.66f, 0.42f}) {
+            Sculptor e = new Sculptor(CELL, CELL);
+            e.ellipse(CELL / 2f, CELL / 2f, 54f, 54f * squash, 0f, 0f, 30f, Form.DOME, olive,
+                    Sculptor.CLOTH);
+            cells.add(e.light(light));
+        }
+        // At an angle, because a jaw is an ovoid tilted off the skull above it.
+        Sculptor tilted = new Sculptor(CELL, CELL);
+        tilted.ellipse(CELL / 2f, CELL / 2f, 56f, 30f, (float) Math.toRadians(35), 0f, 26f,
+                Form.DOME, olive, Sculptor.CLOTH);
+        cells.add(tilted.light(light));
+
+        // --- welded against stacked: the same two shapes, composited two ways ---
+        Sculptor welded = new Sculptor(CELL, CELL);
+        welded.weld(true);
+        welded.ellipse(CELL / 2f, CELL * 0.42f, 46f, 38f, 0f, 0f, 30f, Form.DOME, skinTone(),
+                Sculptor.CLOTH);
+        welded.ellipse(CELL / 2f, CELL * 0.66f, 30f, 26f, 0f, 0f, 24f, Form.DOME, skinTone(),
+                Sculptor.CLOTH);
+        welded.weld(false);
+        cells.add(welded.light(light));
+
+        Sculptor stacked2 = new Sculptor(CELL, CELL);
+        stacked2.ellipse(CELL / 2f, CELL * 0.42f, 46f, 38f, 0f, 0f, 30f, Form.DOME, skinTone(),
+                Sculptor.CLOTH);
+        stacked2.ellipse(CELL / 2f, CELL * 0.66f, 30f, 26f, 0f, 4f, 24f, Form.DOME, skinTone(),
+                Sculptor.CLOTH);
+        cells.add(stacked2.light(light));
+
         // --- a small assembly, to see whether the parts read as parts ---
         Sculptor rig = new Sculptor(CELL, CELL);
         rig.box(30, 46, 100, 62, 10f, 0f, 14f, Form.BEVEL, olive, Sculptor.PAINT);
@@ -155,6 +188,52 @@ public class SculptTestCardTest {
         cells.add(rig.light(light));
 
         return cells;
+    }
+
+    private int skinTone() {
+        return WolfPalette.shade(WolfPalette.FLESH, 2);
+    }
+
+    /**
+     * One shape at eight facings under the projection.
+     *
+     * <p>The question this answers is whether {@code Pose} produces one thing turning rather than
+     * eight unrelated pictures. A box longer than it is wide, with a mast at its bow, should
+     * sweep round the row: the mast leading when it faces east, hidden behind the hull when it
+     * faces north, nearest the camera when it faces south.
+     */
+    @Test
+    public void oneShapeAtEightFacings() throws IOException {
+        int cell = 180;
+        PixelCanvas sheet = new PixelCanvas(cell * 8 + 20, cell + 20);
+        sheet.fill(DARK);
+        for (int facing = 0; facing < 8; facing++) {
+            Sculptor s = new Sculptor(cell, cell);
+            Pose p = new Pose((float) (facing * Math.PI / 4.0), cell / 2f, cell * 0.62f, 1.05f);
+            int olive = WolfPalette.albedo(WolfPalette.OLIVE);
+            int steel = WolfPalette.albedo(WolfPalette.GUNMETAL);
+
+            // A hull: long fore-and-aft, short across, sitting on the ground. Its screen
+            // ellipse comes from the pose, because the axes turn with the facing as much as
+            // the position does.
+            float[] hull = new float[3];
+            p.groundEllipse(26, 46, hull);
+            s.ellipse(p.x(0, 0, 14), p.y(0, 0, 14), hull[0], hull[1], hull[2],
+                    p.depth(0, 0, 14), p.size(16), Form.BEVEL, olive, Sculptor.PAINT);
+            // A mast at the bow, which is what makes the facing legible at a glance.
+            s.capsule(p.x(0, 40, 0), p.y(0, 40, 0), p.x(0, 40, 54), p.y(0, 40, 54),
+                    p.size(5), p.depth(0, 40, 27), p.size(5), Form.ROUND, steel,
+                    Sculptor.STEEL);
+            s.disc(p.x(0, 40, 58), p.y(0, 40, 58), p.size(9), p.depth(0, 40, 58), p.size(9),
+                    Form.DOME, steel, Sculptor.STEEL);
+            // And a marker on the unit's own right, so a mirrored facing cannot pass unnoticed.
+            s.disc(p.x(22, 0, 30), p.y(22, 0, 30), p.size(7), p.depth(22, 0, 30), p.size(7),
+                    Form.DOME, WolfPalette.albedo(WolfPalette.BLOOD), Sculptor.PAINT);
+
+            sheet.blit(s.light(Light.overcast()), 10 + facing * cell, 10);
+        }
+        save(sheet, "sculpt-facings.png");
+        assertTrue(true);
     }
 
     private int distinctColours(PixelCanvas c) {

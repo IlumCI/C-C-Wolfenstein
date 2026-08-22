@@ -74,6 +74,7 @@ public final class Sculptor {
     private final float[] normalY;
     private final float[] material;
     private final float[] emissive;
+    private final float[] translucent;
     private final float[] step;
 
     /**
@@ -94,6 +95,19 @@ public final class Sculptor {
     private float frameSin;
     private boolean framed;
 
+    /**
+     * Whether strokes merge into what is under them instead of standing in front of it.
+     *
+     * <p>The depth test is right for a rifle lying on a coat and wrong for a jaw meeting a cheek.
+     * A face is one surface: z-testing its parts against each other puts a step down the middle
+     * of it, and the step register then draws a contact shadow along that step, so a head
+     * assembled from parts comes out looking assembled.
+     *
+     * <p>The rule, stated so it does not drift: <b>things that were bolted together stack;
+     * things that grew together weld.</b>
+     */
+    private boolean welding;
+
     /** What has actually been touched, so the lighting can skip the empty majority of a sprite. */
     private int dirtyX0;
     private int dirtyY0;
@@ -113,6 +127,7 @@ public final class Sculptor {
         this.normalY = new float[n];
         this.material = new float[n];
         this.emissive = new float[n];
+        this.translucent = new float[n];
         this.step = new float[n];
         this.dirtyX0 = width;
         this.dirtyY0 = height;
@@ -133,6 +148,18 @@ public final class Sculptor {
      * whatever the unit is doing — a ground shadow, a faction decal — are drawn with the frame
      * reset to zero.
      */
+    /**
+     * Turns welding on or off for the strokes that follow. See {@link #welding}.
+     *
+     * <p>Scoped by hand rather than by a block, because an organic assembly is usually a whole
+     * method — a skull, a torso — and wrapping every one of them in a lambda would cost more
+     * clarity than the discipline of turning it off again.
+     */
+    public Sculptor weld(boolean on) {
+        this.welding = on;
+        return this;
+    }
+
     public Sculptor facing(float radians) {
         frameCos = (float) Math.cos(-radians);
         frameSin = (float) Math.sin(-radians);
@@ -230,6 +257,112 @@ public final class Sculptor {
                 float uy = distance <= 1e-5f ? 0f : dy / distance;
                 deposit(x, y, distance - radius, d, frameDirX(ux, uy), frameDirY(ux, uy), turn,
                         base, stand, form, albedo, material);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * An ellipse, at an angle: the shape almost everything organic actually is.
+     *
+     * <p>The gap that made the first soldiers look like stacked balls. A skull seen from above is
+     * an ovoid — widest behind the ears, pinched at the temples, tapering to a jaw. A torso is an
+     * ovoid narrowing to a waist. A helmet is an ovoid with a flare. Built out of {@link #disc},
+     * every one of them comes out a sphere, and no amount of shading fixes a wrong shape.
+     *
+     * <p>Rotation matters as much as the two radii, because a jaw is an ovoid <em>at an angle</em>
+     * to the skull above it, and so is a shoulder to a chest.
+     *
+     * <p>An exact signed distance to an ellipse needs iteration; this uses the standard closed
+     * form, {@code k1(k1-1)/k2}, which is accurate near the boundary — which is the only place
+     * coverage is decided — and degrades gracefully well inside, where the form profile is
+     * driven by the normalised radius instead.
+     *
+     * @param rotation radians, clockwise on screen
+     */
+    public Sculptor ellipse(float cx, float cy, float rx, float ry, float rotation, float base,
+                            float stand, Form form, int albedo, float material) {
+        if (rx <= 0f || ry <= 0f) {
+            return this;
+        }
+        float cos = (float) Math.cos(-rotation);
+        float sin = (float) Math.sin(-rotation);
+        float reach = Math.max(rx, ry);
+        float turn = stand / Math.min(rx, ry);
+        int[] bounds = frameBounds(cx - reach - 1, cy - reach - 1, cx + reach + 1, cy + reach + 1);
+
+        for (int y = Math.max(0, bounds[1]); y <= Math.min(height - 1, bounds[3]); y++) {
+            for (int x = Math.max(0, bounds[0]); x <= Math.min(width - 1, bounds[2]); x++) {
+                float px = localX(x + 0.5f, y + 0.5f) - cx;
+                float py = localY(x + 0.5f, y + 0.5f) - cy;
+                // Into the ellipse's own frame, where it is axis-aligned.
+                float ex = px * cos - py * sin;
+                float ey = px * sin + py * cos;
+
+                float ax = ex / rx;
+                float ay = ey / ry;
+                float k1 = (float) Math.sqrt(ax * ax + ay * ay);
+                if (k1 > 2.5f) {
+                    continue;
+                }
+                float bx = ex / (rx * rx);
+                float by = ey / (ry * ry);
+                float k2 = (float) Math.sqrt(bx * bx + by * by);
+                float distance = k2 <= 1e-6f ? -Math.min(rx, ry) : k1 * (k1 - 1f) / k2;
+
+                // The outward normal of an ellipse points along the gradient, not along the
+                // radius - which is the whole difference between an egg and a stretched ball.
+                float ux = 0f;
+                float uy = 0f;
+                if (k2 > 1e-6f) {
+                    float gx = bx / k2;
+                    float gy = by / k2;
+                    ux = gx * cos + gy * sin;
+                    uy = -gx * sin + gy * cos;
+                }
+                deposit(x, y, distance, Math.min(1f, k1), ux, uy, turn, base, stand, form,
+                        albedo, material);
+            }
+        }
+        return this;
+    }
+
+    /** An elliptical hollow: an eye socket, a dished helmet, a cheek. */
+    public Sculptor carveEllipse(float cx, float cy, float rx, float ry, float rotation,
+                                 float depth, Form form) {
+        if (rx <= 0f || ry <= 0f) {
+            return this;
+        }
+        float cos = (float) Math.cos(-rotation);
+        float sin = (float) Math.sin(-rotation);
+        float reach = Math.max(rx, ry);
+        float turn = depth / Math.min(rx, ry);
+        int[] bounds = frameBounds(cx - reach - 1, cy - reach - 1, cx + reach + 1, cy + reach + 1);
+
+        for (int y = Math.max(0, bounds[1]); y <= Math.min(height - 1, bounds[3]); y++) {
+            for (int x = Math.max(0, bounds[0]); x <= Math.min(width - 1, bounds[2]); x++) {
+                float px = localX(x + 0.5f, y + 0.5f) - cx;
+                float py = localY(x + 0.5f, y + 0.5f) - cy;
+                float ex = px * cos - py * sin;
+                float ey = px * sin + py * cos;
+                float ax = ex / rx;
+                float ay = ey / ry;
+                float k1 = (float) Math.sqrt(ax * ax + ay * ay);
+                if (k1 >= 1f) {
+                    continue;
+                }
+                float bx = ex / (rx * rx);
+                float by = ey / (ry * ry);
+                float k2 = (float) Math.sqrt(bx * bx + by * by);
+                float ux = 0f;
+                float uy = 0f;
+                if (k2 > 1e-6f) {
+                    float gx = bx / k2;
+                    float gy = by / k2;
+                    ux = gx * cos + gy * sin;
+                    uy = -gx * sin + gy * cos;
+                }
+                cut(x, y, k1, ux, uy, turn, depth, form);
             }
         }
         return this;
@@ -569,6 +702,42 @@ public final class Sculptor {
     }
 
     /**
+     * Marks a region as flesh: light goes into it and comes back out warm.
+     *
+     * <p>Everything else in this engine reflects. Skin does not — a good deal of the light
+     * landing on a face enters it, scatters through blood and comes back out somewhere near
+     * where it went in, which is why the shaded side of a cheek is reddish and the shaded side
+     * of a helmet is blue-grey. Shade skin with the same model as painted steel and you get a
+     * mannequin: the value is right and it is unmistakably not alive.
+     *
+     * <p>So the lighting adds a warm term that is <em>strongest where the key is weakest</em>,
+     * which is the opposite of every other term in the model and is the whole trick. It also
+     * rides on how thin the flesh is, and thin is where light gets through: an ear, the ridge of
+     * a nose, the rim of a jaw. Approximated here by the surface turning away from the viewer,
+     * which at this scale is close enough and costs nothing.
+     */
+    public Sculptor flesh(float cx, float cy, float radius, float amount) {
+        for (int py = Math.max(0, (int) (cy - radius)); py <= Math.min(height - 1,
+                (int) (cy + radius)); py++) {
+            for (int px = Math.max(0, (int) (cx - radius)); px <= Math.min(width - 1,
+                    (int) (cx + radius)); px++) {
+                int index = py * width + px;
+                if (cover[index] <= 0f) {
+                    continue;
+                }
+                float dx = px + 0.5f - cx;
+                float dy = py + 0.5f - cy;
+                float d = (float) Math.sqrt(dx * dx + dy * dy) / radius;
+                if (d >= 1f) {
+                    continue;
+                }
+                translucent[index] = Math.max(translucent[index], amount * (1f - d * d));
+            }
+        }
+        return this;
+    }
+
+    /**
      * Marks a region as making its own light.
      *
      * <p>Emissive survives the lighting untouched — not shaded, not occluded, not shadowed —
@@ -621,12 +790,19 @@ public final class Sculptor {
         float standing = base + stand * form.profile(d);
         float behind = depth[index];
         boolean covered = cover[index] > 0.5f;
-        // A stroke only takes a pixel it stands in front of. On empty ground anything wins.
-        if (covered && standing < behind) {
-            return;
-        }
-        if (covered && standing - behind > STEP) {
-            step[index] = Math.max(step[index], Math.min(1f, (standing - behind) / STEP - 1f));
+        if (welding) {
+            // Merged, not stacked: the taller of the two surfaces, and no step recorded, so
+            // nothing draws a contact shadow along a join that is not a join.
+            standing = covered ? Math.max(standing, behind) : standing;
+        } else {
+            // A stroke only takes a pixel it stands in front of. On empty ground anything wins.
+            if (covered && standing < behind) {
+                return;
+            }
+            if (covered && standing - behind > STEP) {
+                step[index] = Math.max(step[index],
+                        Math.min(1f, (standing - behind) / STEP - 1f));
+            }
         }
 
         float ar = ((albedo >> 16) & 0xFF) / 255f;
@@ -767,6 +943,19 @@ public final class Sculptor {
                         + keyG * specular + rimG * rim;
                 float b = blue[index] * (ambB * ao + bounceB * bounce + keyB * lit)
                         + keyB * specular + rimB * rim;
+
+                // Subsurface: warm light coming back out of flesh, strongest where the key is
+                // weakest and where the surface has turned away. Added before emissive and
+                // after everything that could darken it, because scattered light does not
+                // care about the occlusion of the surface it leaves through.
+                float skin = translucent[index];
+                if (skin > 0f) {
+                    float through = (1f - lambert) * (0.35f + 0.65f * (1f - nz));
+                    float warm = skin * through * light.subsurface;
+                    r += red[index] * warm * 0.85f;
+                    g += green[index] * warm * 0.34f;
+                    b += blue[index] * warm * 0.26f;
+                }
 
                 float glow = emissive[index];
                 if (glow > 0f) {
