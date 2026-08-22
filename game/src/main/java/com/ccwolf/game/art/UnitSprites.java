@@ -850,11 +850,12 @@ public final class UnitSprites {
         c.rect(cx - 19, cy - 9, 3, 3, WolfPalette.shade(metal, 3));
         c.rect(cx - 19, cy + 7, 3, 3, WolfPalette.shade(metal, 3));
         // Lashed-down canvas over the ready rounds.
-        c.panel(cx - 14, cy - 4, 8, 9, cloth, 2);
+        deck(c, cx - 14, cy - 4, 8, 9, cloth, 2);
         c.hLine(cx - 14, cx - 7, cy, WolfPalette.shade(timber, 1));
 
         // --- shield: sheet steel, chipped, with a hand-painted mark -----------------------
         c.rect(cx - 3, cy - 12, 6, 24, WolfPalette.shade(steel, 2));
+        c.rampVertical(cx - 3, cy - 12, 6, 24, steel, 1, 3);
         c.vLine(cx - 3, cy - 12, cy + 11, WolfPalette.shade(steel, 0));
         c.vLine(cx + 2, cy - 12, cy + 11, WolfPalette.shade(steel, 4));
         // Rolled top and bottom edges, so the plate reads as a plate and not as the barrel.
@@ -866,11 +867,12 @@ public final class UnitSprites {
         c.ellipse(cx - 1, cy - 6, 2, 2, WolfPalette.shade(steel, 2));
 
         // --- breech and barrel, recoiling between frames ----------------------------------
+        // The shield stands proud of the cart, so it throws onto it before the gun goes on.
+        contactShadow(c, cx - 3, cy - 12, 6, 24, timber);
         c.panel(cx + 1, cy - 4, 7, 8, metal, 2);
-        c.rect(cx + 7 - recoil, cy - 2, 15, 4, WolfPalette.shade(metal, 2));
-        c.hLine(cx + 7 - recoil, cx + 21 - recoil, cy - 2, WolfPalette.shade(metal, 1));
-        c.hLine(cx + 7 - recoil, cx + 21 - recoil, cy + 1, WolfPalette.shade(metal, 4));
+        tube(c, cx + 7 - recoil, cx + 22 - recoil, cy, 2, metal);
         c.rect(cx + 20 - recoil, cy - 3, 3, 6, WolfPalette.shade(metal, 3));
+        c.hLine(cx + 20 - recoil, cx + 22 - recoil, cy - 3, WolfPalette.shade(metal, 1));
 
         // --- crew: two men, so that a hit on this reads as men being hit ------------------
         crewman(c, cx - 8, cy - 11, cloth);
@@ -879,57 +881,84 @@ public final class UnitSprites {
     }
 
     /**
-     * A rack of tubes on a low chassis. 1970s, and squared off everywhere the Feldkanone is not.
+     * A launcher truck: a cab, a flatbed, and four tubes pointing off the end of it.
      *
-     * <p>Drawn at {@link #HEAVY_SIZE}: twice a man's frontage, so it reads as equipment that
-     * needs a road rather than something a section carries.
+     * <p>1970s factory work, and squared off everywhere the Feldkanone is not. Drawn at
+     * {@link #HEAVY_SIZE} — twice a man's frontage, so it reads as something that needs a road.
+     *
+     * <p>The first version of this looked like a robot vacuum cleaner, for three reasons worth
+     * writing down because they are all easy to repeat. Its eight tubes were graduated in
+     * length, which rounded the front edge into a lozenge. The hazard striping ran all the way
+     * round the hull, which turned that lozenge into a bumper. And the tubes were three pixels
+     * thick with one pixel between them, which at any distance is not a rack of tubes, it is a
+     * brush roller.
+     *
+     * <p>So: four tubes, all the same length, thick enough to be told apart, protruding well
+     * clear of the bed so their mouths line up in open air. Square corners, wheels rather than
+     * full-width tracks — the Resonanzkanone is the tracked one — and striping only on the cab.
+     * Four is also what the weapon's salvo actually is, so the sprite says what the gun does.
      */
     private static PixelCanvas nebelwerfer(int frame) {
         PixelCanvas c = new PixelCanvas(HEAVY_SIZE, HEAVY_SIZE);
         int[] body = WolfPalette.NIGHT;
         int[] metal = WolfPalette.GUNMETAL;
         int[] brass = WolfPalette.BRASS;
-        int cx = 32;
         int cy = 32;
         int lit = frame == 1 ? 1 : 0;
 
-        // --- chassis: flat, wide, and obviously made in a factory -------------------------
+        int cabLeft = 3;
+        int cabRight = 18;
+        int bedRight = 44;
+        int tubeLeft = 20;
+        int tubeRight = 57;
+
+        // --- road wheels, three pairs under the bed ---------------------------------------
         for (int side = -1; side <= 1; side += 2) {
-            int wy = cy + side * 16;
-            c.rect(cx - 20, wy - 4, 34, 8, WolfPalette.shade(metal, 4));
-            c.hLine(cx - 20, cx + 13, wy - 4, WolfPalette.shade(metal, 2));
-            c.hLine(cx - 20, cx + 13, wy + 3, WolfPalette.shade(body, 4));
-            for (int t = 0; t < 16; t++) {
-                c.vLine(cx - 19 + t * 2, wy - 3, wy + 2, WolfPalette.shade(metal, 3));
+            int wy = cy + side * 17;
+            for (int pair = 0; pair < 3; pair++) {
+                int wx = cabLeft + 4 + pair * 13;
+                c.rect(wx, wy - 3, 10, 6, WolfPalette.shade(metal, 4));
+                c.hLine(wx, wx + 9, wy - 3, WolfPalette.shade(metal, 2));
+                c.ellipse(wx + 4, wy, 2, 2, WolfPalette.shade(metal, 3));
             }
         }
-        c.panel(cx - 22, cy - 13, 38, 26, body, 1);
-        c.rivets(cx - 21, cy - 12, 36, 24, 6, WolfPalette.shade(metal, 1),
-                WolfPalette.shade(metal, 4));
-        c.hazard(cx - 22, cy - 15, 38, 3, WolfPalette.shade(brass, 1),
-                WolfPalette.shade(body, 3));
 
-        // --- cab: an armoured box at the front left, with a vision slit -------------------
-        c.panel(cx - 20, cy - 10, 12, 20, body, 0);
-        c.rect(cx - 20, cy - 3, 2, 6, WolfPalette.shade(metal, 4));
+        // --- flatbed: square corners, nothing rounded anywhere ----------------------------
+        deck(c, cabLeft, cy - 14, bedRight - cabLeft, 29, body, 1);
+        c.rivets(cabLeft + 1, cy - 13, bedRight - cabLeft - 2, 27, 6,
+                WolfPalette.shade(metal, 1), WolfPalette.shade(metal, 4));
 
-        // --- the rack: eight tubes with air between them ----------------------------------
-        for (int tube = 0; tube < 8; tube++) {
-            int ty = cy - 14 + tube * 4;
-            int length = 30 - Math.abs(tube - 3) * 2;
-            int tx = cx - 4;
-            c.rect(tx, ty, length, 3, WolfPalette.shade(metal, 3));
-            c.hLine(tx, tx + length - 1, ty, WolfPalette.shade(metal, 1));
-            c.hLine(tx, tx + length - 1, ty + 2, WolfPalette.shade(body, 4));
-            c.rect(tx + length - 3, ty, 3, 3,
-                    WolfPalette.shade(brass, lit == 1 && tube % 2 == 0 ? 0 : 2));
+        // --- cab: an armoured box at the rear, with a vision slit and the only striping ----
+        contactShadow(c, cabLeft, cy - 11, cabRight - cabLeft, 23, body);
+        deck(c, cabLeft, cy - 11, cabRight - cabLeft, 23, body, 0);
+        c.rect(cabLeft, cy - 4, 2, 8, WolfPalette.shade(metal, 4));
+        c.hazard(cabLeft, cy - 14, cabRight - cabLeft, 3,
+                WolfPalette.shade(brass, 1), WolfPalette.shade(body, 3));
+
+        // --- elevation frame: two uprights holding the rack off the bed --------------------
+        c.rect(tubeLeft, cy - 16, 3, 33, WolfPalette.shade(metal, 2));
+        c.vLine(tubeLeft, cy - 16, cy + 16, WolfPalette.shade(metal, 1));
+        c.rect(bedRight - 6, cy - 16, 3, 33, WolfPalette.shade(metal, 2));
+        c.vLine(bedRight - 6, cy - 16, cy + 16, WolfPalette.shade(metal, 1));
+
+        // --- the rack: four tubes, equal length, mouths lined up in open air ---------------
+        // The whole rack stands off the bed, so it throws onto it first - over the bed only,
+        // since past the tailgate there is nothing underneath for a shadow to land on.
+        for (int t = 0; t < 4; t++) {
+            contactShadow(c, tubeLeft, cy - 14 + t * 8, bedRight - tubeLeft, 5, body);
         }
-        // Elevation frame holding the rack up at the back.
-        c.rect(cx - 7, cy - 16, 4, 32, WolfPalette.shade(metal, 2));
-        c.vLine(cx - 7, cy - 16, cy + 15, WolfPalette.shade(metal, 1));
+        for (int t = 0; t < 4; t++) {
+            int ty = cy - 14 + t * 8;
+            tube(c, tubeLeft, tubeRight, ty + 2, 2, metal);
+            // Mouth: a brass ring, hot on the frame where that tube is the one firing.
+            c.rect(tubeRight - 3, ty, 3, 5,
+                    WolfPalette.shade(brass, lit == 1 && t % 2 == 0 ? 0 : 2));
+            c.rect(tubeRight - 2, ty + 1, 2, 3, WolfPalette.shade(body, 4));
+        }
 
-        crewman(c, cx - 26, cy - 16, body);
-        crewman(c, cx - 27, cy + 13, body);
+        skullStencil(c, cabLeft + 8, cy - 8);
+        crewman(c, cabLeft + 2, cy - 18, body);
+        crewman(c, cabLeft + 2, cy + 18, body);
         return c;
     }
 
@@ -1005,7 +1034,8 @@ public final class UnitSprites {
         }
 
         // --- hull: long, riveted, and with nothing decorative on it -----------------------
-        c.panel(hullLeft, cy - hullHalf, hullRight - hullLeft, hullHalf * 2 + 1, night, 1);
+        contactShadow(c, hullLeft, cy - hullHalf, hullRight - hullLeft, hullHalf * 2 + 1, metal);
+        deck(c, hullLeft, cy - hullHalf, hullRight - hullLeft, hullHalf * 2 + 1, night, 1);
         c.rivets(hullLeft + 2, cy - hullHalf + 2, hullRight - hullLeft - 4, hullHalf * 2 - 3,
                 8, WolfPalette.shade(steel, 2), WolfPalette.shade(night, 4));
         c.hazard(hullLeft, cy - hullHalf - 3, hullRight - hullLeft, 3,
@@ -1014,7 +1044,8 @@ public final class UnitSprites {
                 WolfPalette.shade(WolfPalette.BRASS, 1), WolfPalette.shade(night, 3));
 
         // --- deckhouse: a raised block forward of the gun, with a conning slit -------------
-        c.panel(hullLeft + 6, cy - 13, 26, 27, night, 0);
+        contactShadow(c, hullLeft + 6, cy - 13, 26, 27, night);
+        deck(c, hullLeft + 6, cy - 13, 26, 27, night, 0);
         c.rivets(hullLeft + 7, cy - 12, 24, 25, 7, WolfPalette.shade(steel, 1),
                 WolfPalette.shade(night, 4));
         c.rect(hullLeft + 6, cy - 3, 3, 7, WolfPalette.shade(metal, 4));
@@ -1029,6 +1060,7 @@ public final class UnitSprites {
         }
 
         // --- barbette: a ring, not a dome. Dark, so the deck reads through it --------------
+        c.ellipse(barbetteX + 2, cy + 2, 14, 15, WolfPalette.shade(night, 4));
         c.ellipse(barbetteX, cy, 14, 15, WolfPalette.shade(steel, 4));
         c.ellipse(barbetteX, cy, 12, 13, WolfPalette.shade(steel, 3));
         c.ellipse(barbetteX, cy, 9, 10, WolfPalette.shade(night, 2));
@@ -1036,17 +1068,13 @@ public final class UnitSprites {
                 WolfPalette.shade(steel, 4));
 
         // --- breech: a mass of steel with the sliding block showing ------------------------
-        c.panel(barbetteX + 2, cy - 12, breechRight - barbetteX - 2, 25, steel, 3);
+        deck(c, barbetteX + 2, cy - 12, breechRight - barbetteX - 2, 25, steel, 2);
         c.hLine(barbetteX + 2, breechRight - 1, cy - 2, WolfPalette.shade(steel, 4));
         c.hLine(barbetteX + 2, breechRight - 1, cy + 2, WolfPalette.shade(steel, 1));
         c.vLine(breechRight - 1, cy - 6, cy + 5, WolfPalette.shade(glow, charge + 2));
 
         // --- the barrel: long and thin, sticking well clear of the hull -------------------
-        c.rect(breechRight, cy - 5, barrelRight - breechRight, 11, WolfPalette.shade(metal, 3));
-        c.hLine(breechRight, barrelRight - 1, cy - 5, WolfPalette.shade(metal, 1));
-        c.hLine(breechRight, barrelRight - 1, cy - 4, WolfPalette.shade(metal, 2));
-        c.hLine(breechRight, barrelRight - 1, cy + 4, WolfPalette.shade(night, 3));
-        c.hLine(breechRight, barrelRight - 1, cy + 5, WolfPalette.shade(night, 4));
+        tube(c, breechRight, barrelRight, cy, 5, metal);
         for (int rib = 0; rib < 4; rib++) {
             c.vLine(breechRight + 2 + rib * 2, cy - 3, cy + 3, WolfPalette.shade(metal, 2));
         }
@@ -1085,6 +1113,52 @@ public final class UnitSprites {
         crewman(c, hullLeft + 36, cy - 6, night);
         crewman(c, hullLeft + 36, cy + 6, night);
         return c;
+    }
+
+    /**
+     * A horizontal cylinder seen from above.
+     *
+     * <p>Flat fill with one bright line on top is what a plank looks like. A barrel is round,
+     * and the thing that says so is a gradient across it — bright where it faces the light,
+     * black where it turns away — with a hard specular line along the top edge.
+     *
+     * <p>Everything in this file is lit from the <b>north-west</b>. That is not a preference,
+     * it is a contract: a sprite lit from anywhere else sits in the same field as the rest and
+     * makes the whole scene look lit from nowhere.
+     */
+    private static void tube(PixelCanvas c, int left, int right, int cy, int half, int[] ramp) {
+        c.rampVertical(left, cy - half, right - left, half * 2 + 1, ramp, 1, 4);
+        c.hLine(left, right - 1, cy - half, WolfPalette.shade(ramp, 0));
+        c.hLine(left, right - 1, cy + half, WolfPalette.shade(ramp, 4));
+    }
+
+    /**
+     * A large flat plate, with the slight curvature a real one has.
+     *
+     * <p>{@link PixelCanvas#panel} gives a plate crisp edges and a dead-flat middle, which is
+     * right for a small fitting and wrong for a deck the size of a hull: a big uniform fill is
+     * the single thing that most makes a top-down sprite look like a sticker. Ramping the
+     * interior from the same north-west light gives it a top that catches and a bottom that
+     * falls away, and costs nothing.
+     */
+    private static void deck(PixelCanvas c, int x, int y, int w, int h, int[] ramp, int base) {
+        c.rampVertical(x, y, w, h, ramp, base, base + 2);
+        c.bevel(x, y, w, h, WolfPalette.shade(ramp, base - 1), WolfPalette.shade(ramp, base + 3));
+    }
+
+    /**
+     * The shadow a raised part throws onto the surface underneath it.
+     *
+     * <p>Down and to the right, following the same north-west light. This is most of what makes
+     * a top-down sprite read as having height at all: without it a gun barrel and a stripe
+     * painted on the deck are the same picture.
+     *
+     * <p>Opaque, drawn from the surface's own ramp rather than as translucent black, because
+     * {@link PixelCanvas#px} writes colours straight in without blending — a translucent shadow
+     * here would punch a half-transparent hole through the hull rather than darken it.
+     */
+    private static void contactShadow(PixelCanvas c, int x, int y, int w, int h, int[] ramp) {
+        c.rect(x + 2, y + 2, w, h, WolfPalette.shade(ramp, 4));
     }
 
     /**
