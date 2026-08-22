@@ -1,10 +1,10 @@
 package com.ccwolf.game;
 
 import com.ccwolf.game.art.Anatomy;
-import com.ccwolf.game.art.Form;
 import com.ccwolf.game.art.Light;
 import com.ccwolf.game.art.Machine;
 import com.ccwolf.game.art.PixelCanvas;
+import com.ccwolf.game.art.Pose;
 import com.ccwolf.game.art.Sculptor;
 import com.ccwolf.game.art.WolfPalette;
 import java.io.IOException;
@@ -12,21 +12,16 @@ import org.junit.Test;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Two soldiers, and the two things about people this engine had to be taught.
+ * A man, built out of anatomy rather than out of circles.
  *
- * <p>The first is skin. Everything else in the game reflects light; flesh passes it through and
- * gives it back warm, which is why a shadowed cheek is reddish where a shadowed helmet is
- * blue-grey. Shade a face with the same model as painted steel and the value comes out right and
- * the man comes out dead.
+ * <p>The first attempt at this came out as a skittle, and the diagnosis was structural: no
+ * ellipse in the engine, a sphere for a head, screen coordinates instead of a body frame, and
+ * both arms in the same place. All four are fixed underneath this, and this is where that gets
+ * checked.
  *
- * <p>The second is that a face at this size cannot be drawn. A head is a couple of dozen pixels
- * across; an eye painted as two dark pixels is two dark pixels and reads as damage. An eye
- * <em>socket</em> is a hollow, a hollow holds a shadow, and a shadow is legible at any size. Every
- * feature here is geometry — brow ridge, carved sockets, a nose that is a ridge, a mouth that is
- * a groove — and the lighting finds all of them.
- *
- * <p>The sheet is laid out to show the faction difference doing real work: the Kreisau Circle
- * shows faces, and the Regime does not have one to show.
+ * <p>Two sheets, because they answer different questions. Heads large, where the skull assembly
+ * and the carved face are actually reviewable; and a figure at eight facings, where the only
+ * question is whether it is one man turning.
  */
 public class SculptSoldierTest {
 
@@ -34,146 +29,133 @@ public class SculptSoldierTest {
         Frame.useAwtBackend();
     }
 
-    private static final int SIZE = 128;
+    private static final int SIZE = 160;
+
+    /** Pixels per centimetre. A hundred and seventy-five tall man fills most of the canvas. */
+    private static final float SCALE = 0.82f;
+
+    private Pose poseFor(int facing, int size, float scale) {
+        return new Pose((float) (facing * Math.PI / 4.0), size / 2f, size * 0.90f, scale);
+    }
 
     @Test
-    public void bothSidesAtEveryFacing() throws IOException {
-        PixelCanvas sheet = new PixelCanvas(SIZE * 8 + 20, SIZE * 2 + 30);
+    public void oneManAtEightFacings() throws IOException {
+        PixelCanvas sheet = new PixelCanvas(SIZE * 8 + 20, SIZE + 20);
         sheet.fill(0xFF23251E);
         for (int facing = 0; facing < 8; facing++) {
-            sheet.blit(partisan(facing, 0).light(Light.overcast()), 10 + facing * SIZE, 10);
-            sheet.blit(soldat(facing, 0).light(Light.overcast()), 10 + facing * SIZE,
-                    SIZE + 20);
+            Sculptor s = new Sculptor(SIZE, SIZE);
+            partisan(s, poseFor(facing, SIZE, SCALE), 0);
+            sheet.blit(s.light(Light.overcast()), 10 + facing * SIZE, 10);
         }
         save(sheet, "sculpt-soldiers.png");
         assertTrue(true);
     }
 
-    /** The same two heads, large, because a face is not reviewable at twenty pixels. */
+    /**
+     * The skull, large, at three angles.
+     *
+     * <p>Bare on the top row so the assembly is visible, then under each of the three helmets the
+     * Kreisau Circle actually wears. The helmets are the variety axis, so what matters is that
+     * the three read as three shapes rather than as three colours.
+     */
     @Test
     public void headsCloseUp() throws IOException {
-        int big = 256;
+        int big = 300;
+        float scale = 8.5f;
         PixelCanvas sheet = new PixelCanvas(big * 3 + 40, big * 2 + 30);
         sheet.fill(0xFF23251E);
 
-        // Straight at the camera, three-quarters, and turned away: the face should arrive and
-        // leave rather than switch on.
-        // Bare head on the top row so the face is actually visible, helmeted below it: the
-        // first version drew only the helmeted pair and the helmet covered the thing under
-        // review, which is a way to look at something without seeing it.
-        float[] toward = {1f, 0.5f, 0f};
+        float[] toward = {2f, 1f, 6f};
         for (int i = 0; i < 3; i++) {
             int skin = WolfPalette.shade(WolfPalette.FLESH, 2);
+            // Facings 2, 1 and 6: straight at the camera, three-quarters, and away.
+            Pose p = new Pose((float) (toward[i] * Math.PI / 4.0), big / 2f, big * 0.62f, scale);
+
             Sculptor bare = new Sculptor(big, big);
-            Anatomy.head(bare, big / 2f, big / 2f, big * 0.30f, 0f, skin, toward[i]);
+            Anatomy.skull(bare, p, 0f, 0f, 0f, skin);
             sheet.blit(bare.light(Light.overcast()), 10 + i * (big + 10), 10);
 
             Sculptor lidded = new Sculptor(big, big);
-            Anatomy.head(lidded, big / 2f, big * 0.55f, big * 0.26f, 0f, skin, toward[i]);
-            Anatomy.helmet(lidded, big / 2f, big * 0.46f, big * 0.28f, big * 0.20f,
-                    WolfPalette.shade(WolfPalette.LEATHER, 2), toward[i]);
+            Anatomy.skull(lidded, p, 0f, 0f, 0f, skin);
+            int kit = WolfPalette.shade(WolfPalette.OLIVE, 1);
+            if (i == 0) {
+                Anatomy.potHelmet(lidded, p, 0f, 0f, 4f, kit);
+            } else if (i == 1) {
+                Anatomy.dishHelmet(lidded, p, 0f, 0f, 5f, kit);
+            } else {
+                Anatomy.stahlhelm(lidded, p, 0f, 0f, 3f,
+                        WolfPalette.albedo(WolfPalette.NIGHT));
+            }
             sheet.blit(lidded.light(Light.overcast()), 10 + i * (big + 10), big + 20);
         }
         save(sheet, "sculpt-heads.png");
         assertTrue(true);
     }
 
-    // --- the two figures --------------------------------------------------------------------
-
-    /** How much of a facing points at the camera. South is toward the viewer. */
-    private float toward(int facing) {
-        float a = (float) (facing * Math.PI / 4.0);
-        float dy = (float) Math.sin(a);
-        return Math.max(0f, dy);
-    }
-
-    private Sculptor partisan(int facing, int frame) {
-        Sculptor s = new Sculptor(SIZE, SIZE);
-        int coat = WolfPalette.albedo(WolfPalette.OLIVE);
-        int leather = WolfPalette.albedo(WolfPalette.LEATHER);
-        int skin = WolfPalette.shade(WolfPalette.FLESH, 2);
-        float t = toward(facing);
-
-        figure(s, facing, frame, coat, leather, 3);
-        Anatomy.head(s, SIZE * 0.5f, SIZE * 0.33f, SIZE * 0.060f, SIZE * 0.46f, skin, t);
-        // A soft cap rather than a helmet: this is a farm rebellion, not an army.
-        s.disc(SIZE * 0.5f, SIZE * 0.318f, SIZE * 0.066f, SIZE * 0.53f, SIZE * 0.032f,
-                Form.DOME, leather, Sculptor.CLOTH);
-        s.disc(SIZE * 0.5f, SIZE * 0.336f, SIZE * 0.076f, SIZE * 0.51f, SIZE * 0.012f,
-                Form.BEVEL, leather, Sculptor.CLOTH);
-        // The armband, which is all the uniform they have.
-        s.box(SIZE * 0.325f, SIZE * 0.44f, SIZE * 0.05f, SIZE * 0.055f, SIZE * 0.01f,
-                SIZE * 0.30f, SIZE * 0.012f, Form.BEVEL,
-                WolfPalette.albedo(WolfPalette.BLOOD), Sculptor.CLOTH);
-        rifle(s, facing);
-        return s;
-    }
-
-    private Sculptor soldat(int facing, int frame) {
-        Sculptor s = new Sculptor(SIZE, SIZE);
-        int coat = WolfPalette.albedo(WolfPalette.NIGHT);
-        int leather = WolfPalette.shade(WolfPalette.NIGHT, 1);
-        float t = toward(facing);
-
-        figure(s, facing, frame, coat, leather, 11);
-        // No face at all: a mask, and two lenses where the eyes would be. The Regime's men are
-        // not people you can see, and that is the point of them.
-        Anatomy.head(s, SIZE * 0.5f, SIZE * 0.33f, SIZE * 0.056f, SIZE * 0.46f,
-                WolfPalette.shade(WolfPalette.NIGHT, 1), 0f);
-        if (t > 0.02f) {
-            Anatomy.gasMask(s, SIZE * 0.5f, SIZE * 0.342f, SIZE * 0.054f, SIZE * 0.52f,
-                    leather, WolfPalette.albedo(WolfPalette.RESONANCE),
-                    WolfPalette.albedo(WolfPalette.GUNMETAL));
+    /**
+     * The same heads at the size they are actually seen, beside the size they are reviewed at.
+     *
+     * <p>Worth its own sheet because it settles an argument. A head in this game is about twenty
+     * pixels across; the review sheet draws it at three hundred, which is fifteen times larger
+     * than it will ever appear. Every hour spent perfecting a mouth is an hour spent on four
+     * pixels, and the thing that actually tells a soldier from a bollard at twenty pixels is the
+     * helmet's outline and the line of the shoulders.
+     */
+    @Test
+    public void aHeadAtTheSizeItIsActuallySeen() throws IOException {
+        int[] sizes = {300, 96, 40, 20};
+        PixelCanvas sheet = new PixelCanvas(520, 320);
+        sheet.fill(0xFF23251E);
+        int x = 10;
+        for (int size : sizes) {
+            Sculptor s = new Sculptor(size, size);
+            Pose p = new Pose((float) (2 * Math.PI / 4.0), size / 2f, size * 0.60f,
+                    size * 0.0283f);
+            Anatomy.skull(s, p, 0f, 0f, 0f, WolfPalette.shade(WolfPalette.FLESH, 2));
+            Anatomy.potHelmet(s, p, 0f, 0f, 4f, WolfPalette.shade(WolfPalette.OLIVE, 1));
+            sheet.blit(s.light(Light.overcast()), x, 10);
+            x += size + 10;
         }
-        Anatomy.helmet(s, SIZE * 0.5f, SIZE * 0.318f, SIZE * 0.070f, SIZE * 0.58f, coat, t);
-        rifle(s, facing);
-        return s;
+        save(sheet, "sculpt-head-scales.png");
+        assertTrue(true);
     }
 
-    /** Everything below the neck, which both sides share. */
-    private void figure(Sculptor s, int facing, int frame, int cloth, int leather, int seed) {
-        float cx = SIZE * 0.5f;
-        int step = frame == 1 ? 1 : 0;
+    // --- the figure ---------------------------------------------------------------------------
 
-        // No ground shadow here. Coverage is alpha in this engine, so an opaque black disc is
-        // an opaque black disc - the first version put a solid blob under every man. A cast
-        // shadow on the ground is the renderer's job anyway: it is not part of the figure, and
-        // drawn there it can soften and scale with the camera for free.
+    /** A Kreisau partisan in salvaged Allied kit. */
+    private void partisan(Sculptor s, Pose p, int frame) {
+        int blouse = WolfPalette.shade(WolfPalette.OLIVE, 1);
+        int canvas = WolfPalette.albedo(WolfPalette.LEATHER);
+        int leather = WolfPalette.shade(WolfPalette.LEATHER, 2);
+        int skin = WolfPalette.shade(WolfPalette.FLESH, 2);
+        float stride = frame == 1 ? 7f : 0f;
 
-        Anatomy.boot(s, cx - SIZE * 0.065f, SIZE * 0.80f + step * SIZE * 0.02f, SIZE * 0.075f,
-                SIZE * 0.02f, leather);
-        Anatomy.boot(s, cx + SIZE * 0.065f, SIZE * 0.80f - step * SIZE * 0.02f, SIZE * 0.075f,
-                SIZE * 0.02f, leather);
-        Anatomy.limb(s, cx - SIZE * 0.055f, SIZE * 0.63f, cx - SIZE * 0.065f, SIZE * 0.78f,
-                SIZE * 0.038f, SIZE * 0.10f, cloth);
-        Anatomy.limb(s, cx + SIZE * 0.055f, SIZE * 0.63f, cx + SIZE * 0.065f, SIZE * 0.78f,
-                SIZE * 0.038f, SIZE * 0.10f, cloth);
-
-        Anatomy.torso(s, cx, SIZE * 0.545f, SIZE * 0.175f, SIZE * 0.30f, SIZE * 0.20f, cloth, seed);
-        Anatomy.webbing(s, cx, SIZE * 0.625f, SIZE * 0.175f, SIZE * 0.30f, leather, leather);
-        Anatomy.shoulders(s, cx, SIZE * 0.435f, SIZE * 0.215f, SIZE * 0.32f, cloth);
-        Anatomy.limb(s, cx - SIZE * 0.11f, SIZE * 0.47f, cx - SIZE * 0.085f, SIZE * 0.60f,
-                SIZE * 0.032f, SIZE * 0.28f, cloth);
-        Anatomy.limb(s, cx + SIZE * 0.11f, SIZE * 0.47f, cx + SIZE * 0.085f, SIZE * 0.60f,
-                SIZE * 0.032f, SIZE * 0.28f, cloth);
+        Anatomy.leg(s, p, -7f, stride, blouse, leather);
+        Anatomy.leg(s, p, 7f, -stride, blouse, leather);
+        Anatomy.skirt(s, p, 0f, 0f, blouse, 5);
+        Anatomy.torso(s, p, 0f, 0f, blouse, 3);
+        Anatomy.webbing(s, p, 0f, canvas, canvas);
+        Anatomy.shoulders(s, p, 0f, 0f, blouse);
+        Anatomy.armsAtTheReady(s, p, 0f, blouse, skin);
+        Anatomy.skull(s, p, 0f, 2f, 158f, skin);
+        Anatomy.potHelmet(s, p, 0f, 1f, 162f, blouse);
+        smg(s, p);
     }
 
-    /** A rifle held across the body, pointing where the man is looking. */
-    private void rifle(Sculptor s, int facing) {
-        float a = (float) (facing * Math.PI / 4.0);
-        float dx = (float) Math.cos(a);
-        float dy = (float) Math.sin(a);
-        float cx = SIZE * 0.5f;
-        float cy = SIZE * 0.56f;
-        int wood = WolfPalette.albedo(WolfPalette.LEATHER);
+    /** A submachine gun held across the chest, muzzle forward. */
+    private void smg(Sculptor s, Pose p) {
         int steel = WolfPalette.albedo(WolfPalette.GUNMETAL);
+        int wood = WolfPalette.shade(WolfPalette.LEATHER, 1);
 
-        s.capsule(cx - dx * SIZE * 0.06f, cy - dy * SIZE * 0.06f, cx + dx * SIZE * 0.10f,
-                cy + dy * SIZE * 0.10f, SIZE * 0.022f, SIZE * 0.36f, SIZE * 0.02f, Form.ROUND,
-                wood, Sculptor.LEATHER);
-        Machine.barrel(s, cx + dx * SIZE * 0.09f, cy + dy * SIZE * 0.09f,
-                cx + dx * SIZE * 0.26f, cy + dy * SIZE * 0.26f, SIZE * 0.011f, SIZE * 0.37f,
-                steel);
+        // Receiver, running forward past the left hand.
+        Anatomy.tube(s, p, 6f, 8f, 113f, -6f, 26f, 118f, 1.9f, steel, Sculptor.STEEL);
+        // The stock, back under the right forearm.
+        Anatomy.tube(s, p, 8f, 4f, 112f, 12f, -6f, 110f, 1.7f, wood, Sculptor.LEATHER);
+        // Magazine, hanging under the receiver: the detail that names the weapon.
+        Anatomy.tube(s, p, 1f, 15f, 112f, 1f, 15f, 101f, 1.3f, steel, Sculptor.STEEL);
+        Machine.barrel(s, p.x(-4f, 23f, 117f), p.y(-4f, 23f, 117f),
+                p.x(-9f, 33f, 119f), p.y(-9f, 33f, 119f), p.size(1.1f),
+                p.depth(-6f, 28f, 118f), steel);
     }
 
     private void save(PixelCanvas canvas, String name) throws IOException {

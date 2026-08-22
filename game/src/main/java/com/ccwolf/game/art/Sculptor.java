@@ -108,6 +108,18 @@ public final class Sculptor {
      */
     private boolean welding;
 
+    /**
+     * How wide the fillet is where two welded surfaces meet, in pixels.
+     *
+     * <p>A plain maximum is not enough, and the first skull proved it: taking the taller of two
+     * overlapping ovoids leaves a crease exactly where they cross, so a head assembled from a
+     * cranium, temples, cheekbones and a jaw came out as a bag of separate lumps with a ridge
+     * round each one. Flesh does not do that. A smooth maximum — the polynomial one every
+     * sculpting tool uses — merges them with a rounded fillet instead, and the same six parts
+     * become one skull.
+     */
+    private float weldRadius;
+
     /** What has actually been touched, so the lighting can skip the empty majority of a sprite. */
     private int dirtyX0;
     private int dirtyY0;
@@ -156,7 +168,14 @@ public final class Sculptor {
      * clarity than the discipline of turning it off again.
      */
     public Sculptor weld(boolean on) {
+        // A fillet proportional to the sprite, so the same recipe holds at any resolution.
+        return weld(on, Math.max(1.5f, Math.min(width, height) / 36f));
+    }
+
+    /** The same, with the fillet width stated: wider merges harder, zero is a plain maximum. */
+    public Sculptor weld(boolean on, float smoothing) {
         this.welding = on;
+        this.weldRadius = Math.max(0.001f, smoothing);
         return this;
     }
 
@@ -366,6 +385,197 @@ public final class Sculptor {
             }
         }
         return this;
+    }
+
+    /**
+     * A solid ellipsoid, ray-cast rather than filled in.
+     *
+     * <h2>What every other primitive here does wrong for organic form</h2>
+     *
+     * <p>The rest of this class rasterises a screen footprint and fills it with a {@link Form} —
+     * an invented height profile that has no relation to the actual surface of the thing being
+     * drawn. For a bolt or a plate that is fine, because a bolt <em>is</em> a dome. For a skull
+     * assembled from a cranium, temples, cheekbones and a jaw it is not fine at all: each part
+     * gets a correct outline filled with fictional geometry, and unioning fictional geometry
+     * gives a bag of blobs. That is precisely what the first two skulls were.
+     *
+     * <p>This is the impostor technique instead, the one molecular viewers use to draw millions
+     * of atoms: rasterise the footprint, then solve the camera ray against the real surface at
+     * every pixel. A ray meets an ellipsoid in a quadratic, so the near hit, its depth and its
+     * normal are all closed form — no marching, no approximation, and barely more expensive than
+     * the invented version it replaces.
+     *
+     * <p>Coverage still comes from the projected silhouette, which is exact and already
+     * anti-aliased, so the edges keep the quality the rest of the engine has.
+     *
+     * @param cz nearness of the ellipsoid's centre
+     * @param rx projected silhouette radii and rotation, from {@code Pose.solidEllipse}
+     * @param axes the three semi-axes in camera space, column major, from {@code Pose.axes}
+     */
+    public Sculptor ellipsoid(float cx, float cy, float cz, float rx, float ry, float rotation,
+                              float[] axes, int albedo, float material) {
+        if (rx <= 0f || ry <= 0f) {
+            return this;
+        }
+        // The inverse of the axis matrix takes camera space into the ellipsoid's own frame,
+        // where it is the unit sphere and the intersection is a line meeting a ball.
+        float[] inv = invert3(axes);
+        if (inv == null) {
+            return this;
+        }
+
+        float cos = (float) Math.cos(-rotation);
+        float sin = (float) Math.sin(-rotation);
+        float reach = Math.max(rx, ry);
+        int[] bounds = frameBounds(cx - reach - 1, cy - reach - 1, cx + reach + 1, cy + reach + 1);
+
+        // The ray runs along increasing nearness, so its direction in the ellipsoid's frame is
+        // constant and can be lifted out of the loop.
+        float bx = inv[6];
+        float by = inv[7];
+        float bz = inv[8];
+        float bb = bx * bx + by * by + bz * bz;
+        if (bb <= 1e-9f) {
+            return this;
+        }
+
+        for (int y = Math.max(0, bounds[1]); y <= Math.min(height - 1, bounds[3]); y++) {
+            for (int x = Math.max(0, bounds[0]); x <= Math.min(width - 1, bounds[2]); x++) {
+                float px = localX(x + 0.5f, y + 0.5f) - cx;
+                float py = localY(x + 0.5f, y + 0.5f) - cy;
+
+                // Coverage from the exact projected silhouette.
+                float ex = px * cos - py * sin;
+                float ey = px * sin + py * cos;
+                float ax = ex / rx;
+                float ay = ey / ry;
+                float k1 = (float) Math.sqrt(ax * ax + ay * ay);
+                if (k1 > 1.6f) {
+                    continue;
+                }
+                float gx = ex / (rx * rx);
+                float gy = ey / (ry * ry);
+                float k2 = (float) Math.sqrt(gx * gx + gy * gy);
+                float edge = k2 <= 1e-6f ? -Math.min(rx, ry) : k1 * (k1 - 1f) / k2;
+                if (edge >= EDGE) {
+                    continue;
+                }
+                float coverage = edge <= -EDGE ? 1f : (EDGE - edge);
+
+                // Where the ray enters the ellipsoid's own frame, at nearness zero.
+                float ox = inv[0] * px + inv[3] * py - inv[6] * cz;
+                float oy = inv[1] * px + inv[4] * py - inv[7] * cz;
+                float oz = inv[2] * px + inv[5] * py - inv[8] * cz;
+
+                float ab = ox * bx + oy * by + oz * bz;
+                float aa = ox * ox + oy * oy + oz * oz;
+                float disc = ab * ab - bb * (aa - 1f);
+                // Just outside the surface inside the anti-aliased band: take the tangent point
+                // rather than dropping the pixel, so the rim has a depth and a normal too.
+                float root = disc <= 0f ? 0f : (float) Math.sqrt(disc);
+                float t = (-ab + root) / bb;
+
+                float ux = ox + t * bx;
+                float uy = oy + t * by;
+                float uz = oz + t * bz;
+
+                // The surface normal is the unit-sphere normal carried back by the inverse
+                // transpose, which is what keeps it perpendicular through a non-uniform scale.
+                float nx = inv[0] * ux + inv[1] * uy + inv[2] * uz;
+                float ny = inv[3] * ux + inv[4] * uy + inv[5] * uz;
+                float nz = inv[6] * ux + inv[7] * uy + inv[8] * uz;
+
+                placeSolid(x, y, coverage, cz + t, nx, ny, nz, albedo, material);
+            }
+        }
+        return this;
+    }
+
+    /**
+     * Writes one ray-cast fragment: real depth, real normal.
+     *
+     * <p>The lighting stores a normal as a slope, so this divides out the component facing the
+     * camera. At the silhouette that component goes to nothing and the slope runs away, which is
+     * true of the surface and useless in a shading model — hence the same clamp the dome profile
+     * uses, and the coverage flattening in the lighting pass behind it.
+     */
+    private void placeSolid(int x, int y, float coverage, float standing, float nx, float ny,
+                            float nz, int albedo, float material) {
+        if (coverage <= 0f) {
+            return;
+        }
+        if (coverage > 1f) {
+            coverage = 1f;
+        }
+        int index = y * width + x;
+        float behind = depth[index];
+        boolean covered = cover[index] > 0.5f;
+        if (welding) {
+            standing = covered ? smoothMax(standing, behind, weldRadius) : standing;
+        } else {
+            if (covered && standing < behind) {
+                return;
+            }
+            if (covered && standing - behind > STEP) {
+                step[index] = Math.max(step[index],
+                        Math.min(1f, (standing - behind) / STEP - 1f));
+            }
+        }
+
+        float ar = ((albedo >> 16) & 0xFF) / 255f;
+        float ag = ((albedo >> 8) & 0xFF) / 255f;
+        float ab = (albedo & 0xFF) / 255f;
+        red[index] += (ar - red[index]) * coverage;
+        green[index] += (ag - green[index]) * coverage;
+        blue[index] += (ab - blue[index]) * coverage;
+        this.material[index] += (material - this.material[index]) * coverage;
+
+        depth[index] = standing;
+
+        float toward = Math.abs(nz) < 1e-3f ? 1e-3f : Math.abs(nz);
+        float sx = nx / toward;
+        float sy = ny / toward;
+        float slope = (float) Math.sqrt(sx * sx + sy * sy);
+        if (slope > 6f) {
+            sx *= 6f / slope;
+            sy *= 6f / slope;
+        }
+        // Welded surfaces share a normal in proportion to how much they shared a depth, so a
+        // jaw turns into a cheek instead of meeting it at a crease.
+        if (welding && covered) {
+            normalX[index] += (sx - normalX[index]) * 0.5f;
+            normalY[index] += (sy - normalY[index]) * 0.5f;
+        } else {
+            normalX[index] = sx;
+            normalY[index] = sy;
+        }
+
+        float c = cover[index];
+        cover[index] = c + (1f - c) * coverage;
+        markDirty(x, y);
+    }
+
+    /** The inverse of a column-major three by three, or null if it is degenerate. */
+    private static float[] invert3(float[] m) {
+        float a = m[0];
+        float b = m[3];
+        float c = m[6];
+        float d = m[1];
+        float e = m[4];
+        float f = m[7];
+        float g = m[2];
+        float h = m[5];
+        float i = m[8];
+        float det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+        if (Math.abs(det) < 1e-9f) {
+            return null;
+        }
+        float inv = 1f / det;
+        return new float[] {
+            (e * i - f * h) * inv, (c * h - b * i) * inv, (b * f - c * e) * inv,
+            (f * g - d * i) * inv, (a * i - c * g) * inv, (c * d - a * f) * inv,
+            (d * h - e * g) * inv, (b * g - a * h) * inv, (a * e - b * d) * inv,
+        };
     }
 
     /**
@@ -791,9 +1001,9 @@ public final class Sculptor {
         float behind = depth[index];
         boolean covered = cover[index] > 0.5f;
         if (welding) {
-            // Merged, not stacked: the taller of the two surfaces, and no step recorded, so
-            // nothing draws a contact shadow along a join that is not a join.
-            standing = covered ? Math.max(standing, behind) : standing;
+            // Merged, not stacked, and merged smoothly: no step is recorded either, so nothing
+            // draws a contact shadow along a join that is not a join.
+            standing = covered ? smoothMax(standing, behind, weldRadius) : standing;
         } else {
             // A stroke only takes a pixel it stands in front of. On empty ground anything wins.
             if (covered && standing < behind) {
@@ -821,7 +1031,10 @@ public final class Sculptor {
 
         float c = cover[index];
         cover[index] = c + (1f - c) * coverage;
+        markDirty(x, y);
+    }
 
+    private void markDirty(int x, int y) {
         if (x < dirtyX0) {
             dirtyX0 = x;
         }
@@ -1059,6 +1272,19 @@ public final class Sculptor {
             v *= v;
         }
         return v;
+    }
+
+    /**
+     * The taller of two surfaces, with a rounded fillet where they cross.
+     *
+     * <p>The polynomial smooth maximum. Where the two are far apart it is exactly the larger of
+     * them; where they are within {@code k} of each other it lifts the join into a fillet, which
+     * is what a jaw meeting a cheek actually does and what a plain maximum never will.
+     */
+    private static float smoothMax(float a, float b, float k) {
+        float h = 0.5f + 0.5f * (a - b) / k;
+        h = h < 0f ? 0f : (h > 1f ? 1f : h);
+        return b + (a - b) * h + k * h * (1f - h);
     }
 
     private static int clamp255(float v) {

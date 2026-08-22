@@ -166,6 +166,65 @@ public final class Pose {
         out[2] = (float) (Math.atan2(h, e) + Math.atan2(g, f)) * 0.5f;
     }
 
+    /**
+     * The screen ellipse that a solid ellipsoid turns into.
+     *
+     * <p>{@link #groundEllipse} handles things lying flat. This handles things with height, which
+     * is nearly everything on a person: a skull is wider than it is deep and deeper than it is
+     * tall, a chest is broad and shallow, a shoulder is a squashed ball. Each is an ellipsoid,
+     * and the outline of an ellipsoid under any linear projection is an ellipse.
+     *
+     * <p>The projection is two rows by three columns; scaled by the ellipsoid's own radii it
+     * becomes a matrix whose image of the unit sphere is the ellipse wanted, and the shape of
+     * that ellipse is carried by {@code A·Aᵀ} — a symmetric two by two whose eigenvalues are the
+     * squared semi-axes and whose eigenvectors give the tilt. Closed form, no iteration, and it
+     * turns every rounded body part into one call that stays correct at all eight facings.
+     *
+     * @param out filled with the major screen radius, the minor screen radius, and the rotation
+     */
+    public void solidEllipse(float across, float forward, float up, float[] out) {
+        float a00 = rightX * across;
+        float a01 = forwardX * forward;
+        float a10 = rightY * SIN_E * across;
+        float a11 = forwardY * SIN_E * forward;
+        float a12 = -COS_E * up;
+
+        float p = a00 * a00 + a01 * a01;
+        float q = a00 * a10 + a01 * a11;
+        float r = a10 * a10 + a11 * a11 + a12 * a12;
+
+        float mean = (p + r) * 0.5f;
+        float diff = (p - r) * 0.5f;
+        float spread = (float) Math.sqrt(diff * diff + q * q);
+        float major = (float) Math.sqrt(Math.max(0f, mean + spread));
+        float minor = (float) Math.sqrt(Math.max(0f, mean - spread));
+
+        out[0] = Math.max(0.001f, major * scale);
+        out[1] = Math.max(0.001f, minor * scale);
+        out[2] = 0.5f * (float) Math.atan2(2f * q, p - r);
+    }
+
+    /**
+     * The three semi-axes of a body-frame ellipsoid, expressed in camera space.
+     *
+     * <p>Column major, each column the image of one body axis as (screen x, screen y, nearness).
+     * Handed to {@code Sculptor.ellipsoid}, which uses it to solve the camera ray against the
+     * real surface rather than filling the outline with an invented profile.
+     */
+    public void axes(float wide, float deep, float tall, float[] out9) {
+        out9[0] = rightX * wide * scale;
+        out9[1] = rightY * SIN_E * wide * scale;
+        out9[2] = rightY * COS_E * wide * scale;
+
+        out9[3] = forwardX * deep * scale;
+        out9[4] = forwardY * SIN_E * deep * scale;
+        out9[5] = forwardY * COS_E * deep * scale;
+
+        out9[6] = 0f;
+        out9[7] = -COS_E * tall * scale;
+        out9[8] = SIN_E * tall * scale;
+    }
+
     /** How much this unit is facing the camera: 0 turned away, 1 straight at it. */
     public float toward() {
         return Math.max(0f, forwardY);

@@ -1,35 +1,37 @@
 package com.ccwolf.game.art;
 
 /**
- * The parts people are made of.
+ * The parts people are made of, in centimetres.
  *
  * <p>The counterpart to {@link Machine}, and a harder problem. A tank is a stack of boxes and
- * cylinders, which is exactly what this engine draws natively; a person is none of those, is seen
- * from almost directly above, and is about twenty pixels across at the size that matters.
+ * cylinders, which this engine draws natively. A person is ovoids all the way down, and the first
+ * attempt at one — built out of circles, positioned in screen coordinates, with a sphere for a
+ * head — came out as a skittle.
  *
- * <h2>Faces are sculpted, not painted</h2>
+ * <h2>Everything is authored in the body's own frame</h2>
  *
- * <p>A head here is a couple of dozen pixels wide and a face perhaps fourteen. Nothing legible
- * can be <em>drawn</em> at that size — an eye painted as two dark pixels is two dark pixels, and
- * reads as damage. But an eye <em>socket</em> is a hollow, and a hollow catches a shadow, and a
- * shadow is visible at any size at all. So every feature below is geometry: the brow is a ridge,
- * the sockets are carves, the nose is a ridge, the mouth is a groove. The lighting finds them.
+ * <p>Across, forward and up, in centimetres, through {@link Pose}. A rifleman is a hundred and
+ * seventy-five tall, his head is nineteen across and twenty-three deep, and his helmet clears his
+ * skull by two. Those are numbers with meanings that can be checked against a photograph, where
+ * fractions of a canvas are numbers that can only be checked by looking at the result — and every
+ * layering fault in the first soldier came from a hand-tuned fraction being wrong.
  *
- * <p>This is the thing the old pipeline could not do at any resolution. It had to paint a face,
- * so it painted two dark dots, and a rifleman looked like a rifleman with two dark dots.
+ * <h2>A skull is not a sphere</h2>
  *
- * <h2>Features arrive as a man turns toward you</h2>
+ * <p>It is an assembly, and drawing it as one is the difference between a soldier and a bollard:
+ * a cranium wider behind than in front, temples pinched in above the cheekbones, a brow ridge
+ * standing out over the eyes, and a jaw slung under it tapering to a chin. Six parts, welded, so
+ * they read as one skull rather than as six.
  *
- * <p>Seen from above a soldier is mostly a helmet and a pair of shoulders; you see a face only
- * when he is coming toward the camera. So facial geometry is scaled by how much of the facing
- * points south, and fades to nothing as he turns away — which is both correct and free, since a
- * man walking north needs no face and no longer has one.
+ * <p>Then the face is <em>carved</em> into that, because at this size nothing legible can be
+ * drawn: an eye painted as two dark pixels is two dark pixels and reads as damage, where an eye
+ * socket is a hollow, and a hollow holds a shadow, and a shadow is legible at any size at all.
  *
  * <h2>Skin</h2>
  *
- * <p>Flesh is marked with {@code Sculptor.flesh} so the lighting passes warm light through it.
- * Without that a face shades exactly like a painted helmet, and the result is a mannequin: right
- * value, wrong material, unmistakably not alive.
+ * <p>Flesh is marked with {@code Sculptor.flesh} so light passes through it and comes back warm.
+ * Shade a face with the same model as a painted helmet and the value is right and the man is
+ * dead.
  */
 public final class Anatomy {
 
@@ -39,182 +41,319 @@ public final class Anatomy {
     /** Skin is soft and slightly damp: a broad, weak sheen, nothing like plate. */
     public static final float SKIN_SHEEN = 0.12f;
 
+    /** Scratch for the ellipse projections, so a figure does not allocate per part. */
+    private static final ThreadLocal<float[]> SHAPE = new ThreadLocal<float[]>() {
+        @Override
+        protected float[] initialValue() {
+            return new float[3];
+        }
+    };
+
+    /** Scratch for the camera-space axes of a mass, for the same reason. */
+    private static final ThreadLocal<float[]> AXES = new ThreadLocal<float[]>() {
+        @Override
+        protected float[] initialValue() {
+            return new float[9];
+        }
+    };
+
     /**
-     * A head: skull, and whatever of a face is turned toward the viewer.
+     * A rounded body part: an ellipsoid, projected and lit as one.
      *
-     * @param toward how much the man faces the camera, 0 turned away through 1 straight at it
+     * <p>Every organic mass goes through here — skull, jaw, chest, shoulder, hip. The caller says
+     * how wide, how deep and how tall the thing is and where its centre sits, and the pose works
+     * out what that looks like from the camera at this facing.
      */
-    public static void head(Sculptor s, float cx, float cy, float radius, float base,
-                            int skin, float toward) {
-        s.disc(cx, cy, radius, base, radius * 0.92f, Form.DOME, skin, SKIN_SHEEN);
-        s.flesh(cx, cy, radius * 1.05f, 1f);
+    public static void mass(Sculptor s, Pose p, float across, float forward, float up,
+                            float wide, float deep, float tall, int albedo, float material) {
+        float[] shape = SHAPE.get();
+        float[] axes = AXES.get();
+        p.solidEllipse(wide, deep, tall, shape);
+        p.axes(wide, deep, tall, axes);
+        // Ray-cast, not filled in. Handing this outline a dome profile instead - which is what
+        // the first two skulls did - gives every part a correct silhouette full of fictional
+        // geometry, and a head made of six of those is a bag of blobs.
+        s.ellipsoid(p.x(across, forward, up), p.y(across, forward, up),
+                p.depth(across, forward, up), shape[0], shape[1], shape[2], axes,
+                albedo, material);
+    }
 
-        if (toward <= 0.02f) {
-            // The back of a head. A slight flattening at the crown is all there is to say.
-            s.carveCapsule(cx - radius * 0.28f, cy - radius * 0.22f, cx + radius * 0.28f,
-                    cy - radius * 0.22f, radius * 0.16f, radius * 0.012f, Form.DOME);
-            return;
-        }
+    /** A limb, a barrel, a strap: a cylinder between two points in the body's frame. */
+    public static void tube(Sculptor s, Pose p, float x0, float y0, float z0,
+                            float x1, float y1, float z1, float radius, int albedo,
+                            float material) {
+        s.capsule(p.x(x0, y0, z0), p.y(x0, y0, z0), p.x(x1, y1, z1), p.y(x1, y1, z1),
+                p.size(radius), p.depth((x0 + x1) / 2f, (y0 + y1) / 2f, (z0 + z1) / 2f),
+                p.size(radius), Form.ROUND, albedo, material);
+    }
 
-        // The face sits low on the skull seen from above, because a forehead is what you see
-        // first. Everything below is a fraction of the head radius and every cut is shallow -
-        // the first version used depths around a third of the radius, which does not carve a
-        // face, it opens the skull. A socket needs to be deep enough to hold a shadow and no
-        // deeper, and at these sizes that is a few per cent.
-        float faceY = cy + radius * 0.20f * toward;
-        float t = toward;
+    // --- the head ---------------------------------------------------------------------------
 
-        // Brow: a low ridge, not a bar. It exists to put the sockets underneath something.
-        s.capsule(cx - radius * 0.42f, faceY - radius * 0.30f, cx + radius * 0.42f,
-                faceY - radius * 0.30f, radius * 0.11f, base + radius * 0.72f,
-                radius * 0.05f * t, Form.RIDGE, skin, SKIN_SHEEN);
+    /**
+     * A skull, assembled and welded, with a face carved into whatever of it faces the camera.
+     *
+     * <p>Sizes are a real head: nineteen centimetres across, twenty-three front to back,
+     * twenty-four tall including the jaw. The cranium sits back on that footprint and the face
+     * hangs forward and below it, which is what gives a head a front at all.
+     *
+     * @param up height of the centre of the skull off the ground
+     */
+    public static void skull(Sculptor s, Pose p, float across, float forward, float up,
+                             int skin) {
+        float toward = p.toward();
+        s.weld(true);
 
-        // The sockets. These are the face: two hollows under the brow, far enough apart to
-        // read as two and shallow enough to stay a shadow rather than a hole.
+        // Proportions off a real head rather than off a cartoon skull. The second attempt put
+        // the chin further forward than the brow, which is a snout, and hung the ears off the
+        // widest point of the cranium, which is a pair of handles.
+        //
+        // Cranium: the volume is behind, and it is taller than it is wide.
+        mass(s, p, across, forward - 1f, up + 0.5f, 9.3f, 10.5f, 10.5f, skin, SKIN_SHEEN);
+        // The face mass, hanging forward and below it.
+        mass(s, p, across, forward + 2.5f, up - 1.5f, 8.2f, 8f, 9f, skin, SKIN_SHEEN);
+        // Brow, the furthest-forward thing on a head.
+        mass(s, p, across, forward + 5.5f, up + 2.5f, 7.6f, 3f, 1.9f, skin, SKIN_SHEEN);
+        // Jaw and chin, tucked under and stopping short of the brow.
+        mass(s, p, across, forward + 3f, up - 7f, 6.6f, 6.5f, 4.4f, skin, SKIN_SHEEN);
+        // Ears, flat against the skull rather than standing off it.
         for (int side = 0; side < 2; side++) {
-            float ex = cx + (side == 0 ? -1f : 1f) * radius * 0.26f;
-            // A capsule rather than a box: a rounded slot reads as a socket, a rectangular one
-            // reads as a letterbox, and at this size that is the whole difference.
-            s.carveCapsule(ex - radius * 0.10f, faceY - radius * 0.09f,
-                    ex + radius * 0.10f, faceY - radius * 0.11f, radius * 0.085f,
-                    radius * 0.05f * t, Form.DOME);
+            float ex = across + (side == 0 ? -1f : 1f) * 8.4f;
+            mass(s, p, ex, forward - 0.5f, up - 1f, 0.9f, 2.6f, 3.4f, skin, SKIN_SHEEN);
         }
 
-        // Nose: a short ridge between them, standing proudest at the tip.
-        s.taper(cx, faceY - radius * 0.13f, radius * 0.045f, cx, faceY + radius * 0.14f,
-                radius * 0.085f, base + radius * 0.80f, radius * 0.16f * t, Form.DOME,
-                skin, SKIN_SHEEN);
+        s.weld(false);
+        s.flesh(p.x(across, forward, up), p.y(across, forward, up), p.size(16f), 1f);
 
-        // Mouth, and the line under a bottom lip. Both barely there.
-        s.carveCapsule(cx - radius * 0.13f, faceY + radius * 0.34f, cx + radius * 0.13f,
-                faceY + radius * 0.34f, radius * 0.045f, radius * 0.03f * t, Form.ROUND);
+        if (toward > 0.05f) {
+            face(s, p, across, forward, up, skin, toward);
+        }
     }
 
     /**
-     * A steel helmet: the shell, its flare, and the band round the rim.
+     * The features, cut into a skull that already exists.
      *
-     * <p>Sits over the head rather than replacing it, so a face still shows under the brim as a
-     * man turns toward you — which is the difference between a soldier and a bollard.
+     * <p>Scaled by how much of the man is turned toward the camera, so a face arrives as he comes
+     * on and is gone when he walks away — which is correct, free, and stops a man walking north
+     * carrying a face on the back of his head.
+     *
+     * <p>Every cut here is shallow. The first version used depths around a third of the head
+     * radius, which does not carve a face, it opens a skull.
      */
-    public static void helmet(Sculptor s, float cx, float cy, float radius, float base,
-                              int albedo, float toward) {
-        // The shell sits above the skull, and the flare sits just below the shell rather than
-        // below the head - the first version put the skirt under the head's own height, so the
-        // skull came up through the brim and the man wore his helmet as a collar.
-        float shell = base;
-        s.disc(cx, cy - radius * 0.08f, radius, shell, radius * 0.72f, Form.DOME, albedo,
-                Sculptor.PAINT);
-        s.disc(cx, cy - radius * 0.02f, radius * 1.16f, shell - radius * 0.06f,
-                radius * 0.16f, Form.BEVEL, albedo, Sculptor.PAINT);
-        // The join between skirt and shell, cut rather than drawn.
-        s.carveCapsule(cx - radius * 0.98f, cy - radius * 0.02f, cx + radius * 0.98f,
-                cy - radius * 0.02f, radius * 0.05f, radius * 0.012f, Form.ROUND);
-        Machine.bolt(s, cx - radius * 0.9f, cy - radius * 0.06f, radius * 0.08f,
-                shell + radius * 0.1f, albedo);
-        Machine.bolt(s, cx + radius * 0.9f, cy - radius * 0.06f, radius * 0.08f,
-                shell + radius * 0.1f, albedo);
-        if (toward > 0.3f) {
-            // A shallow shadow line where the brim overhangs the brow.
-            s.carveCapsule(cx - radius * 0.55f, cy + radius * 0.42f, cx + radius * 0.55f,
-                    cy + radius * 0.42f, radius * 0.09f, radius * 0.018f * toward, Form.DOME);
+    private static void face(Sculptor s, Pose p, float across, float forward, float up,
+                             int skin, float toward) {
+        // Eye sockets: two shallow hollows under the brow, and nothing else. Every version of
+        // this that tried for more - a carved mouth, a defined lip - read as damage rather than
+        // as a feature, because at the size a head is actually seen there is no room for it.
+        float[] shape = SHAPE.get();
+        for (int side = 0; side < 2; side++) {
+            float ex = across + (side == 0 ? -1f : 1f) * 3.1f;
+            p.solidEllipse(1.7f, 1.0f, 1.1f, shape);
+            s.carveEllipse(p.x(ex, forward + 5.4f, up + 0.3f),
+                    p.y(ex, forward + 5.4f, up + 0.3f),
+                    shape[0], shape[1], shape[2], p.size(0.5f * toward), Form.DOME);
         }
+
+        // Nose: a short ridge off the brow. The one feature with enough relief to survive being
+        // shrunk, because it catches the key light rather than holding a shadow.
+        s.taper(p.x(across, forward + 5.8f, up + 1.2f), p.y(across, forward + 5.8f, up + 1.2f),
+                p.size(0.6f),
+                p.x(across, forward + 7f, up - 2.6f), p.y(across, forward + 7f, up - 2.6f),
+                p.size(1.2f),
+                p.depth(across, forward + 6.5f, up - 0.7f), p.size(1.3f * toward), Form.DOME,
+                skin, SKIN_SHEEN);
+    }
+
+    // --- headgear ---------------------------------------------------------------------------
+
+    /**
+     * The Regime's coal-scuttle: a deep shell with a flare that runs out over the neck.
+     *
+     * <p>The silhouette is the point. This and {@link #potHelmet} have to be tellable apart in
+     * black, at forty pixels, from across a table — the flare here runs longest at the back,
+     * where an American pot helmet's brim runs evenly all the way round.
+     */
+    public static void stahlhelm(Sculptor s, Pose p, float across, float forward, float up,
+                                 int albedo) {
+        mass(s, p, across, forward - 0.5f, up + 3.5f, 11f, 12.5f, 8f, albedo, Sculptor.PAINT);
+        // The skirt: longest astern, which is the neck guard, and shortest over the brow.
+        mass(s, p, across, forward - 2.5f, up - 1f, 12f, 14.5f, 2.2f, albedo, Sculptor.PAINT);
+        seamRound(s, p, across, forward - 1f, up + 0.5f, 11.5f);
+        Machine.bolt(s, p.x(across - 10.5f, forward - 1f, up + 1f),
+                p.y(across - 10.5f, forward - 1f, up + 1f), p.size(0.8f),
+                p.depth(across - 10.5f, forward - 1f, up + 3f), albedo);
+        Machine.bolt(s, p.x(across + 10.5f, forward - 1f, up + 1f),
+                p.y(across + 10.5f, forward - 1f, up + 1f), p.size(0.8f),
+                p.depth(across + 10.5f, forward - 1f, up + 3f), albedo);
+    }
+
+    /**
+     * An American pot helmet, salvaged: a shallow dome with an even brim all the way round.
+     *
+     * <p>The Kreisau Circle is wearing a dead army's kit. This is the shape that says so without
+     * a word of text, and it is nothing like the shell above it.
+     */
+    public static void potHelmet(Sculptor s, Pose p, float across, float forward, float up,
+                                 int albedo) {
+        mass(s, p, across, forward, up + 2f, 10.2f, 11.5f, 6f, albedo, Sculptor.PAINT);
+        // The brim rides at the temples, not at mid-skull. Lower, and the head disappears under
+        // a mushroom cap - which is what the first fitting did at every zoom.
+        mass(s, p, across, forward + 0.5f, up + 0.5f, 11.6f, 13f, 1.5f, albedo, Sculptor.PAINT);
+        seamRound(s, p, across, forward, up + 1.4f, 11f);
+    }
+
+    /**
+     * A British dish helmet, salvaged: a shallow bowl on a wide flat brim.
+     *
+     * <p>The third silhouette, and the most distinct of the three from above — which is exactly
+     * why it earns a place, since above is where this game is seen from.
+     */
+    public static void dishHelmet(Sculptor s, Pose p, float across, float forward, float up,
+                                  int albedo) {
+        mass(s, p, across, forward, up + 1.5f, 9f, 9.5f, 4.5f, albedo, Sculptor.PAINT);
+        mass(s, p, across, forward, up - 1f, 15f, 15f, 1.4f, albedo, Sculptor.PAINT);
+        seamRound(s, p, across, forward, up - 0.4f, 14f);
+    }
+
+    /** A groove running round a helmet where its skirt meets its shell. */
+    private static void seamRound(Sculptor s, Pose p, float across, float forward, float up,
+                                  float radius) {
+        float[] shape = SHAPE.get();
+        p.groundEllipse(radius, radius, shape);
+        s.carveEllipse(p.x(across, forward, up), p.y(across, forward, up), shape[0], shape[1],
+                shape[2], p.size(0.5f), Form.ROUND);
     }
 
     /**
      * A gas mask: filter, lenses, and the straps holding it on.
      *
-     * <p>What the Regime wears instead of a face. The lenses are emissive at a low level — not
-     * because they glow, but because glass at this size reads as glass only if it is brighter
-     * than everything around it, and a faint self-lit disc is the cheapest way to say so.
+     * <p>What the Regime wears instead of a face. The lenses are faintly emissive — not because
+     * they glow, but because glass at this size reads as glass only when it is brighter than
+     * everything around it.
      */
-    public static void gasMask(Sculptor s, float cx, float cy, float radius, float base,
+    public static void gasMask(Sculptor s, Pose p, float across, float forward, float up,
                                int rubber, int lens, int metal) {
-        s.disc(cx, cy + radius * 0.1f, radius * 0.98f, base, radius * 0.8f, Form.DOME, rubber,
-                Sculptor.LEATHER);
-        // Lenses: recessed rims with glass sitting down in them.
+        s.weld(true);
+        mass(s, p, across, forward + 4f, up - 1f, 8.5f, 6f, 8f, rubber, Sculptor.LEATHER);
+        mass(s, p, across, forward + 7f, up - 5f, 5f, 5f, 4f, rubber, Sculptor.LEATHER);
+        s.weld(false);
+
+        float[] shape = SHAPE.get();
         for (int side = 0; side < 2; side++) {
-            float lx = cx + (side == 0 ? -1f : 1f) * radius * 0.42f;
-            float ly = cy + radius * 0.06f;
-            s.carveBox(lx - radius * 0.30f, ly - radius * 0.30f, radius * 0.6f, radius * 0.6f,
-                    radius * 0.3f, radius * 0.22f, Form.DOME);
-            s.disc(lx, ly, radius * 0.26f, base + radius * 0.55f, radius * 0.12f, Form.DOME,
-                    lens, Sculptor.STEEL);
-            s.glow(lx, ly, radius * 0.30f, 0.22f);
+            float lx = across + (side == 0 ? -1f : 1f) * 3.4f;
+            float ly = forward + 7.5f;
+            float lz = up + 1f;
+            p.solidEllipse(2.6f, 1.4f, 2.4f, shape);
+            s.carveEllipse(p.x(lx, ly, lz), p.y(lx, ly, lz), shape[0] * 1.35f, shape[1] * 1.35f,
+                    shape[2], p.size(0.9f), Form.DOME);
+            mass(s, p, lx, ly + 0.6f, lz, 2.2f, 1.1f, 2.0f, lens, Sculptor.STEEL);
+            s.glow(p.x(lx, ly, lz), p.y(lx, ly, lz), p.size(3.2f), 0.32f);
         }
-        // The filter drum, hung below and to one side, and the corrugated hose to it.
-        s.disc(cx + radius * 0.1f, cy + radius * 0.95f, radius * 0.36f, base - radius * 0.2f,
-                radius * 0.36f, Form.ROUND, metal, Sculptor.STEEL);
+
+        // The filter drum, hung below, and the corrugated hose running to it.
+        mass(s, p, across + 2f, forward + 6f, up - 11f, 3.2f, 3.2f, 4f, metal, Sculptor.STEEL);
         for (int i = 0; i < 3; i++) {
-            s.carveCapsule(cx - radius * 0.22f, cy + radius * (0.75f + i * 0.14f),
-                    cx + radius * 0.42f, cy + radius * (0.75f + i * 0.14f), radius * 0.06f,
-                    radius * 0.08f, Form.ROUND);
+            s.carveCapsule(p.x(across - 1.5f, forward + 7f, up - 8f + i * 1.4f),
+                    p.y(across - 1.5f, forward + 7f, up - 8f + i * 1.4f),
+                    p.x(across + 3.5f, forward + 7f, up - 8f + i * 1.4f),
+                    p.y(across + 3.5f, forward + 7f, up - 8f + i * 1.4f),
+                    p.size(0.5f), p.size(0.4f), Form.ROUND);
         }
-        // Straps across the crown.
-        s.capsule(cx - radius * 0.9f, cy - radius * 0.35f, cx + radius * 0.9f, cy - radius * 0.35f,
-                radius * 0.11f, base + radius * 0.4f, radius * 0.1f, Form.ROUND, rubber,
+        tube(s, p, across - 9f, forward + 1f, up + 2f, across + 9f, forward + 1f, up + 2f,
+                0.9f, rubber, Sculptor.LEATHER);
+    }
+
+    // --- the body ---------------------------------------------------------------------------
+
+    /**
+     * A torso: chest broad at the shoulders, tapering to a waist.
+     *
+     * <p>Two masses welded rather than one box. A chest is not a waist, and the change of section
+     * between them is most of what makes a clothed figure read as a body under clothes.
+     */
+    public static void torso(Sculptor s, Pose p, float across, float forward, int cloth,
+                             int seed) {
+        s.weld(true);
+        mass(s, p, across, forward, 128f, 21f, 12f, 15f, cloth, Sculptor.CLOTH);
+        mass(s, p, across, forward, 108f, 17f, 10.5f, 13f, cloth, Sculptor.CLOTH);
+        mass(s, p, across, forward, 94f, 16f, 10f, 8f, cloth, Sculptor.CLOTH);
+        s.weld(false);
+        s.roughen(p.x(across - 22f, forward, 145f), p.y(across - 22f, forward, 145f),
+                p.size(44f), p.size(60f), 0.20f, 4f, seed);
+    }
+
+    /** Shoulders, as a yoke across the top of the chest rather than two balls stuck on it. */
+    public static void shoulders(Sculptor s, Pose p, float across, float forward, int cloth) {
+        s.weld(true);
+        mass(s, p, across, forward, 138f, 23f, 11f, 6f, cloth, Sculptor.CLOTH);
+        mass(s, p, across - 19f, forward, 135f, 6.5f, 8f, 7f, cloth, Sculptor.CLOTH);
+        mass(s, p, across + 19f, forward, 135f, 6.5f, 8f, 7f, cloth, Sculptor.CLOTH);
+        s.weld(false);
+    }
+
+    /** A greatcoat's skirt: the flare below the belt that makes the Regime silhouette. */
+    public static void skirt(Sculptor s, Pose p, float across, float forward, int cloth,
+                             int seed) {
+        s.weld(true);
+        mass(s, p, across, forward, 84f, 17f, 11f, 8f, cloth, Sculptor.CLOTH);
+        mass(s, p, across, forward, 68f, 19f, 13f, 10f, cloth, Sculptor.CLOTH);
+        mass(s, p, across, forward, 52f, 20f, 14f, 10f, cloth, Sculptor.CLOTH);
+        s.weld(false);
+        s.roughen(p.x(across - 22f, forward, 92f), p.y(across - 22f, forward, 92f),
+                p.size(44f), p.size(50f), 0.26f, 5f, seed);
+        // The split up the back, which is what stops a skirt reading as a barrel.
+        s.carveCapsule(p.x(across, forward - 9f, 84f), p.y(across, forward - 9f, 84f),
+                p.x(across, forward - 10f, 46f), p.y(across, forward - 10f, 46f),
+                p.size(0.9f), p.size(1.2f), Form.ROUND);
+    }
+
+    /** A leg: thigh, shin and a boot, from the hip down. */
+    public static void leg(Sculptor s, Pose p, float across, float stride, int cloth,
+                           int leather) {
+        tube(s, p, across, stride * 0.3f, 88f, across, stride, 48f, 5.5f, cloth,
+                Sculptor.CLOTH);
+        tube(s, p, across, stride, 48f, across, stride * 1.2f, 14f, 4.4f, leather,
                 Sculptor.LEATHER);
+        // The boot: a foot, and a sole standing proud of it.
+        mass(s, p, across, stride * 1.2f + 3f, 7f, 4.6f, 8.5f, 6f, leather, Sculptor.LEATHER);
+        mass(s, p, across, stride * 1.2f + 3f, 2.5f, 5.0f, 9.5f, 2f, leather, Sculptor.LEATHER);
     }
 
     /**
-     * A torso in a greatcoat: chest, the fall of the skirt, and the seam down the front.
+     * Arms holding a weapon: one hand forward on the grip, one back on the stock.
      *
-     * <p>Cloth is the one thing here that is genuinely soft, and the way to say so is to keep
-     * every edge rounded and the surface slightly uneven. A coat drawn with the crisp chamfers
-     * that suit armour plate reads as armour plate.
+     * <p>Asymmetry is most of what separates a soldier from a skittle, and every figure in the
+     * reference art stands this way. The forward arm crosses the chest, which also gives the
+     * silhouette the diagonal it needs to read as a man carrying something.
      */
-    public static void torso(Sculptor s, float cx, float cy, float width, float height,
-                             float base, int cloth, int seed) {
-        s.box(cx - width / 2f, cy - height / 2f, width, height, width * 0.42f, base,
-                width * 0.34f, Form.DOME, cloth, Sculptor.CLOTH);
-        s.roughen(cx - width / 2f, cy - height / 2f, width, height, 0.22f, 4f, seed);
-        // Chest, standing a little proud of the skirt below it.
-        s.disc(cx, cy - height * 0.22f, width * 0.44f, base + width * 0.1f, width * 0.2f,
-                Form.DOME, cloth, Sculptor.CLOTH);
-        // The button seam, cut down the middle.
-        s.carveCapsule(cx, cy - height * 0.34f, cx, cy + height * 0.42f, width * 0.05f,
-                width * 0.1f, Form.ROUND);
-    }
-
-    /** Shoulders, as two caps rather than a bar: a bar reads as a yoke. */
-    public static void shoulders(Sculptor s, float cx, float cy, float span, float base,
-                                 int cloth) {
-        for (int side = 0; side < 2; side++) {
-            float x = cx + (side == 0 ? -1f : 1f) * span / 2f;
-            s.disc(x, cy, span * 0.28f, base, span * 0.24f, Form.DOME, cloth, Sculptor.CLOTH);
-        }
-        s.capsule(cx - span / 2f, cy, cx + span / 2f, cy, span * 0.22f, base - span * 0.04f,
-                span * 0.18f, Form.ROUND, cloth, Sculptor.CLOTH);
-    }
-
-    /** An arm or a leg: a cylinder, tapering slightly, because limbs do. */
-    public static void limb(Sculptor s, float x0, float y0, float x1, float y1, float radius,
-                            float base, int cloth) {
-        s.taper(x0, y0, radius, x1, y1, radius * 0.82f, base, radius * 0.9f, Form.ROUND, cloth,
+    public static void armsAtTheReady(Sculptor s, Pose p, float across, int cloth, int skin) {
+        // Right arm back, hand on the small of the stock.
+        tube(s, p, across + 12f, -2f, 133f, across + 11f, 6f, 116f, 4.2f, cloth,
                 Sculptor.CLOTH);
+        tube(s, p, across + 11f, 6f, 116f, across + 4f, 13f, 112f, 3.6f, cloth,
+                Sculptor.CLOTH);
+        mass(s, p, across + 3f, 14f, 111f, 2.6f, 3.4f, 3f, skin, SKIN_SHEEN);
+
+        // Left arm forward, hand under the fore-end.
+        tube(s, p, across - 12f, -1f, 133f, across - 9f, 10f, 120f, 4.2f, cloth,
+                Sculptor.CLOTH);
+        tube(s, p, across - 9f, 10f, 120f, across - 2f, 20f, 118f, 3.6f, cloth,
+                Sculptor.CLOTH);
+        mass(s, p, across - 1f, 21f, 118f, 2.6f, 3.4f, 3f, skin, SKIN_SHEEN);
     }
 
-    /** A boot: sole, upper, and the toe standing proud of both. */
-    public static void boot(Sculptor s, float cx, float cy, float length, float base,
-                            int leather) {
-        s.capsule(cx, cy - length * 0.3f, cx, cy + length * 0.3f, length * 0.3f, base,
-                length * 0.28f, Form.ROUND, leather, Sculptor.LEATHER);
-        s.disc(cx, cy + length * 0.34f, length * 0.3f, base + length * 0.04f, length * 0.24f,
-                Form.DOME, leather, Sculptor.LEATHER);
-        s.carveCapsule(cx - length * 0.3f, cy + length * 0.14f, cx + length * 0.3f,
-                cy + length * 0.14f, length * 0.08f, length * 0.1f, Form.ROUND);
-    }
-
-    /** Webbing: a belt, and pouches hung off it. */
-    public static void webbing(Sculptor s, float cx, float cy, float span, float base,
-                               int strap, int pouch) {
-        s.capsule(cx - span / 2f, cy, cx + span / 2f, cy, span * 0.09f, base, span * 0.07f,
-                Form.ROUND, strap, Sculptor.LEATHER);
+    /** Webbing: a belt round the waist and pouches hung on the front of it. */
+    public static void webbing(Sculptor s, Pose p, float across, int strap, int pouch) {
+        tube(s, p, across - 10f, 0f, 102f, across + 10f, 0f, 102f, 1.4f, strap,
+                Sculptor.LEATHER);
+        tube(s, p, across - 9f, 6f, 102f, across + 9f, 6f, 102f, 1.4f, strap,
+                Sculptor.LEATHER);
         for (int i = -1; i <= 1; i += 2) {
-            s.box(cx + i * span * 0.26f - span * 0.11f, cy - span * 0.06f, span * 0.22f,
-                    span * 0.2f, span * 0.05f, base + span * 0.05f, span * 0.09f, Form.BEVEL,
-                    pouch, Sculptor.LEATHER);
+            mass(s, p, across + i * 6f, 7f, 100f, 3.4f, 2.4f, 3.6f, pouch, Sculptor.LEATHER);
         }
-        Machine.bolt(s, cx, cy, span * 0.055f, base + span * 0.08f,
-                WolfPalette.albedo(WolfPalette.BRASS));
+        // Braces over the shoulders, which is what stops a belt looking painted on.
+        tube(s, p, across - 7f, 6f, 104f, across - 8f, -2f, 137f, 1.2f, strap,
+                Sculptor.LEATHER);
+        tube(s, p, across + 7f, 6f, 104f, across + 8f, -2f, 137f, 1.2f, strap,
+                Sculptor.LEATHER);
     }
 }
