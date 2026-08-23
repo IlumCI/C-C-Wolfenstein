@@ -45,6 +45,10 @@ public final class DamageTable {
         // weight suggests - a howitzer is not an anti-tank gun and should not be bought as one.
         set(WeaponClass.ARTILLERY, 1.50f, 0.90f, 0.55f, 1.35f);
 
+        // The burst, not the cloud. Almost nothing: a gas shell that also blew things apart
+        // would be an artillery shell with a bonus, and the doctrine is a trade, not a bonus.
+        set(WeaponClass.GAS, 0.30f, 0.10f, 0.05f, 0.10f);
+
         for (WeaponClass w : WeaponClass.values()) {
             for (ArmorClass a : ArmorClass.values()) {
                 if (Float.isNaN(MULTIPLIER[w.ordinal()][a.ordinal()])) {

@@ -89,6 +89,10 @@ public final class ProjectileLayer {
                 return Kind.GRENADE;
             case ARTILLERY:
                 return Kind.LOBBED;
+            case GAS:
+                // A gas shell flies like any other shell; what makes it different starts on
+                // the ground, and the ground layer draws that part.
+                return Kind.LOBBED;
             case OCCULT:
                 // The Resonanzkanone throws nothing, so what it sends is drawn as a bolt
                 // rather than as a shell - but it still takes time to arrive, so it is lobbed

@@ -54,6 +54,7 @@ public final class WorldRenderer {
     private final Rect worldRect = new Rect();
 
     private final ControlOverlay control = new ControlOverlay();
+    private final GasOverlay gasOverlay = new GasOverlay();
 
     /** Where the frame goes. Off unless something switches it on. */
     private final RenderProfiler profiler = new RenderProfiler();
@@ -149,6 +150,11 @@ public final class WorldRenderer {
         drawEntities(surface, session);
         profiler.end(RenderProfiler.Pass.ENTITIES);
 
+        // Gas stands man-high, so it goes over the entities: a figure walking into a cloud
+        // wades in rather than standing on a stain. Before the fog for the same reason the
+        // control wash is - the layer knows about tiles this player has never seen.
+        drawGas(surface, session);
+
         // Rounds in flight and particles go over the top of everything alive.
         profiler.begin(RenderProfiler.Pass.OVERLAY_FX);
         session.fx().drawOverlay(surface, camera);
@@ -242,6 +248,15 @@ public final class WorldRenderer {
                 camera.screenX(view.map().width()), camera.screenY(view.map().height()));
         control.draw(surface, view, worldRect, view.controlVersion());
         profiler.countDraws(RenderProfiler.Pass.CONTROL, 1);
+    }
+
+    private void drawGas(Surface surface, GameSession session) {
+        WorldView view = session.view();
+        Camera camera = session.camera();
+        worldRect.set(camera.screenX(0f), camera.screenY(0f),
+                camera.screenX(view.map().width()), camera.screenY(view.map().height()));
+        // The layer only moves on its settle cadence, so its tick bucket is a version number.
+        gasOverlay.draw(surface, view, worldRect, view.tick() / 10);
     }
 
     private void drawEntities(Surface surface, GameSession session) {

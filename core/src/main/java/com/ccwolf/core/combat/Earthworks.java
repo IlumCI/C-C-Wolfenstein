@@ -99,6 +99,8 @@ public final class Earthworks {
         // arranged in any useful way afterwards.
         FLATTENING[WeaponClass.OCCULT.ordinal()] = MAX_LEVELS;
         FLATTENING[WeaponClass.ARTILLERY.ordinal()] = 2;
+        // Gas moves no earth. That is the point: it takes the trench without unmaking it.
+        FLATTENING[WeaponClass.GAS.ordinal()] = 0;
 
         plunging(WeaponClass.SMALL_ARMS, false);
         plunging(WeaponClass.SNIPER, false);
@@ -110,6 +112,10 @@ public final class Earthworks {
         // Whatever the Resonanzkanone is doing, it is not fragments falling on a roof.
         plunging(WeaponClass.OCCULT, false);
         plunging(WeaponClass.ARTILLERY, true);
+        // Comes down like a shell, and a roof is no answer: the roof keeps out what falls,
+        // and gas seeps. The overhead discount never applies because the damage comes from
+        // the cloud, which ignores cover wholesale.
+        plunging(WeaponClass.GAS, true);
 
         for (WeaponClass w : WeaponClass.values()) {
             if (!PLUNGING_SET[w.ordinal()]) {

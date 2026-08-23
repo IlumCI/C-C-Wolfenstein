@@ -4,6 +4,7 @@ import com.ccwolf.core.combat.Doctrines;
 import com.ccwolf.core.combat.Earthworks;
 import com.ccwolf.core.combat.Suppression;
 import com.ccwolf.core.combat.Weapon;
+import com.ccwolf.core.combat.WeaponClass;
 import com.ccwolf.core.diag.TickProfiler;
 import com.ccwolf.core.economy.ProductionItem;
 import com.ccwolf.core.economy.ProductionQueue;
@@ -286,8 +287,20 @@ public final class GameWorld {
     /** Bumped whenever the influence field is rebuilt, so a renderer knows when to rebake. */
     private int controlVersion;
 
+    /** Ticks between doses for a man standing in gas: half a second per dose. */
+    public static final int GAS_HURT_EVERY = 10;
+
+    /** Hit points per level of concentration per dose. A few seconds of a full cloud kills. */
+    public static final int GAS_DAMAGE_PER_DOSE = 9;
+
+    /** Suppression per level per dose: men in gas are not returning fire. */
+    public static final int GAS_SUPPRESSION_PER_DOSE = 4;
+
     /** Rounds in the air. Empty until something fires indirectly. */
     private final ShellLayer shells = new ShellLayer();
+
+    /** Gas on the ground. Empty until a Gas War player fields the thing that vents it. */
+    private final GasLayer gas;
     private final List<GameEvent> events = new ArrayList<GameEvent>();
 
     private final List<Unit> queryScratch = new ArrayList<Unit>();
@@ -310,6 +323,7 @@ public final class GameWorld {
 
     public GameWorld(TileMap map, long seed) {
         this.map = map;
+        this.gas = new GasLayer(map.width(), map.height());
         this.grid = new OccupancyGrid(map);
         this.random = new Random(seed);
         this.spatialIndex = new SpatialIndex(map.width(), map.height());
@@ -1218,6 +1232,14 @@ public final class GameWorld {
         profiler.begin(TickProfiler.Phase.SHELLS);
         updateShells();
         profiler.end(TickProfiler.Phase.SHELLS);
+
+        // After the shells, because a shell landing this tick vents its cloud this tick; and
+        // before removeDead for the same reason the shells are - a man gas takes leaves on the
+        // tick it took him. Free when the map is clean, which is every match without Gas War.
+        profiler.begin(TickProfiler.Phase.GAS);
+        gas.step(tick, map);
+        applyGas();
+        profiler.end(TickProfiler.Phase.GAS);
 
         profiler.begin(TickProfiler.Phase.REPAIRS);
         updateRepairs();
@@ -2593,6 +2615,11 @@ public final class GameWorld {
         return shells;
     }
 
+    /** Gas on the ground, for the renderer and for anything deciding where not to stand. */
+    public GasLayer gas() {
+        return gas;
+    }
+
     /**
      * Lands everything whose time has come.
      *
@@ -2625,6 +2652,9 @@ public final class GameWorld {
         // point takes the blast at full falloff, once - unlike every other blast weapon, which
         // damages its target and then splashes it a second time.
         applyBlastAt(shells.ownerId(i), shells.firedById(i), x, y, weapon, null);
+        if (weapon.weaponClass() == WeaponClass.GAS) {
+            gas.release(shells.toTileX(i), shells.toTileY(i), GasLayer.PER_SHELL);
+        }
 
         events.add(GameEvent.at(GameEvent.Type.SHELL_IMPACT, shells.ownerId(i),
                 shells.firedById(i), x, y));
@@ -2698,6 +2728,42 @@ public final class GameWorld {
     }
 
     /** Rattles a target. Structures and vehicles do not flinch; the men inside are not modelled. */
+    /**
+     * What standing in the cloud costs.
+     *
+     * <p>Every {@code HURT_EVERY} ticks, a dose per level of concentration, and three rules that
+     * are each one line of the doctrine. Cover does not reduce it - the trench is where gas
+     * pools, so this bypasses {@code resolveDamage} entirely rather than special-casing it
+     * there. Vehicles are sealed. And the Regime is masked: its infantry marched into this
+     * doctrine wearing the answer, which is why gas is their weapon and not a coin-flip.
+     *
+     * <p>The kill is attributed to nobody ({@code attackerId} -1, the field's own default):
+     * a cloud outlives the gun that threw it and can outlive the gunner's whole army.
+     */
+    private void applyGas() {
+        if (!gas.any() || tick % GAS_HURT_EVERY != 0) {
+            return;
+        }
+        for (int i = 0; i < units.size(); i++) {
+            Unit unit = units.get(i);
+            if (!unit.isAlive() || unit.type().isVehicle()) {
+                continue;
+            }
+            int dose = gas.at(unit.tileX(), unit.tileY());
+            if (dose <= 0 || player(unit.ownerId()).faction() == Faction.REGIME) {
+                continue;
+            }
+            suppress(unit, dose * GAS_SUPPRESSION_PER_DOSE);
+            boolean killed = unit.applyDamage(dose * GAS_DAMAGE_PER_DOSE, -1, tick);
+            events.add(GameEvent.at(GameEvent.Type.UNDER_ATTACK, unit.ownerId(), unit.id(),
+                    unit.x(), unit.y()));
+            if (killed) {
+                events.add(GameEvent.destroyed(unit.ownerId(), unit.id(), unit.x(), unit.y(),
+                        GameEvent.TargetKind.INFANTRY));
+            }
+        }
+    }
+
     private void suppress(Entity target, int amount) {
         if (target != null && !target.isBuilding() && !((Unit) target).type().isVehicle()) {
             ((Unit) target).addSuppression(amount);

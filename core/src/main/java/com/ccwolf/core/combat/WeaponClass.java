@@ -19,5 +19,12 @@ public enum WeaponClass {
      * <p>The only class delivered by something that takes time to arrive, and therefore the
      * only one that can land where nobody is standing any more.
      */
-    ARTILLERY
+    ARTILLERY,
+    /**
+     * A gas shell. The burst itself is almost harmless; what it leaves behind is the weapon.
+     *
+     * <p>The payload lives in {@code GasLayer}, not in the damage table: the shell's job is to
+     * vent a cloud where it lands, and the cloud then obeys weather rather than ballistics.
+     */
+    GAS
 }

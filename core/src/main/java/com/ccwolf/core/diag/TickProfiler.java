@@ -28,6 +28,7 @@ public final class TickProfiler {
         UNITS,
         BUILDINGS,
         SHELLS,
+        GAS,
         REPAIRS,
         SEPARATION,
         REMOVE_DEAD,

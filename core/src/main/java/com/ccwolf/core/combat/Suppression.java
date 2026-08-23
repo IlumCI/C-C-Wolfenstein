@@ -91,6 +91,10 @@ public final class Suppression {
         // something that arrives from above.
         set(WeaponClass.ARTILLERY, 32, 0.12f);
 
+        // Gas terrifies, and cover is no comfort at all - the zero is the doctrine's whole
+        // sentence written as a number.
+        set(WeaponClass.GAS, 26, 0f);
+
         for (WeaponClass w : WeaponClass.values()) {
             if (PER_SHOT[w.ordinal()] == UNSET || Float.isNaN(COVER_EFFECT[w.ordinal()])) {
                 throw new IllegalStateException("Suppression has no entry for " + w

@@ -237,6 +237,16 @@ public final class WorldView {
         return world.controlAtCell(playerId, cellX, cellY);
     }
 
+    /** Concentration of gas on a tile, zero for clean ground. */
+    public int gasAt(int tileX, int tileY) {
+        return world.gas().at(tileX, tileY);
+    }
+
+    /** True while any tile on the map holds gas, so a clean match skips the overlay wholesale. */
+    public boolean gasAnywhere() {
+        return world.gas().any();
+    }
+
     public int controlVersion() {
         return world.controlVersion();
     }
