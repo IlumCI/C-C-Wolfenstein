@@ -9,6 +9,7 @@ import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
+import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.map.MapCatalog;
 import com.ccwolf.core.map.Terrain;
 import com.ccwolf.core.map.TileMap;
@@ -85,5 +86,31 @@ public class DoctrineUnitsTest {
         assertTrue(gassed, "the shell vents its cloud where it lands");
         assertEquals(false, defender.isAlive(),
                 "full cover, and he dies anyway - the trench is where the gas pools");
+    }
+
+    /**
+     * The AI, left alone, plays its doctrine.
+     *
+     * <p>End to end and unscripted: an AI-versus-AI match on a seed whose Regime pick is Gas
+     * War, run long enough for an economy, a War Works and a battery to exist - and the claim
+     * is only that gas appears on the map, because that means the AI built the Gaswerfer,
+     * moved it, chose a target and fired it, all without a line of test choreography.
+     */
+    @Test
+    public void theAiFieldsItsDoctrine() {
+        long seed = 1L;
+        assertEquals(Doctrine.GASKRIEG, Doctrine.pickFor(Faction.REGIME, seed),
+                "seed 1 must be a Gas War seed for this test to mean anything");
+        Skirmish skirmish = Skirmish.createAiVersusAi(
+                MapCatalog.load("kreisau"), Difficulty.VETERAN, seed);
+        skirmish.world().setFogEnabled(false);
+        boolean gasSeen = false;
+        for (int i = 0; i < 14000 && !gasSeen; i++) {
+            skirmish.step();
+            skirmish.world().clearEvents();
+            gasSeen = skirmish.world().gas().any();
+        }
+        assertTrue(gasSeen, "fourteen thousand ticks of a Gas War match and no gas on the map:"
+                + " the AI never fielded or never fired its doctrine's one weapon");
     }
 }

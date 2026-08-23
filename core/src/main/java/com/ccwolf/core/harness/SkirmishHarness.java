@@ -35,6 +35,7 @@ public final class SkirmishHarness {
         Doctrine resistanceDoctrine = null;
         Doctrine regimeDoctrine = null;
         boolean quiet = false;
+        boolean plain = false;
         boolean profile = false;
         boolean digest = false;
         int benchUnits = 0;
@@ -67,6 +68,8 @@ public final class SkirmishHarness {
         for (int i = 0; i < args.length; i++) {
             if ("--quiet".equals(args[i])) {
                 quiet = true;
+            } else if ("--plain".equals(args[i])) {
+                plain = true;
             } else if ("--profile".equals(args[i])) {
                 profile = true;
             } else if ("--digest".equals(args[i])) {
@@ -80,6 +83,22 @@ public final class SkirmishHarness {
             StressBench.run(mapName, benchUnits, maxTicks == 24000 ? 2000 : maxTicks, seed,
                     benchSquads);
             return;
+        }
+
+        // The default match is the goldens' match: both AIs declare the doctrine the seed
+        // picks for them. --doctrine overrides one side; --plain strips both, for comparing
+        // against how the game played before doctrines existed.
+        if (!plain) {
+            if (resistanceDoctrine == null) {
+                resistanceDoctrine = Doctrine.pickFor(
+                        com.ccwolf.core.entity.Faction.RESISTANCE, seed);
+            }
+            if (regimeDoctrine == null) {
+                regimeDoctrine = Doctrine.pickFor(com.ccwolf.core.entity.Faction.REGIME, seed);
+            }
+        } else {
+            resistanceDoctrine = null;
+            regimeDoctrine = null;
         }
 
         TileMap map = MapCatalog.load(mapName);

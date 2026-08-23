@@ -32,7 +32,8 @@ public final class Skirmish {
     /** One human player against one AI. */
     public static Skirmish createVersusAi(TileMap map, Faction humanFaction, Difficulty difficulty,
                                           long seed) {
-        return createVersusAi(map, humanFaction, difficulty, seed, null, null);
+        return createVersusAi(map, humanFaction, difficulty, seed, null,
+                Doctrine.pickFor(humanFaction.other(), seed));
     }
 
     /**
@@ -58,9 +59,17 @@ public final class Skirmish {
         return new Skirmish(world, ais, human.id());
     }
 
-    /** Two AIs, used by the headless harness to shake out balance and stalls. */
+    /**
+     * Two AIs, used by the headless harness to shake out balance and stalls.
+     *
+     * <p>Both declare a doctrine, picked from the seed. This is the switch that turned the
+     * feature on: the goldens replay through here, so the moment this line landed they moved -
+     * once, deliberately, with the diff in the commit.
+     */
     public static Skirmish createAiVersusAi(TileMap map, Difficulty difficulty, long seed) {
-        return createAiVersusAi(map, difficulty, seed, null, null);
+        return createAiVersusAi(map, difficulty, seed,
+                Doctrine.pickFor(Faction.RESISTANCE, seed),
+                Doctrine.pickFor(Faction.REGIME, seed));
     }
 
     /** Two AIs, each fighting to a doctrine. This is what the balance sweep drives. */

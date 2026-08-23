@@ -82,6 +82,36 @@ public enum Doctrine {
         return description;
     }
 
+    /**
+     * The doctrine an AI declares for, decided by the match seed.
+     *
+     * <p>Deterministic on purpose: doctrines are picked before the first tick, so this is
+     * allowed to be a function of the seed alone without touching the world's random stream -
+     * and it must be, because the determinism goldens replay seeds and expect the same match.
+     * Each faction's three doctrines each appear for a third of all seeds — and the two sides'
+     * picks walk at different rates, one per seed against one per three seeds, so consecutive
+     * seeds cycle through all nine pairings rather than the same three forever. The first
+     * version added the faction ordinal to the same seed, and a twenty-seed sweep quietly
+     * tested a third of the matchup table while looking like it tested all of it.
+     */
+    public static Doctrine pickFor(Faction faction, long seed) {
+        Doctrine[] all = values();
+        int count = 0;
+        for (Doctrine d : all) {
+            if (d.availableTo(faction)) {
+                count++;
+            }
+        }
+        long stride = faction.ordinal() == 0 ? seed : Math.floorDiv(seed, count);
+        int pick = (int) Math.floorMod(stride, count);
+        for (Doctrine d : all) {
+            if (d.availableTo(faction) && pick-- == 0) {
+                return d;
+            }
+        }
+        throw new IllegalStateException("unreachable: " + faction + " has no doctrines");
+    }
+
     public boolean availableTo(Faction f) {
         return faction == f;
     }

@@ -3,6 +3,7 @@ package com.ccwolf.core.ai;
 import com.ccwolf.core.entity.Building;
 import com.ccwolf.core.entity.BuildingType;
 import com.ccwolf.core.entity.Entity;
+import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.entity.UnitType;
@@ -312,6 +313,11 @@ public final class SkirmishAi {
         UnitType fast = faction == Faction.REGIME ? UnitType.PANZERHUND : UnitType.SCOUT_JEEP;
         UnitType armour = faction == Faction.REGIME ? UnitType.PANZERHUND
                 : UnitType.CAPTURED_PANZER;
+        // Extermination buys the machine its doctrine paid for. Reading the doctrine instead
+        // of rolling for it keeps the number of random draws per tick exactly what it was.
+        if (me.doctrine() == Doctrine.AUSMERZUNG) {
+            armour = UnitType.AUSMERZER;
+        }
 
         if (me.infantryQueue().size() < 2) {
             UnitType pick = pickInfantry(world, me, faction, line, heavy);
@@ -351,6 +357,11 @@ public final class SkirmishAi {
                 ? UnitType.SCHARFSCHUTZE : UnitType.MARKSMAN;
         UnitType specialist = faction == Faction.REGIME
                 ? UnitType.STURMPIONIER : UnitType.GRENADIER;
+        // Firestorm's whole idea is more fire for less: the flame slot in the mix becomes the
+        // doctrine's cheap team, and the same roll now buys twice the wave.
+        if (me.doctrine() == Doctrine.BRANDSTURM) {
+            specialist = UnitType.FLAMMTRUPP;
+        }
 
         if (rich && roll < 30 && world.canProduce(playerId, heavy)) {
             return heavy;
@@ -480,6 +491,14 @@ public final class SkirmishAi {
                     > difficulty.creditReserve() + UnitType.RESONANZKANONE.cost();
             if (rich && world.canProduce(playerId, UnitType.RESONANZKANONE)) {
                 return UnitType.RESONANZKANONE;
+            }
+            // Gas War alternates its batteries: every other gun is a Gaswerfer, so the line
+            // takes gas and high explosive together - the gas empties the trench and the
+            // Nebelwerfer catches what leaves it. Parity of the existing count, not a roll:
+            // the random stream must not learn about doctrines.
+            if (me.doctrine() == Doctrine.GASKRIEG && countGuns(world) % 2 == 1
+                    && world.canProduce(playerId, UnitType.GASWERFER)) {
+                return UnitType.GASWERFER;
             }
             return UnitType.NEBELWERFER;
         }
