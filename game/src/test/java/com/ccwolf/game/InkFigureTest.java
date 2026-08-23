@@ -134,25 +134,23 @@ public class InkFigureTest {
         Ink ink = new Ink(GRID, GRID);
         InkBody.Figure f = new InkBody.Figure(ink, facing, GRID / 2f, GRID / 2f, 1.15f);
 
-        // Four frames: the boots swing forward, level, back, level along his line of march.
+        // Four frames: the boots swing along his line of march. Nothing else pumps - an earlier
+        // frame set changed the shoulder radii with the stride and the body breathed like a
+        // bellows instead of walking.
         float[] swing = {0f, 3.5f, 0f, -3.5f};
         float stride = swing[frame % swing.length];
-        // And the shoulders rock a fraction of that, which is what stops the body reading as a
-        // puck that two feet are sliding under.
-        float roll = stride * 0.12f;
 
         InkBody.boots(f, stride, Ink.BOOT);
         ink.shade(Ink.BOOT, Ink.BOOT_DARK, 1, 1, 2);
 
-        InkBody.pack(f, 4.5f, Ink.KIT, Ink.KIT_DARK);
-        InkBody.shoulders(f, 11.5f + roll, 6.5f - roll, Ink.COAT);
-        InkBody.webbing(f, 8f, Ink.KIT, Ink.KIT_DARK);
+        InkBody.pack(f, 4f, Ink.KIT, Ink.KIT_DARK);
+        InkBody.shoulders(f, 10.5f, 7.5f, Ink.COAT);
+        InkBody.webbing(f, 8f, Ink.KIT_DARK);
         ink.shade(Ink.COAT, Ink.COAT_DARK, 1, 1, 3);
 
-        // Both hands converge on the weapon rather than hanging where the shoulders are, which
-        // is what makes the arms read as holding something instead of as two spare limbs.
-        InkBody.arm(f, -1f, -2.5f, 8.5f, Ink.COAT_LIGHT, Ink.SKIN);
-        InkBody.arm(f, 1f, 3.5f, 5.5f, Ink.COAT_LIGHT, Ink.SKIN);
+        // Both hands on the weapon: the near one at the grip, the far one at the fore-end.
+        InkBody.arm(f, 1f, 2.2f, 4.5f, Ink.COAT, Ink.SKIN);
+        InkBody.arm(f, -1f, 0.8f, 8f, Ink.COAT, Ink.SKIN);
         InkBody.weapon(f, 15f, 1.4f, Ink.METAL, Ink.WOOD);
         InkBody.magazine(f, Ink.METAL_DARK);
 

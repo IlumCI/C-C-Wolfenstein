@@ -136,7 +136,11 @@ public final class UnitSprites {
             case UBERSOLDAT:
                 return ubersoldat(facing, frame);
             default:
-                return infantry(faction, facing, frame, loadoutFor(type, faction));
+                // The doll re-authored at sixty-four to a tile: same design, four times the
+                // pixels, and for the first time the man has arms. The coarse recipe below
+                // stays as the reference it was refined from.
+                return FineInfantry.draw(faction == Faction.REGIME, facing, frame,
+                        loadoutFor(type, faction), FINE_SCALE, OUTLINE);
         }
     }
 
@@ -148,7 +152,7 @@ public final class UnitSprites {
      * behind, and the crouch changes the height — so they are told apart at a glance even
      * before you notice what they are carrying.
      */
-    private static final class Loadout {
+    static final class Loadout {
         final Kit kit;
         final Head head;
         final Pack pack;
@@ -197,14 +201,14 @@ public final class UnitSprites {
     }
 
     /** What an infantryman is carrying. */
-    private enum Kit { RIFLE, SMG, ROCKET, SNIPER, GRENADE, FLAMER, NONE }
+    enum Kit { RIFLE, SMG, ROCKET, SNIPER, GRENADE, FLAMER, NONE }
 
     /** What is on their head — the fastest way to tell two sprites apart from above. */
-    private enum Head { CAP, BANDANA, STOLEN_HELMET, HOOD, GHILLIE, REGIME_HELMET,
+    enum Head { CAP, BANDANA, STOLEN_HELMET, HOOD, GHILLIE, REGIME_HELMET,
         COVERED_HELMET }
 
     /** What is on their back, which is what you see when they are walking away. */
-    private enum Pack { NONE, BANDOLIER, ROCKET_BAG, CHARGE_BAG, WIRE_COIL, FUEL_TANKS, DRAPE,
+    enum Pack { NONE, BANDOLIER, ROCKET_BAG, CHARGE_BAG, WIRE_COIL, FUEL_TANKS, DRAPE,
         SATCHEL_ONLY }
 
     /**

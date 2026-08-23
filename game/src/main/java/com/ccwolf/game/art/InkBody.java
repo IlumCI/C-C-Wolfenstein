@@ -136,20 +136,23 @@ public final class InkBody {
     }
 
     /**
-     * An arm, from the shoulder out to a hand held forward.
+     * A forearm, from under the shoulder out to a hand on the weapon.
+     *
+     * <p>Only the forearm. From above the upper arm is beneath the shoulder and drawing it put a
+     * lobe on the silhouette; starting the stroke inside the shoulder ellipse means the arm
+     * emerges from under the body, which is what an arm seen from overhead does. The hand is
+     * small and it belongs on the weapon: the close-up showed an off hand parked at the coat's
+     * edge reading as a wound, because a hand with nothing in it is a skin blob with no story.
      *
      * @param side his right is positive
      */
     public static void arm(Figure f, float side, float handAcross, float handForward, byte cloth,
                            byte skin) {
-        float shoulderAcross = side * 8f;
-        // Thin, and starting inside the shoulder line. Drawn thick they were two lobes hanging
-        // off the body and the whole silhouette went from a man to an amoeba - at this size an
-        // arm is a two-pixel stroke and anything more is a second torso.
-        f.ink.taper(f.x(shoulderAcross, -1f), f.y(shoulderAcross, -1f), f.u(2.6f),
-                f.x(handAcross, handForward), f.y(handAcross, handForward), f.u(1.8f), cloth);
-        f.ink.ellipse(f.x(handAcross, handForward), f.y(handAcross, handForward), f.u(1.9f),
-                f.u(1.9f), f.angle(), skin);
+        float shoulderAcross = side * 6f;
+        f.ink.taper(f.x(shoulderAcross, 2f), f.y(shoulderAcross, 2f), f.u(2.2f),
+                f.x(handAcross, handForward), f.y(handAcross, handForward), f.u(1.6f), cloth);
+        f.ink.ellipse(f.x(handAcross, handForward), f.y(handAcross, handForward), f.u(1.6f),
+                f.u(1.6f), f.angle(), skin);
     }
 
     /**
@@ -204,26 +207,32 @@ public final class InkBody {
         f.ink.ellipse(f.x(0f, 3.2f), f.y(0f, 3.2f), f.u(3f), f.u(1.6f), f.angle(), clothDark);
     }
 
-    /** A pack square on the back, and the strap over each shoulder that holds it there. */
+    /**
+     * A pack on the back: a dark rim with a lighter lid inside it.
+     *
+     * <p>The rim is the part that matters. Drawn as one flat plate in a tone from the same value
+     * family as the coat, the pack was a smear merged into the rear outline — the close-up showed
+     * a growth, not luggage. A box on a back is identified by its edge, so the edge is drawn: the
+     * dark plate is the pack's own silhouette and the inner plate is its lid, and the two-tone
+     * step survives at game size where a texture would not.
+     */
     public static void pack(Figure f, float across, byte kit, byte kitDark) {
-        f.ink.plate(f.x(0f, -4f), f.y(0f, -4f), f.u(across * 2f), f.u(5.5f), f.u(1.5f),
+        f.ink.plate(f.x(0f, -5f), f.y(0f, -5f), f.u(across * 2f), f.u(6f), f.u(1.2f),
+                f.angle(), kitDark);
+        f.ink.plate(f.x(0f, -5f), f.y(0f, -5f), f.u(across * 2f - 2f), f.u(4f), f.u(1f),
                 f.angle(), kit);
-        f.ink.line(Math.round(f.x(-across * 0.6f, -6f)), Math.round(f.y(-across * 0.6f, -6f)),
-                Math.round(f.x(-across * 0.6f, 5f)), Math.round(f.y(-across * 0.6f, 5f)), kitDark);
-        f.ink.line(Math.round(f.x(across * 0.6f, -6f)), Math.round(f.y(across * 0.6f, -6f)),
-                Math.round(f.x(across * 0.6f, 5f)), Math.round(f.y(across * 0.6f, 5f)), kitDark);
     }
 
     /**
-     * A belt across the small of the back, and one pouch on it.
+     * A belt across the back, shoulder to shoulder.
      *
-     * <p>Two marks, and they earn their pixels the same way the strap does: they break up the flat
-     * oval the back otherwise is, and they sit off centre, which quietly says which way is up.
+     * <p>One mark, not two. It had a pouch, and at game size the pouch was a blob that read as
+     * damage; the belt line alone breaks up the flat oval, which is the whole job. Detail that
+     * cannot be named at the shown size is noise, however honest it is.
      */
-    public static void webbing(Figure f, float across, byte kit, byte kitDark) {
-        f.ink.line(Math.round(f.x(-across, -3f)), Math.round(f.y(-across, -3f)),
-                Math.round(f.x(across, -3f)), Math.round(f.y(across, -3f)), kit);
-        f.ink.plate(f.x(2f, -6f), f.y(2f, -6f), f.u(4f), f.u(3f), f.u(1f), f.angle(), kitDark);
+    public static void webbing(Figure f, float across, byte kit) {
+        f.ink.line(Math.round(f.x(-across, -2.5f)), Math.round(f.y(-across, -2.5f)),
+                Math.round(f.x(across, -2.5f)), Math.round(f.y(across, -2.5f)), kit);
     }
 
     // --- what he is carrying ---------------------------------------------------------------
@@ -245,9 +254,16 @@ public final class InkBody {
                 f.y(1.5f, length * 0.3f), f.u(bulk + 0.6f), wood);
     }
 
-    /** The box magazine of a submachine gun, hanging out to one side. Four pixels, and it names it. */
+    /**
+     * The box magazine of a submachine gun, hanging off the receiver's left, out where it shows.
+     *
+     * <p>It was at the chest and it read as noise — a dark blob on the coat with no attachment to
+     * anything. A detail earns pixels only where it touches the thing it belongs to, so it sits
+     * against the weapon's line, forward of the hands, clear of the body.
+     */
     public static void magazine(Figure f, byte metal) {
-        f.ink.plate(f.x(-2f, 2f), f.y(-2f, 2f), f.u(2.5f), f.u(4f), f.u(0.8f), f.angle(), metal);
+        f.ink.plate(f.x(-0.8f, 8.5f), f.y(-0.8f, 8.5f), f.u(2.2f), f.u(3.2f), f.u(0.7f),
+                f.angle(), metal);
     }
 
     /** A launcher tube on the shoulder: short, fat, and pointing where he is. */
