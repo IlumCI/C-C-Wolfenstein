@@ -117,6 +117,10 @@ public final class UnitSprites {
                 return vehicle(feldkanone(frame), facing, 15, 5);
             case NEBELWERFER:
                 return vehicle(nebelwerfer(frame), facing, 22, 8);
+            case GASWERFER:
+                return vehicle(gaswerfer(frame), facing, 15, 5);
+            case AUSMERZER:
+                return FineUbersoldat.drawAusmerzer(facing, frame, FINE_SCALE, OUTLINE);
             case RESONANZKANONE:
                 return vehicle(resonanzkanone(frame), facing, 40, 15);
             case UBERSOLDAT:
@@ -180,6 +184,11 @@ public final class UnitSprites {
                 return new Loadout(Kit.FLAMER, Head.REGIME_HELMET, Pack.FUEL_TANKS, false, -1);
             case SOLDAT:
                 return new Loadout(Kit.SMG, Head.REGIME_HELMET, Pack.NONE, false, 0);
+            case FLAMMTRUPP:
+                // Firestorm's wave: the Sturmpionier's kit on a lighter uniform, and four of
+                // them to a team. The pale grey is the read - a wall of ash-coloured men with
+                // tanks on their backs coming out of the smoke.
+                return new Loadout(Kit.FLAMER, Head.REGIME_HELMET, Pack.FUEL_TANKS, false, 2);
             case PARTISAN:
             default:
                 return new Loadout(Kit.RIFLE, Head.CAP, Pack.BANDOLIER, false, 0);
@@ -868,7 +877,10 @@ public final class UnitSprites {
                 return SUPERWEAPON_SIZE / (float) TILE;
             case NEBELWERFER:
                 return HEAVY_SIZE / (float) TILE;
+            case AUSMERZER:
+                return HEAVY_SIZE / (float) TILE;
             case FELDKANONE:
+            case GASWERFER:
                 return VEHICLE_SIZE / (float) TILE;
             default:
                 return type.isVehicle() ? VEHICLE_SIZE / (float) TILE : 1f;
@@ -882,6 +894,56 @@ public final class UnitSprites {
      * hand-painted mark over whatever was stencilled there before. Nothing about the two halves
      * agrees, which is the whole story of how the Kreisau Circle came to own artillery.
      */
+    /**
+     * The Gaswerfer-40: a pressure cylinder on a carriage, and a stubby projector.
+     *
+     * <p>Everything about the silhouette says "tank of something you do not want": the cylinder
+     * is the biggest single shape, it carries the warning band, and the projector is almost an
+     * afterthought - which is the truth of the weapon, since the shell is nothing and the cloud
+     * is everything.
+     */
+    private static PixelCanvas gaswerfer(int frame) {
+        PixelCanvas c = canvas(VEHICLE_SIZE);
+        int[] metal = WolfPalette.GUNMETAL;
+        int[] night = WolfPalette.NIGHT;
+        int cx = 24;
+        int cy = 24;
+        int recoil = frame == 1 ? 1 : 0;
+
+        // Carriage: a steel bed on two road wheels.
+        for (int side = -1; side <= 1; side += 2) {
+            int wy = cy + side * 9;
+            c.ellipse(cx - 2, wy, 6, 6, WolfPalette.shade(night, 3));
+            c.ellipse(cx - 2, wy, 4, 4, WolfPalette.shade(night, 1));
+            c.ellipse(cx - 2, wy, 1, 1, WolfPalette.shade(metal, 0));
+        }
+        c.panel(cx - 12, cy - 7, 20, 15, night, 2);
+        c.hLine(cx - 12, cx + 7, cy - 7, WolfPalette.shade(night, 0));
+
+        // The cylinder, lying across the bed: the unit's whole identity.
+        c.panel(cx - 10, cy - 5, 16, 11, metal, 2);
+        c.hLine(cx - 10, cx + 5, cy - 5, WolfPalette.shade(metal, 0));
+        c.hLine(cx - 10, cx + 5, cy + 5, WolfPalette.shade(metal, 4));
+        c.ellipse(cx - 10, cy, 3, 5, WolfPalette.shade(metal, 3));
+        c.ellipse(cx + 5, cy, 3, 5, WolfPalette.shade(metal, 1));
+        // The warning band, and a valve wheel.
+        c.vLine(cx - 3, cy - 5, cy + 5, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.vLine(cx - 2, cy - 5, cy + 5, WolfPalette.shade(WolfPalette.BLOOD, 2));
+        c.ellipse(cx - 8, cy, 2, 2, WolfPalette.shade(WolfPalette.BRASS, 1));
+
+        // The projector: short, fat, angled up off the front of the bed.
+        c.thickLine(cx + 4, cy - recoil, cx + 16 - recoil, cy - recoil, 2,
+                WolfPalette.shade(metal, 2));
+        c.line(cx + 4, cy - 1 - recoil, cx + 16 - recoil, cy - 1 - recoil,
+                WolfPalette.shade(metal, 0));
+        c.ellipse(cx + 16 - recoil, cy - recoil, 3, 3, WolfPalette.shade(metal, 3));
+        c.ellipse(cx + 16 - recoil, cy - recoil, 1, 1, WolfPalette.shade(night, 4));
+        // Hose from cylinder to breech.
+        c.line(cx + 3, cy + 3, cx + 8, cy + 1, WolfPalette.shade(night, 1));
+
+        return c;
+    }
+
     private static PixelCanvas feldkanone(int frame) {
         PixelCanvas c = canvas(VEHICLE_SIZE);
         int[] metal = WolfPalette.GUNMETAL;

@@ -17,6 +17,98 @@ final class FineUbersoldat {
 
     private static final int CX = 32;
 
+    /**
+     * The Ausmerzer: the Extermination doctrine's machine, drawn as the Ubersoldat's bigger,
+     * worse sibling.
+     *
+     * <p>Same skeleton at the same grid, and every difference is doctrine. Broader across the
+     * shoulders, because it is built to fill the trench it steps into. Both arms end in
+     * projector nozzles - it carries nothing that works past arm's length. And the optics burn
+     * whichever way it faces: an Ubersoldat is a soldier and shows you its back, an Ausmerzer
+     * is a furnace and the glow leaks round the housing.
+     */
+    static PixelCanvas drawAusmerzer(int facing, int frame, int scale, int outline) {
+        PixelCanvas c = new PixelCanvas(FineInfantry.SIZE, FineInfantry.SIZE, scale);
+        int[] plate = WolfPalette.NIGHT;
+        int[] shade = WolfPalette.GUNMETAL;
+        float angle = facing * (float) (Math.PI / 4.0);
+        float dx = (float) Math.cos(angle);
+        float dy = (float) Math.sin(angle);
+        float perpX = -dy;
+        float perpY = dx;
+        int step = frame == 1 ? 2 : 0;
+
+        c.groundShadow(CX, 60, 25, 7);
+
+        leg(c, 20, 34, -step, plate, shade);
+        leg(c, 44, 34, step, plate, shade);
+
+        c.rect(22, 30, 21, 8, WolfPalette.shade(shade, 3));
+        for (int x = 22; x < 43; x += 4) {
+            c.vLine(x, 30, 37, WolfPalette.shade(shade, 2));
+            c.px(x, 31, WolfPalette.shade(WolfPalette.STEEL, 2));
+        }
+
+        // The torso: wider than the Ubersoldat's and squarer - a boiler, not a chest.
+        int[] rowLeft  = {19, 17, 15, 15, 15, 16, 17, 19, 21};
+        int[] rowRight = {45, 47, 49, 49, 49, 48, 47, 45, 43};
+        for (int i = 0; i < rowLeft.length; i++) {
+            int y = 12 + i * 2;
+            int fill = i < 3 ? 1 : (i < 6 ? 2 : 3);
+            c.rect(rowLeft[i], y, rowRight[i] - rowLeft[i] + 1, 2, WolfPalette.shade(plate, fill));
+            c.vLine(rowLeft[i], y, y + 1, WolfPalette.shade(plate, 0));
+            c.vLine(rowRight[i], y, y + 1, WolfPalette.shade(plate, 4));
+        }
+        // Furnace grille where a sternum would be, lit from inside.
+        c.rect(29, 18, 7, 8, WolfPalette.shade(shade, 4));
+        for (int y = 19; y < 25; y += 2) {
+            c.hLine(30, 34, y, WolfPalette.shade(WolfPalette.FIRE, 2));
+        }
+        c.hLine(31, 33, 21, WolfPalette.shade(WolfPalette.FIRE, 0));
+        c.hLine(19, 45, 28, WolfPalette.shade(shade, 2));
+
+        pauldron(c, 10, 22, plate, shade, true);
+        pauldron(c, 54, 22, plate, shade, true);
+
+        // Head: lower and wider than the Ubersoldat's, and the optics show at every facing.
+        c.rect(25, 14, 15, 5, WolfPalette.shade(shade, 3));
+        c.rect(23, 4, 19, 13, WolfPalette.shade(plate, 3));
+        c.rect(25, 6, 15, 9, WolfPalette.shade(plate, 2));
+        c.hLine(23, 41, 4, WolfPalette.shade(plate, 1));
+        c.vLine(23, 4, 16, WolfPalette.shade(plate, 2));
+        c.vLine(41, 4, 16, WolfPalette.shade(plate, 4));
+        c.hLine(26, 30, 9, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.hLine(34, 38, 9, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.px(26, 9, WolfPalette.shade(WolfPalette.BLOOD, 0));
+        c.px(34, 9, WolfPalette.shade(WolfPalette.BLOOD, 0));
+        c.rect(27, 12, 11, 3, WolfPalette.shade(shade, 4));
+
+        // Both arms end in projectors. The near one aims with the facing; the off one hangs.
+        float k = 1f - 0.3f * Math.abs(dy);
+        projectorArm(c, CX - perpX * 16f, 24 - perpY * 16f, dx, dy, k, plate, shade, true);
+        projectorArm(c, CX + perpX * 16f, 24 + perpY * 16f, dx * 0.3f, dy * 0.3f + 0.6f, 1f,
+                plate, shade, false);
+
+        c.outline(outline);
+        return c;
+    }
+
+    /** An arm that is a fuel line and a nozzle. Lit at the tip when it is the aiming one. */
+    private static void projectorArm(PixelCanvas c, float sx, float sy, float dx, float dy,
+                                     float k, int[] plate, int[] shade, boolean lit) {
+        int shoulderX = Math.round(sx);
+        int shoulderY = Math.round(sy);
+        int tipX = Math.round(sx + dx * 18f * k);
+        int tipY = Math.round(sy + dy * 18f * k);
+        c.thickLine(shoulderX, shoulderY, tipX, tipY, 3, WolfPalette.shade(plate, 2));
+        c.line(shoulderX, shoulderY, tipX, tipY, WolfPalette.shade(plate, 1));
+        c.ellipse(tipX, tipY, 3, 3, WolfPalette.shade(shade, 2));
+        c.ellipse(tipX, tipY, 1, 1, WolfPalette.shade(shade, 4));
+        if (lit) {
+            c.px(tipX + (dx > 0 ? 2 : -2), tipY, WolfPalette.shade(WolfPalette.FIRE, 1));
+        }
+    }
+
     static PixelCanvas draw(int facing, int frame, int scale, int outline) {
         PixelCanvas c = new PixelCanvas(FineInfantry.SIZE, FineInfantry.SIZE, scale);
         int[] plate = WolfPalette.STEEL;

@@ -67,7 +67,25 @@ public enum Weapon {
      * does is empty a position of men who are still alive. Slow, ruinously expensive, and it
      * outranges every other thing on the map.
      */
-    RESONANZKANONE("Resonanzkanone", 30, 15f, 200, WeaponClass.OCCULT, 3.0f, 8f);
+    RESONANZKANONE("Resonanzkanone", 30, 15f, 200, WeaponClass.OCCULT, 3.0f, 8f),
+
+    /**
+     * A pressure gun that lobs gas canisters.
+     *
+     * <p>The listed damage is the canister burst and it is nearly nothing; the weapon is the
+     * cloud the shell vents where it lands, and the cloud belongs to {@code GasLayer} rather
+     * than to this table. Shorter-legged than the artillery pieces on purpose: a Gaswerfer has
+     * to stand inside counter-battery range of the line it is gassing.
+     */
+    GASWERFER("Gaswerfer-40", 12, 10.5f, 130, WeaponClass.GAS, 2.0f, 5f),
+
+    /**
+     * The Ausmerzer's projector: a fan of burning fuel at arm's length.
+     *
+     * <p>Short even by flame standards, because the machine's whole doctrine is that it walks
+     * the last stretch. What it reaches, it clears.
+     */
+    VERNICHTER("Vernichter Projector", 34, 3.6f, 11, WeaponClass.FLAME, 1.6f);
 
     private final String displayName;
     private final int damage;

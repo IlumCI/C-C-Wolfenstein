@@ -130,6 +130,44 @@ public enum UnitType {
      */
     RESONANZKANONE("Resonanzkanone", Faction.REGIME, 1800, 440, 130, 0.9f, 6,
             ArmorClass.FLESH, Weapon.RESONANZKANONE, false, 0,
+            BuildingType.WAR_WORKS, BuildingType.REFINERY),
+
+    // --- the doctrine units ---------------------------------------------------------------
+    // Each exists only for a player who declared for its doctrine at match start:
+    // requiredDoctrine() is the gate and production checks it. None of them appears in a
+    // baseline match, which is what keeps the determinism goldens still.
+
+    /**
+     * Firestorm's answer to a dug line: cheap flame teams, and a lot of them.
+     *
+     * <p>The Sturmpionier is an engineer who happens to carry fire; this is fire that happens
+     * to have men attached. Half the cost, twice the wave.
+     */
+    FLAMMTRUPP("Flammtrupp", Faction.REGIME, 320, 120, 90, 2.1f, 4,
+            ArmorClass.FLESH, Weapon.FLAMMENWERFER, false, 0,
+            BuildingType.BARRACKS, null),
+
+    /**
+     * Gas War's one delivery system.
+     *
+     * <p>A crew and a pressure gun, on the Feldkanone's pattern: indirect, slow, soft. It has
+     * to stand closer to the line than any other battery, because what it throws is worthless
+     * against anything that can simply drive away - it exists to make trenches lethal to the
+     * men holding them.
+     */
+    GASWERFER("Gaswerfer-40", Faction.REGIME, 800, 280, 100, 1.3f, 5,
+            ArmorClass.FLESH, Weapon.GASWERFER, false, 0,
+            BuildingType.WAR_WORKS, BuildingType.REFINERY),
+
+    /**
+     * Extermination made walkable: the machine that goes in and empties the position.
+     *
+     * <p>Slower than an Ubersoldat, twice the plate, and armed with a projector that reaches
+     * barely past its own fists - the doctrine is that it closes, and everything about the
+     * statline forces the question of what happens when it arrives.
+     */
+    AUSMERZER("Ausmerzer", Faction.REGIME, 1400, 380, 700, 1.2f, 5,
+            ArmorClass.HEAVY, Weapon.VERNICHTER, true, 0,
             BuildingType.WAR_WORKS, BuildingType.REFINERY);
 
     private final String displayName;
@@ -247,6 +285,7 @@ public enum UnitType {
             case ROCKETEER:
             case GRENADIER:
             case STURMPIONIER:
+            case FLAMMTRUPP:
                 return 4;
             case MARKSMAN:
             case SCHARFSCHUTZE:
@@ -286,6 +325,26 @@ public enum UnitType {
     }
 
     /** Collision/selection radius in tiles. Vehicles are chunkier than infantry. */
+    /**
+     * The doctrine a player must have declared for this unit to exist for them, or null.
+     *
+     * <p>This is the whole mechanism by which the Regime's doctrines buy roster instead of
+     * numbers: production checks it in exactly one place ({@code GameWorld.canProduce}), the
+     * same way faction availability works, so no menu can offer what the declaration did not.
+     */
+    public Doctrine requiredDoctrine() {
+        switch (this) {
+            case FLAMMTRUPP:
+                return Doctrine.BRANDSTURM;
+            case GASWERFER:
+                return Doctrine.GASKRIEG;
+            case AUSMERZER:
+                return Doctrine.AUSMERZUNG;
+            default:
+                return null;
+        }
+    }
+
     public float radius() {
         switch (this) {
             // The guns take up real ground. A machine drawn three and a half tiles across that
@@ -296,7 +355,10 @@ public enum UnitType {
             case NEBELWERFER:
                 return 0.7f;
             case FELDKANONE:
+            case GASWERFER:
                 return 0.5f;
+            case AUSMERZER:
+                return 0.55f;
             default:
                 return vehicle ? 0.42f : 0.28f;
         }

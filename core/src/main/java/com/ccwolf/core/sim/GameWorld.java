@@ -867,6 +867,9 @@ public final class GameWorld {
         if (!type.availableTo(p.faction())) {
             return false;
         }
+        if (type.requiredDoctrine() != null && p.doctrine() != type.requiredDoctrine()) {
+            return false;
+        }
         if (!hasCompletedBuilding(playerId, type.producedBy())) {
             return false;
         }
@@ -1071,6 +1074,9 @@ public final class GameWorld {
         Player p = player(playerId);
         if (!type.availableTo(p.faction())) {
             return "Not available to " + p.faction().displayName();
+        }
+        if (type.requiredDoctrine() != null && p.doctrine() != type.requiredDoctrine()) {
+            return "Needs the " + type.requiredDoctrine().displayName() + " doctrine";
         }
         if (!hasCompletedBuilding(playerId, type.producedBy())) {
             return "Needs " + type.producedBy().displayName();
