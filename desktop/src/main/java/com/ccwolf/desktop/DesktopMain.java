@@ -3,6 +3,7 @@ package com.ccwolf.desktop;
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.game.GameSession;
+import com.ccwolf.game.MatchSetup;
 import com.ccwolf.game.input.InputController;
 import com.ccwolf.game.input.PointerEvent;
 import com.ccwolf.game.render.Hud;
@@ -44,23 +45,25 @@ public final class DesktopMain {
 
         int headlessFrames = (int) argLong(args, "--headless", 0L);
 
-        final GameSession session = new GameSession(Faction.RESISTANCE, difficulty, seed);
         final WorldRenderer renderer = new WorldRenderer();
         final Hud hud = new Hud();
         hud.layout(WIDTH, HEIGHT, 2f);
-        session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
 
         if (headlessFrames > 0) {
+            // Headless runs are measurements, not matches: they skip the setup screen and take
+            // the command line's word for everything, as they always have.
+            GameSession session = new GameSession(Faction.RESISTANCE, difficulty, seed);
+            session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
             renderHeadless(session, renderer, hud, headlessFrames);
             return;
         }
 
-        final InputController input = new InputController(session, hud, renderer, 2f);
+        final long matchSeed = seed;
 
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
-                GamePanel panel = new GamePanel(session, renderer, hud, input);
+                GamePanel panel = new GamePanel(matchSeed, renderer, hud);
                 JFrame frame = new JFrame("C&C: Wolfenstein");
                 frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
                 frame.setContentPane(panel);
@@ -129,10 +132,14 @@ public final class DesktopMain {
     /** Draws into an offscreen buffer, then blits — the same shape as the Android loop. */
     private static final class GamePanel extends JPanel {
 
-        private final GameSession session;
+        private final long seed;
         private final WorldRenderer renderer;
         private final Hud hud;
-        private final InputController input;
+
+        /** Null until the setup screen's choices are made; the match exists only after them. */
+        private GameSession session;
+        private InputController input;
+        private final MatchSetup setup = new MatchSetup();
 
         private final BufferedImage frame =
                 new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
@@ -144,20 +151,33 @@ public final class DesktopMain {
          */
         private boolean panning;
 
-        GamePanel(GameSession session, WorldRenderer renderer, Hud hud, InputController input) {
-            this.session = session;
+        GamePanel(long seed, WorldRenderer renderer, Hud hud) {
+            this.seed = seed;
             this.renderer = renderer;
             this.hud = hud;
-            this.input = input;
+            setup.layout(WIDTH, HEIGHT, 2f);
             setPreferredSize(new Dimension(WIDTH, HEIGHT));
             setFocusable(true);
             installListeners();
+        }
+
+        private void beginMatch() {
+            session = new GameSession(setup.faction(), setup.difficulty(), seed,
+                    setup.doctrine(), null);
+            session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
+            input = new InputController(session, hud, renderer, 2f);
         }
 
         private void installListeners() {
             MouseAdapter mouse = new MouseAdapter() {
                 @Override
                 public void mousePressed(MouseEvent e) {
+                    if (session == null) {
+                        if (setup.tap(e.getX(), e.getY())) {
+                            beginMatch();
+                        }
+                        return;
+                    }
                     if (SwingUtilities.isRightMouseButton(e)) {
                         panning = true;
                         return;
@@ -167,6 +187,9 @@ public final class DesktopMain {
 
                 @Override
                 public void mouseDragged(MouseEvent e) {
+                    if (session == null) {
+                        return;
+                    }
                     if (panning) {
                         return;
                     }
@@ -175,6 +198,9 @@ public final class DesktopMain {
 
                 @Override
                 public void mouseReleased(MouseEvent e) {
+                    if (session == null) {
+                        return;
+                    }
                     if (SwingUtilities.isRightMouseButton(e)) {
                         panning = false;
                         return;
@@ -184,6 +210,9 @@ public final class DesktopMain {
 
                 @Override
                 public void mouseWheelMoved(MouseWheelEvent e) {
+                    if (session == null) {
+                        return;
+                    }
                     float factor = e.getWheelRotation() < 0 ? 1.12f : 1f / 1.12f;
                     session.camera().zoomBy(factor, e.getX(), e.getY());
                 }
@@ -195,6 +224,9 @@ public final class DesktopMain {
             addKeyListener(new KeyAdapter() {
                 @Override
                 public void keyPressed(KeyEvent e) {
+                    if (session == null) {
+                        return;
+                    }
                     float step = 64f;
                     switch (e.getKeyCode()) {
                         case KeyEvent.VK_LEFT:
@@ -231,7 +263,10 @@ public final class DesktopMain {
                     long previous = System.nanoTime();
                     while (true) {
                         long now = System.nanoTime();
-                        session.update((now - previous) / 1_000_000_000f);
+                        GameSession current = session;
+                        if (current != null) {
+                            current.update((now - previous) / 1_000_000_000f);
+                        }
                         previous = now;
 
                         render();
@@ -258,8 +293,13 @@ public final class DesktopMain {
             try {
                 Java2DSurface surface = new Java2DSurface(g, WIDTH, HEIGHT);
                 surface.clear(0xFF0B0C0A);
-                renderer.draw(surface, session);
-                hud.draw(surface, session, System.currentTimeMillis());
+                GameSession current = session;
+                if (current == null) {
+                    setup.draw(surface);
+                } else {
+                    renderer.draw(surface, current);
+                    hud.draw(surface, current, System.currentTimeMillis());
+                }
             } finally {
                 g.dispose();
             }

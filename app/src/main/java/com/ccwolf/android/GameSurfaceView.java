@@ -8,6 +8,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import com.ccwolf.android.gfx.AndroidSurface;
 import com.ccwolf.game.GameSession;
+import com.ccwolf.game.MatchSetup;
 import com.ccwolf.game.input.InputController;
 import com.ccwolf.game.input.PointerEvent;
 import com.ccwolf.game.render.Hud;
@@ -42,18 +43,22 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     private final Faction faction;
     private final Difficulty difficulty;
 
+    /** The pre-match screen. The session exists only after its choices are made. */
+    private final MatchSetup setup = new MatchSetup();
+    private long seed;
+
     public GameSurfaceView(Context context, Faction faction, Difficulty difficulty, long seed) {
         super(context);
         this.density = context.getResources().getDisplayMetrics().density;
         this.faction = faction;
         this.difficulty = difficulty;
+        this.seed = seed;
         getHolder().addCallback(this);
         setFocusable(true);
-        newSession(faction, difficulty, seed);
     }
 
     private void newSession(Faction faction, Difficulty difficulty, long seed) {
-        session = new GameSession(faction, difficulty, seed);
+        session = new GameSession(faction, difficulty, seed, setup.doctrine(), null);
         input = new InputController(session, hud, renderer, density);
         if (getWidth() > 0) {
             applyLayout(getWidth(), getHeight());
@@ -64,13 +69,16 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
         return session;
     }
 
-    /** Starts a fresh match with the same side and difficulty, from the end-of-game overlay. */
+    /** Starts a fresh match with the same choices, from the end-of-game overlay. */
     public void restart() {
-        newSession(faction, difficulty, System.currentTimeMillis());
+        newSession(setup.faction(), setup.difficulty(), System.currentTimeMillis());
     }
 
     private void applyLayout(int width, int height) {
         hud.layout(width, height, density);
+        if (session == null) {
+            return;
+        }
         session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), height);
         session.camera().setMap(session.world().map());
         int[] spawn = session.world().map().spawnPoint(session.playerId());
@@ -80,6 +88,13 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (session == null) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP
+                    && setup.tap(event.getX(), event.getY())) {
+                newSession(setup.faction(), setup.difficulty(), seed);
+            }
+            return true;
+        }
         if (session.world().isGameOver() && event.getActionMasked() == MotionEvent.ACTION_UP) {
             restart();
             return true;
@@ -95,6 +110,7 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        setup.layout(width, height, density);
         applyLayout(width, height);
     }
 
@@ -194,12 +210,16 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
                 Canvas canvas = null;
                 try {
                     canvas = holder.lockCanvas();
-                    if (canvas != null && current != null) {
+                    if (canvas != null) {
                         synchronized (holder) {
                             surface.bind(canvas);
                             surface.clear(0xFF0B0C0A);
-                            renderer.draw(surface, current);
-                            hud.draw(surface, current, System.currentTimeMillis());
+                            if (current == null) {
+                                setup.draw(surface);
+                            } else {
+                                renderer.draw(surface, current);
+                                hud.draw(surface, current, System.currentTimeMillis());
+                            }
                         }
                     }
                 } finally {
