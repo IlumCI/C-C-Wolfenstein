@@ -16,7 +16,20 @@ public final class AStar {
     private static final float DIAGONAL = 1.41421356f;
 
     /** Safety valve so a hopeless search cannot stall a tick. */
+    /**
+     * Node budget for a full search on the map the game shipped with.
+     *
+     * <p>On a larger map the budget scales with area — see {@link #findPath} — which is the
+     * standard big-map answer: a search allowed to touch a fixed fraction of the world costs a
+     * bounded slice of the tick whatever the world's size, and a cross-map march on a
+     * two-hundred-and-fifty-six map is not a pathology to truncate, it is the game working.
+     * The floor keeps every sixty-four map's behaviour bit-identical to what the goldens
+     * recorded.
+     */
     private static final int DEFAULT_NODE_LIMIT = 6000;
+
+    /** The fraction of the map one search may expand: a third of the tiles. */
+    private static final int AREA_DIVISOR = 3;
 
     private int width;
     private int height;
@@ -61,7 +74,8 @@ public final class AStar {
      *     null if the start is off-grid or nothing at all could be reached
      */
     public int[] findPath(PathGrid grid, int sx, int sy, int gx, int gy) {
-        return findPath(grid, sx, sy, gx, gy, DEFAULT_NODE_LIMIT);
+        int scaled = grid.width() * grid.height() / AREA_DIVISOR;
+        return findPath(grid, sx, sy, gx, gy, Math.max(DEFAULT_NODE_LIMIT, scaled));
     }
 
     public int[] findPath(PathGrid grid, int sx, int sy, int gx, int gy, int nodeLimit) {

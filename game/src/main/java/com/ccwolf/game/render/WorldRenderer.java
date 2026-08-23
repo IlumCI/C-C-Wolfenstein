@@ -53,6 +53,7 @@ public final class WorldRenderer {
     /** Reused: the whole map in screen space, for the control wash. */
     private final Rect worldRect = new Rect();
 
+    private final Rect viewportRect = new Rect();
     private final ControlOverlay control = new ControlOverlay();
     private final GasOverlay gasOverlay = new GasOverlay();
 
@@ -246,7 +247,9 @@ public final class WorldRenderer {
         Camera camera = session.camera();
         worldRect.set(camera.screenX(0f), camera.screenY(0f),
                 camera.screenX(view.map().width()), camera.screenY(view.map().height()));
-        control.draw(surface, view, worldRect, view.controlVersion());
+        viewportRect.set(camera.viewLeft(), camera.viewTop(),
+                camera.viewLeft() + camera.viewWidth(), camera.viewTop() + camera.viewHeight());
+        control.draw(surface, view, worldRect, viewportRect, view.controlVersion());
         profiler.countDraws(RenderProfiler.Pass.CONTROL, 1);
     }
 
@@ -255,8 +258,10 @@ public final class WorldRenderer {
         Camera camera = session.camera();
         worldRect.set(camera.screenX(0f), camera.screenY(0f),
                 camera.screenX(view.map().width()), camera.screenY(view.map().height()));
+        viewportRect.set(camera.viewLeft(), camera.viewTop(),
+                camera.viewLeft() + camera.viewWidth(), camera.viewTop() + camera.viewHeight());
         // The layer only moves on its settle cadence, so its tick bucket is a version number.
-        gasOverlay.draw(surface, view, worldRect, view.tick() / 10);
+        gasOverlay.draw(surface, view, worldRect, viewportRect, view.tick() / 10);
     }
 
     private void drawEntities(Surface surface, GameSession session) {

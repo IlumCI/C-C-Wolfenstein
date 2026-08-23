@@ -128,6 +128,18 @@ public final class Java2DSurface implements Surface {
     }
 
     @Override
+    public void drawImage(Image image, float srcLeft, float srcTop, float srcRight,
+            float srcBottom, float left, float top, float right, float bottom, Brush brush) {
+        apply(brush);
+        Image source = brush.tint() == 0 ? image : image.tinted(brush.tint());
+        BufferedImage awt = ((Java2DImage) source).awt();
+        g.drawImage(awt,
+                Math.round(left), Math.round(top), Math.round(right), Math.round(bottom),
+                Math.round(srcLeft), Math.round(srcTop), Math.round(srcRight),
+                Math.round(srcBottom), null);
+    }
+
+    @Override
     public void pushClip(float left, float top, float right, float bottom) {
         clips.add(g.getClip());
         g.clipRect(Math.round(left), Math.round(top),

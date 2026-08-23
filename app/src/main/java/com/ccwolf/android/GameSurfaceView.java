@@ -58,7 +58,8 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     }
 
     private void newSession(Faction faction, Difficulty difficulty, long seed) {
-        session = new GameSession(faction, difficulty, seed, setup.doctrine(), null);
+        session = new GameSession(setup.mapName(), faction, difficulty, seed,
+                setup.doctrine(), null);
         input = new InputController(session, hud, renderer, density);
         if (getWidth() > 0) {
             applyLayout(getWidth(), getHeight());

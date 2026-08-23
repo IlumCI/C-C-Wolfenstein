@@ -126,7 +126,13 @@ public final class GameSession {
      */
     public GameSession(Faction faction, Difficulty difficulty, long seed,
                        Doctrine doctrine, Doctrine opponentDoctrine) {
-        this.skirmish = Skirmish.createVersusAi(MapCatalog.load(MapCatalog.KREISAU_VALLEY),
+        this(MapCatalog.KREISAU_VALLEY, faction, difficulty, seed, doctrine, opponentDoctrine);
+    }
+
+    /** The full setup: which ground, which side, which doctrine, how hard, which dice. */
+    public GameSession(String mapName, Faction faction, Difficulty difficulty, long seed,
+                       Doctrine doctrine, Doctrine opponentDoctrine) {
+        this.skirmish = Skirmish.createVersusAi(MapCatalog.load(mapName),
                 faction, difficulty, seed, doctrine, opponentDoctrine);
         this.world = skirmish.world();
         this.commands = skirmish.commands();

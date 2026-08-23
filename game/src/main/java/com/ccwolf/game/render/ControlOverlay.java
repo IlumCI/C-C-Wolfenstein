@@ -18,10 +18,13 @@ import com.ccwolf.gfx.Surface;
  * precisely the per-tile drawing the terrain cache exists to have removed, reintroduced for a
  * decoration.
  *
- * <p>Baking also gets the look for free. One pixel per tile, stretched over the world with
- * smoothing on, and the platform scaler interpolates between cells — so a field computed on
- * sixteen-by-sixteen blocks reads as a smooth gradient rather than as stair-steps, with no
- * interpolation code here to get wrong and no float arithmetic anywhere near the renderer.
+ * <p>Baking also gets the look for free. One pixel per <em>field cell</em> — the field is
+ * computed on four-tile cells, so a pixel per tile was sixteen samples of the same information
+ * — stretched over the world with smoothing on, and the platform scaler interpolates between
+ * cells, so the coarse field reads as a smooth gradient with no interpolation code here to get
+ * wrong and no float arithmetic anywhere near the renderer. That sixteen-fold cut is not a
+ * nicety: on the two-hundred-and-fifty-six map the per-tile bake was thirteen milliseconds of
+ * a seventeen-millisecond frame budget, eighty-eight percent of the whole renderer.
  *
  * <p>And there are no adjacent rectangles, so there is no seam to open between them. {@code
  * tileRect}'s rounding exists to stop exactly that, and this sidesteps the whole problem.
@@ -80,10 +83,37 @@ public final class ControlOverlay {
      * @param version changes whenever the field has been rebuilt, so a still field costs one
      *     {@code drawImage} and nothing else
      */
-    public void draw(Surface surface, WorldView view, Rect worldRect, int version) {
+    public void draw(Surface surface, WorldView view, Rect worldRect, Rect viewRect,
+                     int version) {
         TileMap map = view.map();
         bake(view, map, version);
-        surface.drawImage(image, worldRect, paint);
+        drawVisible(surface, image, bakedWidth, bakedHeight, worldRect, viewRect, paint);
+    }
+
+    /**
+     * Draws only the part of a world-covering layer the camera can see.
+     *
+     * <p>Shared by the gas overlay, and the reason both survive the large map: the whole-world
+     * rectangle is thousands of virtual pixels across at close zoom, and drawing all of it so
+     * the clip could discard most of it cost thirteen milliseconds a frame. The source window
+     * is computed in the image's own pixels, so the platform scaler never touches ground the
+     * player is not looking at.
+     */
+    static void drawVisible(Surface surface, com.ccwolf.gfx.Image image, int imageWidth,
+                            int imageHeight, Rect worldRect, Rect viewRect, Brush paint) {
+        float left = Math.max(worldRect.left, viewRect.left);
+        float top = Math.max(worldRect.top, viewRect.top);
+        float right = Math.min(worldRect.right, viewRect.right);
+        float bottom = Math.min(worldRect.bottom, viewRect.bottom);
+        if (right <= left || bottom <= top) {
+            return;
+        }
+        float scaleX = imageWidth / (worldRect.right - worldRect.left);
+        float scaleY = imageHeight / (worldRect.bottom - worldRect.top);
+        surface.drawImage(image,
+                (left - worldRect.left) * scaleX, (top - worldRect.top) * scaleY,
+                (right - worldRect.left) * scaleX, (bottom - worldRect.top) * scaleY,
+                left, top, right, bottom, paint);
     }
 
     /**
@@ -111,13 +141,15 @@ public final class ControlOverlay {
 
     private void bake(WorldView view, TileMap map, int version) {
         if (image != null && version == bakedVersion
-                && map.width() == bakedWidth && map.height() == bakedHeight) {
+                && view.controlCellsAcross() == bakedWidth
+                && view.controlCellsDown() == bakedHeight) {
             return;
         }
-        if (pixels == null || map.width() != bakedWidth || map.height() != bakedHeight) {
-            pixels = new int[map.width() * map.height()];
-            bakedWidth = map.width();
-            bakedHeight = map.height();
+        if (pixels == null || view.controlCellsAcross() != bakedWidth
+                || view.controlCellsDown() != bakedHeight) {
+            pixels = new int[view.controlCellsAcross() * view.controlCellsDown()];
+            bakedWidth = view.controlCellsAcross();
+            bakedHeight = view.controlCellsDown();
         }
 
         int mine = Palette.faction(view.faction());
@@ -128,7 +160,7 @@ public final class ControlOverlay {
 
         for (int y = 0; y < bakedHeight; y++) {
             for (int x = 0; x < bakedWidth; x++) {
-                float control = view.control(x, y);
+                float control = view.controlAtCell(x, y);
                 float strength = Math.abs(control) / FULL_STRENGTH;
                 if (strength > 1f) {
                     strength = 1f;

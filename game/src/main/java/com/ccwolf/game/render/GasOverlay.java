@@ -45,12 +45,14 @@ public final class GasOverlay {
      * @param version anything that changes when the layer settles — the settle counter's tick
      *     bucket is enough, since the layer only moves on its own cadence
      */
-    public void draw(Surface surface, WorldView view, Rect worldRect, int version) {
+    public void draw(Surface surface, WorldView view, Rect worldRect, Rect viewRect,
+                     int version) {
         if (!view.gasAnywhere() && bakedVersion == -1) {
             return;
         }
         bake(view, view.map(), version);
-        surface.drawImage(image, worldRect, paint);
+        ControlOverlay.drawVisible(surface, image, bakedWidth, bakedHeight, worldRect, viewRect,
+                paint);
     }
 
     private void bake(WorldView view, TileMap map, int version) {

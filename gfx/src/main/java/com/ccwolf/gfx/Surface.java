@@ -37,6 +37,21 @@ public interface Surface {
     /** Scales {@code image} into the destination rectangle. */
     void drawImage(Image image, float left, float top, float right, float bottom, Brush brush);
 
+    /**
+     * Draws a rectangle of the image into a rectangle of the surface.
+     *
+     * <p>The overload that makes big maps affordable. A layer stretched over the whole world -
+     * the control wash, the gas cloud - covers three and a half thousand pixels of virtual
+     * canvas on the large map, and drawing all of it every frame cost thirteen milliseconds of
+     * a seventeen-millisecond budget for pixels the clip then threw away. Drawing only the
+     * visible source rectangle is what every tile-scrolling engine has done since tile
+     * scrolling was invented.
+     *
+     * @param srcLeft source rectangle, in the image's own pixels
+     */
+    void drawImage(Image image, float srcLeft, float srcTop, float srcRight, float srcBottom,
+                   float left, float top, float right, float bottom, Brush brush);
+
     // --- Rect-shaped conveniences ---------------------------------------------------------
     //
     // Default methods rather than backend responsibilities: the renderer and HUD keep reusable

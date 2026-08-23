@@ -20,6 +20,8 @@ public final class AndroidSurface implements Surface {
     private final Paint paint = new Paint();
     private final Rect dst = new Rect();
 
+    private final Rect src = new Rect();
+
     private Canvas canvas;
     private Brush appliedBrush;
     private int appliedStamp = -1;
@@ -90,6 +92,17 @@ public final class AndroidSurface implements Surface {
         Image source = brush.tint() == 0 ? image : image.tinted(brush.tint());
         dst.set(Math.round(left), Math.round(top), Math.round(right), Math.round(bottom));
         canvas.drawBitmap(((AndroidImage) source).bitmap(), null, dst, paint);
+    }
+
+    @Override
+    public void drawImage(Image image, float srcLeft, float srcTop, float srcRight,
+            float srcBottom, float left, float top, float right, float bottom, Brush brush) {
+        apply(brush, Paint.Style.FILL);
+        Image source = brush.tint() == 0 ? image : image.tinted(brush.tint());
+        src.set(Math.round(srcLeft), Math.round(srcTop), Math.round(srcRight),
+                Math.round(srcBottom));
+        dst.set(Math.round(left), Math.round(top), Math.round(right), Math.round(bottom));
+        canvas.drawBitmap(((AndroidImage) source).bitmap(), src, dst, paint);
     }
 
     @Override

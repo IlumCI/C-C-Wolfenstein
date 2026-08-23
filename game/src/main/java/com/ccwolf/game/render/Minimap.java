@@ -83,7 +83,9 @@ public final class Minimap {
         // Held ground, before the fog blacks anything out - the field counts every unit on the
         // map, so painted over the fog it would give away where the enemy is.
         controlRect.set(bounds.left, bounds.top, bounds.right, bounds.bottom);
-        control.draw(surface, session.view(), controlRect, session.view().controlVersion());
+        // The minimap always shows the whole map, so the visible window is the whole rect.
+        control.draw(surface, session.view(), controlRect, controlRect,
+                session.view().controlVersion());
 
         // Fog: unexplored ground is blacked out entirely.
         if (world.isFogEnabled()) {

@@ -1,6 +1,7 @@
 package com.ccwolf.game;
 
 import com.ccwolf.core.ai.Difficulty;
+import com.ccwolf.core.map.MapCatalog;
 import com.ccwolf.core.entity.Doctrine;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.game.art.WolfPalette;
@@ -42,6 +43,12 @@ public final class MatchSetup {
 
     private final Brush paint = new Brush();
 
+    /** Which ground. Index into {@link #MAP_NAMES}. */
+    private int mapIndex;
+
+    private static final String[] MAP_NAMES = {MapCatalog.KREISAU_VALLEY, MapCatalog.FRONTLINE};
+    private static final String[] MAP_LABELS = {"Kreisau Valley  64x64", "Frontline  256x256"};
+
     private Faction faction = Faction.RESISTANCE;
     /** Index into the faction's doctrines plus one: zero is "no doctrine". */
     private int doctrineIndex;
@@ -52,6 +59,7 @@ public final class MatchSetup {
     private float height;
     private float scale = 1f;
 
+    private final Option[] maps = {new Option(), new Option()};
     private final Option[] factions = {new Option(), new Option()};
     private final Option[] doctrines = {new Option(), new Option(), new Option(), new Option()};
     private final Option[] difficulties;
@@ -76,11 +84,19 @@ public final class MatchSetup {
         // taller rows and the Begin button landed below the bottom edge of the screen, where
         // the test that drives the screen like a finger could not press it - and neither could
         // a finger.
-        float y = screenHeight * 0.12f;
-        float rowHeight = 26f * density;
+        float y = screenHeight * 0.10f;
+        float rowHeight = 24f * density;
         float gap = 6f * density;
 
         float half = (panelWidth - gap) / 2f;
+        for (int i = 0; i < 2; i++) {
+            maps[i].left = left + i * (half + gap);
+            maps[i].right = maps[i].left + half;
+            maps[i].top = y;
+            maps[i].bottom = y + rowHeight;
+        }
+        y += rowHeight + 18f * density;
+
         for (int i = 0; i < 2; i++) {
             factions[i].left = left + i * (half + gap);
             factions[i].right = factions[i].left + half;
@@ -115,6 +131,12 @@ public final class MatchSetup {
 
     /** Handles a tap. Returns true once the player has hit Start. */
     public boolean tap(float x, float y) {
+        for (int i = 0; i < maps.length; i++) {
+            if (maps[i].hit(x, y)) {
+                mapIndex = i;
+                return false;
+            }
+        }
         for (int i = 0; i < 2; i++) {
             if (factions[i].hit(x, y)) {
                 Faction picked = i == 0 ? Faction.RESISTANCE : Faction.REGIME;
@@ -147,6 +169,10 @@ public final class MatchSetup {
 
     public boolean isStarted() {
         return started;
+    }
+
+    public String mapName() {
+        return MAP_NAMES[mapIndex];
     }
 
     public Faction faction() {
@@ -189,6 +215,11 @@ public final class MatchSetup {
         paint.setAlign(TextAlign.CENTER);
         surface.drawText("SKIRMISH", width / 2f, height * 0.09f, paint);
         paint.setBold(false);
+
+        label(surface, "GROUND", maps[0].top);
+        for (int i = 0; i < maps.length; i++) {
+            drawOption(surface, maps[i], MAP_LABELS[i], mapIndex == i, Palette.HUD_TEXT_DIM);
+        }
 
         label(surface, "SIDE", factions[0].top);
         drawOption(surface, factions[0], "Kreisau Circle", faction == Faction.RESISTANCE,

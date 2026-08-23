@@ -52,7 +52,8 @@ public final class DesktopMain {
         if (headlessFrames > 0) {
             // Headless runs are measurements, not matches: they skip the setup screen and take
             // the command line's word for everything, as they always have.
-            GameSession session = new GameSession(Faction.RESISTANCE, difficulty, seed);
+            GameSession session = new GameSession(argString(args, "--map", "kreisau"),
+                    Faction.RESISTANCE, difficulty, seed, null, null);
             session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
             renderHeadless(session, renderer, hud, headlessFrames);
             return;
@@ -162,7 +163,7 @@ public final class DesktopMain {
         }
 
         private void beginMatch() {
-            session = new GameSession(setup.faction(), setup.difficulty(), seed,
+            session = new GameSession(setup.mapName(), setup.faction(), setup.difficulty(), seed,
                     setup.doctrine(), null);
             session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
             input = new InputController(session, hud, renderer, 2f);
