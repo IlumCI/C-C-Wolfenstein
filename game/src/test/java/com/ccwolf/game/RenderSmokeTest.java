@@ -130,6 +130,47 @@ public class RenderSmokeTest {
 
     // --- helpers --------------------------------------------------------------------------
 
+    /**
+     * A gassed trench line, on screen.
+     *
+     * <p>The layer shipped with its overlay unlooked-at, which is the exact mistake this
+     * project keeps paying for. So: a dug line, a cloud on it, men in the cloud, and a frame -
+     * the question is whether the wash reads as the thing that kills men rather than as fog,
+     * smoke or the control wash.
+     */
+    @Test
+    public void drawsAGassedTrenchLine() throws IOException {
+        GameSession session = newSession();
+        Hud hud = new Hud();
+        WorldRenderer renderer = new WorldRenderer();
+        hud.layout(WIDTH, HEIGHT, 2f);
+        session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
+        for (int i = 0; i < 200; i++) {
+            session.update(1f / 20f);
+        }
+
+        com.ccwolf.core.sim.GameWorld world = session.world();
+        int[] spawn = world.map().spawnPoint(session.playerId());
+        int x = spawn[0] + 6;
+        int y = spawn[1] + 2;
+        for (int i = 0; i < 5; i++) {
+            world.map().addCover(x + i, y, 3);
+            world.spawnUnit(session.playerId(),
+                    com.ccwolf.core.entity.UnitType.PARTISAN, x + i + 0.5f, y + 0.5f);
+        }
+        world.gas().release(x + 2, y, com.ccwolf.core.sim.GasLayer.PER_SHELL);
+        world.gas().release(x + 4, y, com.ccwolf.core.sim.GasLayer.PER_SHELL);
+        // A few ticks so the cloud settles along the diggings and the doses start landing.
+        for (int i = 0; i < 15; i++) {
+            session.update(1f / 20f);
+        }
+        session.camera().centerOn(x + 2f, y + 0.5f);
+
+        Frame frame = render(session, hud, renderer);
+        assertTrue(countDistinctColours(frame) > 12);
+        frame.save("match-gas.png");
+    }
+
     private GameSession newSession() {
         return new GameSession(Faction.RESISTANCE, Difficulty.VETERAN, 42L);
     }

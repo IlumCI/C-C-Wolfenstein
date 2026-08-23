@@ -37,7 +37,15 @@ and tests on a plain JDK machine with no SDK installed.
 
 ## Playing it
 
-Landscape, one skirmish against the AI on Kreisau Valley. You are the Resistance.
+Landscape, one skirmish against the AI on Kreisau Valley. The match opens on a setup screen:
+pick a side, pick a **doctrine** — a way of fighting, chosen once and never changed — and pick
+how hard the enemy plays. The Resistance's three doctrines are about ground (digging faster and
+deeper, hardening cover, dispersing squads); the Regime's three each unlock a unit built to
+reach into a trench: cheap flame teams, the Gaswerfer whose shells vent a heavier-than-air
+cloud that sinks into diggings and stays — cover is no help against it — and the Ausmerzer, a
+walker that closes and clears. Fighting with no doctrine at all is a real option, and it is the
+game exactly as it played before they existed. The AI declares its own doctrine from the match
+seed and plays to it.
 
 | Gesture | Effect |
 |---|---|
@@ -250,10 +258,14 @@ Balance after the roster change, over ten seeds of forty simulated minutes each:
 Totenkopf 5, two that ran the clock out. Both of those were live attrition — full economies,
 eleven structures a side, twenty units in the field — not an economic deadlock.
 
-**Part 2.5 is the advanced combat system**, and is in progress: squads that break and rout,
-cover and suppression, army exhaustion, trenches that men dig and shells flatten, and artillery
-with real shells, spotting and counter-battery. What remains of it is fronts, doctrines and an
-operational AI, a larger map, and the final balance pass.
+**Part 2.5 is the advanced combat system**, and is nearly complete: squads that break and
+rout, cover and suppression, army exhaustion, trenches that men dig and shells flatten,
+artillery with real shells, spotting and counter-battery, fronts with an influence field the
+AI aims at, and **doctrines** — six of them, three a side, chosen on a real setup screen,
+with a gas layer, three doctrine-locked units and an AI that declares from the seed and plays
+its declaration. The whole roster was also re-authored at sixty-four pixels to a tile in the
+game's own front-facing doll language. What remains is the larger map, the operational AI,
+and the final balance pass.
 
 A finding worth recording from that work: **artillery on its own does not break a stalemate.**
 Across four twenty-seed sweeps, the more evenly matched the two sides' guns, the *more* matches
