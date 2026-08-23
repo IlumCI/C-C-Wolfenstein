@@ -42,29 +42,15 @@ public final class UnitSprites {
     }
 
     /**
-     * The finer grid the drawn infantry are authored on.
-     *
-     * <p>Sixty-four art pixels to a tile at two screen pixels each is the same hundred and
-     * twenty-eight on screen that thirty-two at four gives, so nothing downstream can tell the
-     * difference: the atlas, the renderer and the memory budget only ever see the finished
-     * buffer. What changes is only how many decisions the art gets to make inside it, and the
-     * answer is four times as many.
-     *
-     * <p>Which is why the roster moves across one unit at a time rather than in one go. A recipe
-     * still drawing on the coarse grid keeps working and keeps coming out the right size; it just
-     * has chunkier pixels than its neighbour until it is redrawn.
+     * The finer grid the drawn infantry and the Ubersoldat are authored on: sixty-four art
+     * pixels to a tile at two screen pixels each, which is the same hundred and twenty-eight on
+     * screen that thirty-two at four gives. Nothing downstream can tell the difference - the
+     * atlas, the renderer and the memory budget only ever see the finished buffer - which is why
+     * the roster moved across one unit at a time.
      */
     public static final int FINE_TILE = 64;
 
-    private static final int FINE_SCALE = Math.max(1, TerrainSprites.TILE / FINE_TILE);
-
-    /** A canvas on the fine grid. Same screen size as {@link #canvas}, four times the pixels. */
-    private static PixelCanvas fineCanvas(int size) {
-        return new PixelCanvas(size, size, FINE_SCALE);
-    }
-
-    /** A drawn footsoldier's grid: one tile across, on the fine grid. */
-    public static final int FINE_INFANTRY_SIZE = FINE_TILE;
+    static final int FINE_SCALE = Math.max(1, TerrainSprites.TILE / FINE_TILE);
 
     public static final int INFANTRY_SIZE = 32;
     public static final int VEHICLE_SIZE = 48;

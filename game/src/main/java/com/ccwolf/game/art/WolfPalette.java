@@ -136,27 +136,14 @@ public final class WolfPalette {
 
     private static final int RAMP_LENGTH = 5;
 
-    /** Clamped ramp lookup, so a recipe can walk off the end without exploding. */
     /**
-     * The unlit surface colour of a ramp, for the sculpting engine.
+     * Clamped ramp lookup, so a recipe can walk off the end without exploding.
      *
-     * <p>Every ramp in this file is <em>pre-shaded</em> — index 0 is documented as the highlight
-     * and index 4 as the deepest shadow, because they were authored for a pipeline where a recipe
-     * placed its own lighting by picking indices. Handing one of the middle indices to
-     * {@link Sculptor} as an albedo shades it a second time, and the result is a roster so
-     * crushed that a black-uniformed tank comes out as a silhouette with a few grey scratches on
-     * it. That happened on the first vehicle drawn this way.
-     *
-     * <p>So the top of the ramp is the albedo and {@code light()} generates everything below it.
-     * {@link #shade} is for everything that is not lit: the HUD, the minimap, and the drawn
-     * infantry pipeline in {@link Ink}, whose sprites carry their own shading because they were
-     * authored with it. The rule across the whole roster is <b>albedo for lit, shade for
-     * drawn</b>.
+     * <p>Every ramp in this file is <em>pre-shaded</em>: index 0 is the highlight and index 4
+     * the deepest shadow, and a recipe places its own lighting by choosing indices. Two whole
+     * rendering pipelines were built and torn out re-learning that this is the design rather
+     * than a limitation — a lit renderer has to fight the ramps, and the ramps win.
      */
-    public static int albedo(int[] ramp) {
-        return ramp[0];
-    }
-
     public static int shade(int[] ramp, int index) {
         if (index < 0) {
             index = 0;
