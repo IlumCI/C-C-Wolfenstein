@@ -134,7 +134,7 @@ public final class UnitSprites {
             case RESONANZKANONE:
                 return vehicle(resonanzkanone(frame), facing, 40, 15);
             case UBERSOLDAT:
-                return ubersoldat(facing, frame);
+                return FineUbersoldat.draw(facing, frame, FINE_SCALE, OUTLINE);
             default:
                 // The doll re-authored at sixty-four to a tile: same design, four times the
                 // pixels, and for the first time the man has arms. The coarse recipe below
@@ -232,7 +232,11 @@ public final class UnitSprites {
         // been rotated at full resolution and must not be planted in blocks a second time.
         PixelCanvas out = new PixelCanvas(east.width(), east.height(), east.scale());
         out.groundShadow(east.width() / 2, east.height() / 2 + 7, shadowRx, shadowRy);
-        out.fine().blit(hull, 0, 0);
+        // Both sides of the copy must speak real pixels. The rotated hulls already do - they
+        // come back at scale one - but the facing-east hull skips rotation and arrives still at
+        // authoring scale, and blitting its logical grid into a fine view drew every east-facing
+        // vehicle at a quarter size in the corner of its cell. In the shipped game, not a sheet.
+        out.fine().blit(hull.fine(), 0, 0);
         return out;
     }
 
