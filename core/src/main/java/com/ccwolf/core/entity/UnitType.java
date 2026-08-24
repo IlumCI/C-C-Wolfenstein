@@ -17,7 +17,7 @@ public enum UnitType {
             ArmorClass.FLESH, Weapon.RIFLE, false, 0, BuildingType.BARRACKS, null),
 
     /** Anti-armour infantry. Deletes hounds and jeeps, helpless in a knife fight. */
-    ROCKETEER("Panzerschreck Team", Faction.RESISTANCE, 300, 100, 80, 1.7f, 5,
+    ROCKETEER("Panzerschreck Team", Faction.RESISTANCE, 270, 100, 80, 1.7f, 5,
             ArmorClass.FLESH, Weapon.PANZERSCHRECK, false, 0, BuildingType.BARRACKS, null),
 
     /** Fast scout with a pintle gun. Reveals map, harasses harvesters. */
@@ -54,7 +54,7 @@ public enum UnitType {
      * A Regime tank the Resistance stole, repainted and pressed into service. Their only
      * heavy armour, and their answer to the Ubersoldat.
      */
-    CAPTURED_PANZER("Captured Panzer", Faction.RESISTANCE, 1000, 320, 450, 1.9f, 6,
+    CAPTURED_PANZER("Captured Panzer", Faction.RESISTANCE, 850, 320, 450, 1.9f, 6,
             ArmorClass.HEAVY, Weapon.PANZER_CANNON, true, 0, BuildingType.WAR_WORKS, null),
 
     // --- Totenkopf Division ---------------------------------------------------------------
@@ -81,7 +81,7 @@ public enum UnitType {
             BuildingType.REFINERY),
 
     /** Mech-hound: the fastest thing on the map, murder on infantry, paper-thin. */
-    PANZERHUND("Panzerhund", Faction.REGIME, 500, 160, 230, 5.0f, 6,
+    PANZERHUND("Panzerhund", Faction.REGIME, 550, 160, 230, 5.0f, 6,
             ArmorClass.LIGHT, Weapon.HOUND_JAWS, true, 0, BuildingType.WAR_WORKS, null),
 
     /**
@@ -155,7 +155,7 @@ public enum UnitType {
      * against anything that can simply drive away - it exists to make trenches lethal to the
      * men holding them.
      */
-    GASWERFER("Gaswerfer-40", Faction.REGIME, 800, 280, 100, 1.3f, 5,
+    GASWERFER("Gaswerfer-40", Faction.REGIME, 800, 280, 130, 1.3f, 5,
             ArmorClass.FLESH, Weapon.GASWERFER, false, 0,
             BuildingType.WAR_WORKS, BuildingType.REFINERY),
 
@@ -166,7 +166,7 @@ public enum UnitType {
      * barely past its own fists - the doctrine is that it closes, and everything about the
      * statline forces the question of what happens when it arrives.
      */
-    AUSMERZER("Ausmerzer", Faction.REGIME, 1400, 380, 700, 1.2f, 5,
+    AUSMERZER("Ausmerzer", Faction.REGIME, 1400, 380, 560, 1.2f, 5,
             ArmorClass.HEAVY, Weapon.VERNICHTER, true, 0,
             BuildingType.WAR_WORKS, BuildingType.REFINERY);
 

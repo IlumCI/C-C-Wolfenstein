@@ -258,22 +258,27 @@ Balance after the roster change, over ten seeds of forty simulated minutes each:
 Totenkopf 5, two that ran the clock out. Both of those were live attrition — full economies,
 eleven structures a side, twenty units in the field — not an economic deadlock.
 
-**Part 2.5 is the advanced combat system**, and is nearly complete: squads that break and
-rout, cover and suppression, army exhaustion, trenches that men dig and shells flatten,
-artillery with real shells, spotting and counter-battery, fronts with an influence field the
-AI aims at, and **doctrines** — six of them, three a side, chosen on a real setup screen,
-with a gas layer, three doctrine-locked units and an AI that declares from the seed and plays
-its declaration. The whole roster was also re-authored at sixty-four pixels to a tile in the
-game's own front-facing doll language. What remains is the larger map, the operational AI,
-and the final balance pass.
+**Part 2.5, the advanced combat system, is complete**: squads that break and rout, cover and
+suppression, army exhaustion, trenches that men dig and shells flatten, artillery with real
+shells, spotting and counter-battery, fronts with an influence field, six doctrines chosen on a
+real setup screen with a gas layer and three doctrine-locked units, the 256x256 Frontline map,
+and an operational AI that masses at a staging line, commits through one point, and exploits a
+broken front. The whole roster is authored at sixty-four pixels to a tile in the game's
+front-facing doll language.
 
-A finding worth recording from that work: **artillery on its own does not break a stalemate.**
-Across four twenty-seed sweeps, the more evenly matched the two sides' guns, the *more* matches
-ran the clock out — symmetric artillery is mutual suppression, where both lines dig, both get
-shelled and neither moves. The one configuration that broke the deadlock was the one where a
-side had a tool the other could not answer. That is what doctrines are for: the Resistance
-digging deeper and fanning a line into layered positions, the Regime flooding a trench rather
-than cratering it.
+The shipped balance, measured the way everything here is measured — twenty seeds, forty-five
+minutes, AI against AI on Kreisau Valley. Without doctrines the factions sit near parity
+(six wins to four, Regime ahead). With doctrines the table leans hard to the Regime (ten to
+two), and that is the fiction load-bearing rather than an accident: all three Regime doctrines
+are offensive tools the operational AI drives directly, all three Resistance doctrines are
+defensive, and under annihilation victory a defence that holds converts to a stalemate rather
+than a win. Half the matches still run the clock out — down only slightly from the wave era,
+but the matches that do conclude now do it at a median near seventeen minutes instead of
+grinding past forty. The tuning that produced this: the Panzerhund costs 550 (its
+cover-ignoring jaws were the whole Regime edge at 500), the Captured Panzer 850 and the
+Panzerschreck team 270 (the Resistance could not afford its own operations), the Ausmerzer
+holds 560 hit points (at 700 Extermination won five pairings of six), and the Gaswerfer crew
+gained a gun shield (its predecessor kept dying before firing the doctrine's only weapon).
 
 **Part 3 is the air layer**: helicopters, AA weapons, air-only defences. Then, each its own
 part: audio, campaign and mission scripting, more maps, save/load, veterancy and stances,

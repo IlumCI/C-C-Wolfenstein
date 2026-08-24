@@ -37,7 +37,7 @@ public final class Doctrines {
      * already there rather than inventing protection where a man is standing in the open, and it
      * does nothing at all against the classes cover never helped against anyway.
      */
-    private static final float STAHLBETON_COVER = 1.35f;
+    private static final float STAHLBETON_COVER = 1.5f;
 
     /** How much wider a Dispersal squad stands. */
     private static final float ZERSTREUUNG_SPREAD = 1.5f;
