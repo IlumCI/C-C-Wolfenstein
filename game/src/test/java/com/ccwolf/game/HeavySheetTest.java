@@ -24,9 +24,10 @@ public class HeavySheetTest {
     @Test
     public void heaviesWithAirBetweenThem() throws IOException {
         UnitType[] types = {UnitType.UBERSOLDAT, UnitType.AUSMERZER, UnitType.GASWERFER,
-                UnitType.PANZERHUND, UnitType.STURMPANZER, UnitType.CAPTURED_PANZER};
+                UnitType.PANZERHUND, UnitType.STURMPANZER, UnitType.CAPTURED_PANZER,
+                UnitType.GYROCOPTER, UnitType.LUFTPANZER};
         Faction[] factions = {Faction.REGIME, Faction.REGIME, Faction.REGIME, Faction.REGIME,
-                Faction.REGIME, Faction.RESISTANCE};
+                Faction.REGIME, Faction.RESISTANCE, Faction.RESISTANCE, Faction.REGIME};
         int cell = 160;
         int pad = 12;
         PixelCanvas sheet = new PixelCanvas(pad + 8 * (cell + pad),

@@ -51,8 +51,10 @@ public final class AttackMoveOrder implements Order {
         }
 
         if (target == null && (world.tick() + unit.id()) % SCAN_INTERVAL == 0) {
+            // Filtered by the unit's own weapon, so a rifleman on an attack-move never
+            // acquires an aircraft he cannot hit and follows it off his axis of advance.
             target = world.findNearestEnemy(unit.ownerId(), unit.x(), unit.y(),
-                    unit.sight(), true);
+                    unit.sight(), true, unit.weapon());
             if (target == null || target.id() != engagedTargetId) {
                 chase.reset();
             }

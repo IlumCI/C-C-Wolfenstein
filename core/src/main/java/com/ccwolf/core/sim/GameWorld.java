@@ -1331,6 +1331,7 @@ public final class GameWorld {
             float rate = p.powerFactor();
             advanceUnitQueue(p, p.infantryQueue(), BuildingType.BARRACKS, rate);
             advanceUnitQueue(p, p.vehicleQueue(), BuildingType.WAR_WORKS, rate);
+            advanceUnitQueue(p, p.airQueue(), BuildingType.HELIPAD, rate);
             advanceStructureQueue(p, rate);
         }
     }
@@ -1894,7 +1895,7 @@ public final class GameWorld {
         // The ring, not the disc: a gun with a scout at one tile and a section at six must not
         // pick the scout, fail its own range check and then stand there saying nothing.
         Entity target = findNearestEnemyBetween(u.ownerId(), u.x(), u.y(), w.minRange(),
-                w.range(), true);
+                w.range(), true, w);
         if (target != null) {
             u.faceToward(target.x(), target.y());
             tryAttack(u, target);
@@ -2004,7 +2005,7 @@ public final class GameWorld {
             b.tickCooldown();
             Weapon w = b.weapon();
             if (w != null && b.weaponReady()) {
-                Entity target = findNearestEnemy(b.ownerId(), b.x(), b.y(), w.range(), false);
+                Entity target = findNearestEnemy(b.ownerId(), b.x(), b.y(), w.range(), false, w);
                 if (target != null) {
                     tryAttack(b, target);
                 }
@@ -2137,6 +2138,11 @@ public final class GameWorld {
                 Unit b = queryScratch.get(j);
                 // The lower id owns the pair, so it is resolved exactly once.
                 if (b == a || !b.isAlive() || b.id() < a.id()) {
+                    continue;
+                }
+                // Different altitudes never touch: a gyro parked over a tank is two layers,
+                // not a collision.
+                if (a.type().isAir() != b.type().isAir()) {
                     continue;
                 }
                 float dx = a.x() - b.x();
@@ -2316,6 +2322,11 @@ public final class GameWorld {
      * who are running hold nothing at all.
      */
     private float holdWeight(Unit u) {
+        // An aircraft holds nothing: ground is held by what stands on it, and the front should
+        // neither advance nor waver because a machine flew across.
+        if (u.type().isAir()) {
+            return 0f;
+        }
         Weapon weapon = u.weapon();
         if (weapon == null) {
             return 0f;
@@ -2470,8 +2481,28 @@ public final class GameWorld {
      * Fires a specific weapon rather than the attacker's own — used by tests to exercise a
      * weapon in isolation, and by anything that gives a unit a one-off attack.
      */
+    /**
+     * Whether a weapon can touch a target at all, before range or readiness are asked.
+     *
+     * <p>One predicate, used by the shot itself and by every target acquisition, so a rifleman
+     * neither hits an aircraft nor spends his life chasing one he can never hit. Ground is
+     * always reachable; the sky only by weapons that say so.
+     */
+    public static boolean canEngage(Weapon weapon, Entity target) {
+        if (weapon == null) {
+            return false;
+        }
+        if (target.isBuilding()) {
+            return true;
+        }
+        return !((Unit) target).type().isAir() || weapon.isAntiAir();
+    }
+
     public boolean tryAttack(Entity attacker, Entity target, Weapon weapon) {
         if (weapon == null || target == null || !target.isAlive()) {
+            return false;
+        }
+        if (!canEngage(weapon, target)) {
             return false;
         }
         boolean ready = attacker.isBuilding() ? ((Building) attacker).weaponReady()
@@ -2829,6 +2860,9 @@ public final class GameWorld {
 
     private void splashOne(int attackerId, Entity victim, Weapon weapon, float ex, float ey,
                            float radius) {
+        if (!canEngage(weapon, victim)) {
+            return;
+        }
         float distance = victim.distanceTo(ex, ey) - victim.radius();
         if (distance > radius) {
             return;
@@ -2892,7 +2926,13 @@ public final class GameWorld {
      */
     public Entity findNearestEnemy(int ownerId, float x, float y, float radius,
                                    boolean includeBuildings) {
-        return findNearestEnemyBetween(ownerId, x, y, 0f, radius, includeBuildings);
+        return findNearestEnemyBetween(ownerId, x, y, 0f, radius, includeBuildings, null);
+    }
+
+    /** The same, seeing only what {@code shooter} could actually hit. */
+    public Entity findNearestEnemy(int ownerId, float x, float y, float radius,
+                                   boolean includeBuildings, Weapon shooter) {
+        return findNearestEnemyBetween(ownerId, x, y, 0f, radius, includeBuildings, shooter);
     }
 
     /**
@@ -2907,6 +2947,20 @@ public final class GameWorld {
      */
     public Entity findNearestEnemyBetween(int ownerId, float x, float y, float minRadius,
                                           float radius, boolean includeBuildings) {
+        return findNearestEnemyBetween(ownerId, x, y, minRadius, radius, includeBuildings, null);
+    }
+
+    /**
+     * The same, filtered to what a given weapon can engage.
+     *
+     * <p>The filter exists for the air layer and it matters in both directions: a rifleman who
+     * acquires a gyrocopter chases a thing he can never hit for the rest of his life, and a
+     * flak turret that acquires the nearest infantryman ignores the gunship it was built for.
+     * Null means unfiltered, which is what spotting and strategic queries want.
+     */
+    public Entity findNearestEnemyBetween(int ownerId, float x, float y, float minRadius,
+                                          float radius, boolean includeBuildings,
+                                          Weapon shooter) {
         Entity best = null;
         float bestDist = Float.MAX_VALUE;
 
@@ -2915,6 +2969,9 @@ public final class GameWorld {
         for (int i = 0; i < queryScratch.size(); i++) {
             Unit u = queryScratch.get(i);
             if (!u.isAlive() || !areEnemies(ownerId, u.ownerId())) {
+                continue;
+            }
+            if (shooter != null && !canEngage(shooter, u)) {
                 continue;
             }
             float d = u.distanceTo(x, y) - u.radius();

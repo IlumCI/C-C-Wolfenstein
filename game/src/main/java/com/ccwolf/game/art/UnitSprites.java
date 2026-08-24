@@ -119,6 +119,10 @@ public final class UnitSprites {
                 return vehicle(nebelwerfer(frame), facing, 22, 8);
             case GASWERFER:
                 return vehicle(gaswerfer(frame), facing, 15, 5);
+            case GYROCOPTER:
+                return aircraft(gyrocopter(frame), facing);
+            case LUFTPANZER:
+                return aircraft(luftpanzer(frame), facing);
             case AUSMERZER:
                 return FineUbersoldat.drawAusmerzer(facing, frame, FINE_SCALE, OUTLINE);
             case RESONANZKANONE:
@@ -233,6 +237,143 @@ public final class UnitSprites {
         // vehicle at a quarter size in the corner of its cell. In the shipped game, not a sheet.
         out.fine().blit(hull.fine(), 0, 0);
         return out;
+    }
+
+    /**
+     * The rotate-then-outline path for things that fly.
+     *
+     * <p>The vehicle composite bakes a ground shadow under the hull, and for an aircraft that
+     * is exactly wrong: the shadow belongs on the ground while the airframe belongs above it,
+     * and the renderer separates the two with a lift. So this is {@code vehicle()} without the
+     * shadow - the renderer draws its own, displaced.
+     */
+    private static PixelCanvas aircraft(PixelCanvas east, int facing) {
+        int smoothing = east.scale() > 1 ? 1 : 3;
+        PixelCanvas hull = facing == 0 ? east
+                : east.rotatedSmooth((float) (facing * Math.PI / 4.0), smoothing);
+        hull.outline(OUTLINE);
+        if (facing == 0) {
+            return hull;
+        }
+        PixelCanvas out = new PixelCanvas(east.width(), east.height(), east.scale());
+        out.fine().blit(hull.fine(), 0, 0);
+        return out;
+    }
+
+    /**
+     * The salvaged autogyro, facing east: a flying jeep, and it should look like one.
+     *
+     * <p>Lattice boom, canvas over the engine, a pilot in the open, and the rotor as the
+     * animation: two blade angles alternating, over a faint blur ring that sells the spin at
+     * one frame a tick.
+     */
+    private static PixelCanvas gyrocopter(int frame) {
+        PixelCanvas c = canvas(VEHICLE_SIZE);
+        int cx = 24;
+        int cy = 24;
+        int[] cloth = WolfPalette.OLIVE;
+        int[] frameMetal = WolfPalette.LEATHER;
+
+        // Tail boom, back to the west, with a small vertical fin.
+        c.thickLine(cx - 16, cy, cx - 2, cy, 1, WolfPalette.shade(frameMetal, 2));
+        c.line(cx - 16, cy - 1, cx - 2, cy - 1, WolfPalette.shade(frameMetal, 0));
+        c.rect(cx - 18, cy - 4, 3, 8, WolfPalette.shade(cloth, 2));
+        c.vLine(cx - 18, cy - 4, cy + 3, WolfPalette.shade(cloth, 0));
+        // Tail rotor disc.
+        c.ellipse(cx - 17, cy, 2, 5, WolfPalette.shade(WolfPalette.GUNMETAL, 2));
+
+        // Fuselage pod: stubby, canvas-skinned, engine cowl forward.
+        c.panel(cx - 4, cy - 5, 14, 11, cloth, 1);
+        c.hLine(cx - 4, cy + 9, cy - 5, WolfPalette.shade(cloth, 0));
+        c.hLine(cx - 4, cy + 9, cy + 5, WolfPalette.shade(cloth, 3));
+        c.panel(cx + 8, cy - 4, 5, 9, frameMetal, 2);
+        c.px(cx + 12, cy - 2, WolfPalette.shade(WolfPalette.GUNMETAL, 0));
+        c.px(cx + 12, cy + 2, WolfPalette.shade(WolfPalette.GUNMETAL, 0));
+        // The pilot, in the open, and his gun on the rail.
+        c.ellipse(cx + 1, cy, 2, 2, WolfPalette.shade(WolfPalette.FLESH, 2));
+        c.px(cx + 1, cy - 1, WolfPalette.shade(WolfPalette.LEATHER, 3));
+        c.line(cx + 4, cy - 4, cx + 10, cy - 5, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+        // The red rag, on the tail where their own AA can read it.
+        c.rect(cx - 15, cy - 2, 3, 2, WolfPalette.shade(WolfPalette.BLOOD, 2));
+
+        rotor(c, cx + 2, cy, 15, frame);
+        return c;
+    }
+
+    /**
+     * The Luftpanzer, facing east: a tank given rotors, which is the Regime design bureau in
+     * one sentence. Tandem rotors, stub wings with rocket pods, the one red band.
+     */
+    private static PixelCanvas luftpanzer(int frame) {
+        PixelCanvas c = canvas(HEAVY_SIZE);
+        int cx = 32;
+        int cy = 32;
+        int[] plate = WolfPalette.NIGHT;
+
+        // Stub wings and their pods first, under the hull.
+        for (int side = -1; side <= 1; side += 2) {
+            int wy = cy + side * 10;
+            c.panel(cx - 4, wy - 2, 12, 4, plate, 1);
+            c.panel(cx + 6, wy - 3, 8, 6, WolfPalette.GUNMETAL, 2);
+            for (int t = 0; t < 3; t++) {
+                c.px(cx + 13, wy - 2 + t * 2, WolfPalette.shade(WolfPalette.NIGHT, 4));
+            }
+        }
+
+        // Hull: long, slab-sided, armoured.
+        c.panel(cx - 18, cy - 6, 38, 13, plate, 2);
+        c.hLine(cx - 18, cx + 19, cy - 6, WolfPalette.shade(plate, 0));
+        c.hLine(cx - 18, cx + 19, cy + 6, WolfPalette.shade(plate, 4));
+        // Cockpit glass, forward.
+        c.panel(cx + 12, cy - 3, 7, 7, WolfPalette.STEEL, 2);
+        c.hLine(cx + 12, cx + 18, cy - 3, WolfPalette.shade(WolfPalette.STEEL, 0));
+        // Engine spine and exhausts.
+        c.hLine(cx - 14, cx + 8, cy, WolfPalette.shade(plate, 3));
+        c.px(cx - 10, cy - 5, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+        c.px(cx - 4, cy - 5, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+        // The band.
+        c.vLine(cx - 8, cy - 6, cy + 6, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.vLine(cx - 7, cy - 6, cy + 6, WolfPalette.shade(WolfPalette.BLOOD, 2));
+
+        rotor(c, cx - 10, cy, 13, frame);
+        rotor(c, cx + 8, cy, 13, frame + 1);
+        return c;
+    }
+
+    /**
+     * A spinning rotor: a thin tip-path rim, two blades whose angle alternates per frame, and
+     * a hub. Nothing filled - the first version laid a blur disc over the whole airframe and
+     * both aircraft rendered as dark coins with nothing visibly flying underneath.
+     */
+    private static void rotor(PixelCanvas c, int cx, int cy, int radius, int frame) {
+        boolean diagonal = (frame & 1) == 1;
+        int reach = radius - 1;
+        int d = (int) (reach * 0.7071f);
+        if (diagonal) {
+            c.line(cx - d, cy - d, cx + d, cy + d, WolfPalette.shade(WolfPalette.NIGHT, 2));
+            c.line(cx - d, cy + d, cx + d, cy - d, WolfPalette.shade(WolfPalette.NIGHT, 2));
+        } else {
+            c.line(cx - reach, cy, cx + reach, cy, WolfPalette.shade(WolfPalette.NIGHT, 2));
+            c.line(cx, cy - reach, cx, cy + reach, WolfPalette.shade(WolfPalette.NIGHT, 2));
+        }
+        // Blade tips catch the light: four pale pixels are the whole "spinning" read, because
+        // they are the only part of the frame pair that visibly trades places.
+        int reachTip = radius;
+        int dTip = (int) (reachTip * 0.7071f);
+        int glint = WolfPalette.shade(WolfPalette.SMOKE, 1);
+        if (diagonal) {
+            c.px(cx - dTip, cy - dTip, glint);
+            c.px(cx + dTip, cy + dTip, glint);
+            c.px(cx - dTip, cy + dTip, glint);
+            c.px(cx + dTip, cy - dTip, glint);
+        } else {
+            c.px(cx - reachTip, cy, glint);
+            c.px(cx + reachTip, cy, glint);
+            c.px(cx, cy - reachTip, glint);
+            c.px(cx, cy + reachTip, glint);
+        }
+        c.ellipse(cx, cy, 2, 2, WolfPalette.shade(WolfPalette.GUNMETAL, 1));
+        c.px(cx - 1, cy - 1, WolfPalette.shade(WolfPalette.STEEL, 0));
     }
 
     // --- infantry -------------------------------------------------------------------------
@@ -881,7 +1022,10 @@ public final class UnitSprites {
                 return HEAVY_SIZE / (float) TILE;
             case FELDKANONE:
             case GASWERFER:
+            case GYROCOPTER:
                 return VEHICLE_SIZE / (float) TILE;
+            case LUFTPANZER:
+                return HEAVY_SIZE / (float) TILE;
             default:
                 return type.isVehicle() ? VEHICLE_SIZE / (float) TILE : 1f;
         }

@@ -711,7 +711,11 @@ public final class Hud {
             UnitType[] all = UnitType.values();
             for (int i = 0; i < all.length && index < slots.size(); i++) {
                 UnitType type = all[i];
-                if (type.producedBy() == producer && type.availableTo(faction)) {
+                // Aircraft share the vehicle tab: they are machines from a pad the way tanks
+                // are machines from the works, and four tabs is already the plate's limit.
+                boolean listed = type.producedBy() == producer
+                        || (tab == Tab.VEHICLES && type.producedBy() == BuildingType.HELIPAD);
+                if (listed && type.availableTo(faction)) {
                     slots.get(index++).unit = type;
                 }
             }

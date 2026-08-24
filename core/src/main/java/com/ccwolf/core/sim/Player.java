@@ -36,6 +36,7 @@ public final class Player {
 
     private final ProductionQueue infantryQueue = new ProductionQueue();
     private final ProductionQueue vehicleQueue = new ProductionQueue();
+    private final ProductionQueue airQueue = new ProductionQueue();
     private final ProductionQueue structureQueue = new ProductionQueue();
 
     /** Chosen exit structure per producer type; units come out of these when set. */
@@ -160,6 +161,10 @@ public final class Player {
         return vehicleQueue;
     }
 
+    public ProductionQueue airQueue() {
+        return airQueue;
+    }
+
     public ProductionQueue structureQueue() {
         return structureQueue;
     }
@@ -171,6 +176,9 @@ public final class Player {
         }
         if (producer == BuildingType.BARRACKS) {
             return infantryQueue;
+        }
+        if (producer == BuildingType.HELIPAD) {
+            return airQueue;
         }
         return structureQueue;
     }

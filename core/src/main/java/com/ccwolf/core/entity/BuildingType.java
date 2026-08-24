@@ -27,13 +27,16 @@ public enum BuildingType {
     WAR_WORKS("War Works", 1500, 600, 1000, 3, 2, 0, 60, 4, null, REFINERY),
 
     /** Static defence. Outranges every mobile unit in the game. */
-    FLAK_TURRET("Flak Turret", 600, 250, 600, 1, 1, 0, 30, 7, Weapon.TURRET_GUN, BARRACKS),
+    FLAK_TURRET("Flak Turret", 600, 250, 600, 1, 1, 0, 30, 7, Weapon.FLAK_GUN, BARRACKS),
 
     /** Cheap, quick, and only a threat to men on foot. The first thing anyone builds. */
     MG_NEST("MG Nest", 350, 160, 420, 1, 1, 0, 15, 6, Weapon.NEST_MG, BARRACKS),
 
     /** Anti-tank gun: it will stop armour and it will miss a running man all day. */
-    PAK_GUN("Pak Gun", 700, 300, 520, 1, 1, 0, 35, 7, Weapon.PAK_GUN, WAR_WORKS);
+    PAK_GUN("Pak Gun", 700, 300, 520, 1, 1, 0, 35, 7, Weapon.PAK_GUN, WAR_WORKS),
+
+    /** A concrete pad, a fuel bowser, and the only door the air layer comes through. */
+    HELIPAD("Helipad", 900, 350, 650, 2, 2, 0, 30, 4, null, WAR_WORKS);
 
     private final String displayName;
     private final int cost;

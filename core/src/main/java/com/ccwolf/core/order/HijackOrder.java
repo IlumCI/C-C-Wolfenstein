@@ -29,7 +29,10 @@ public final class HijackOrder implements Order {
     public boolean update(GameWorld world, Unit unit, float dt) {
         Entity target = world.entity(targetId);
         if (target == null || !target.isAlive() || target.isBuilding()
-                || !world.areEnemies(unit.ownerId(), target.ownerId())) {
+                || !world.areEnemies(unit.ownerId(), target.ownerId())
+                // Nobody boards a machine at altitude. Without this the infiltrator chases a
+                // gyrocopter across the map forever, always one reach short.
+                || ((Unit) target).type().isAir()) {
             world.mover().stop(unit);
             return true;
         }

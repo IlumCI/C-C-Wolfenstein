@@ -678,7 +678,9 @@ public abstract class PlayerCommand {
                 return true;
             }
             UnitType type = ((Unit) target).type();
-            return type.isVehicle() || type == UnitType.UBERSOLDAT;
+            // An aircraft is out of a saboteur's reach - and a hijacker's, checked where
+            // hijacking validates - for the same reason: nobody boards a machine at altitude.
+            return (type.isVehicle() && !type.isAir()) || type == UnitType.UBERSOLDAT;
         }
 
         @Override

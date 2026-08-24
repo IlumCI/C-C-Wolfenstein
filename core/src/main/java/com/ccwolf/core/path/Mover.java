@@ -61,6 +61,37 @@ public final class Mover {
         return aStar;
     }
 
+    /**
+     * Flight: the straight line the ground never allows.
+     *
+     * <p>No path, no grid, no terrain cost, no detours - the entire pathfinding apparatus
+     * above simply does not apply to a thing that crosses rivers and walls at altitude, and
+     * pretending it does (a "path" of one straight segment, say) would spend allocations
+     * keeping up an accounting fiction. An aircraft aims at the tile centre and goes.
+     */
+    private boolean flyTowards(Unit unit, int destX, int destY, float dt) {
+        float targetX = destX + 0.5f;
+        float targetY = destY + 0.5f;
+        float dx = targetX - unit.x();
+        float dy = targetY - unit.y();
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist <= WAYPOINT_EPSILON) {
+            unit.setPosition(targetX, targetY);
+            unit.setVelocity(0f, 0f);
+            return true;
+        }
+        float step = unit.type().speed() * unit.moveSpeedFactor() * dt;
+        if (step >= dist) {
+            unit.setPosition(targetX, targetY);
+            unit.setVelocity(dx / dt, dy / dt);
+            return true;
+        }
+        unit.setPosition(unit.x() + dx / dist * step, unit.y() + dy / dist * step);
+        unit.setVelocity(dx / dist * step / dt, dy / dist * step / dt);
+        unit.faceToward(targetX, targetY);
+        return false;
+    }
+
     public void setProfiler(TickProfiler profiler) {
         this.profiler = profiler;
     }
@@ -72,6 +103,9 @@ public final class Mover {
      * @return true once the unit has arrived, or has established that it cannot get any closer
      */
     public boolean moveTowards(PathGrid grid, Unit unit, int destX, int destY, float dt) {
+        if (unit.type().isAir()) {
+            return flyTowards(unit, destX, destY, dt);
+        }
         if (unit.tileX() == destX && unit.tileY() == destY && unit.pathComplete()) {
             unit.setVelocity(0f, 0f);
             return true;

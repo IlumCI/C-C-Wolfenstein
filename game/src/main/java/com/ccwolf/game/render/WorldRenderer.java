@@ -391,6 +391,17 @@ public final class WorldRenderer {
         int half = Math.round(size / 2f);
         int centreX = Math.round(cx);
         int centreY = Math.round(cy);
+
+        // Altitude is a drawing offset: the simulation keeps one coordinate space, and the
+        // airframe rides above it while its shadow stays on the ground where the unit "is".
+        // The gap between shadow and sprite is what reads as height - without it an aircraft
+        // is just a vehicle with a rotor painted on.
+        if (u.type().isAir()) {
+            int lift = Math.round(px * 0.55f);
+            sprite.setColor(0x46000000);
+            surface.fillCircle(centreX, centreY + Math.round(px * 0.12f), size * 0.22f, sprite);
+            centreY -= lift;
+        }
         dst.set(centreX - half, centreY - half, centreX + half, centreY + half);
 
         // Your own concealed units are ghosted, so you can tell at a glance which of your

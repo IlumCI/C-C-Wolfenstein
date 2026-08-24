@@ -168,7 +168,31 @@ public enum UnitType {
      */
     AUSMERZER("Ausmerzer", Faction.REGIME, 1400, 380, 560, 1.2f, 5,
             ArmorClass.HEAVY, Weapon.VERNICHTER, true, 0,
-            BuildingType.WAR_WORKS, BuildingType.REFINERY);
+            BuildingType.WAR_WORKS, BuildingType.REFINERY),
+
+    // --- the air layer --------------------------------------------------------------------
+
+    /**
+     * A salvaged autogyro: canvas, a salvaged engine, and a man with a machine gun.
+     *
+     * <p>The Resistance's whole air force, and it looks like the rest of their arsenal - a
+     * flying jeep rather than a warplane. Fast, fragile, sees far: its first job is finding
+     * the Regime across a two-hundred-and-fifty-six-tile map, its second is strafing whatever
+     * has no answer to the sky.
+     */
+    GYROCOPTER("Salvaged Autogyro", Faction.RESISTANCE, 600, 200, 140, 4.6f, 9,
+            ArmorClass.LIGHT, Weapon.GYRO_MG, true, 0,
+            BuildingType.HELIPAD, null),
+
+    /**
+     * The Luftpanzer: the Regime's answer to every problem, given rotors.
+     *
+     * <p>Slower and twice the machine, with a rocket rack that reaches ground and air alike -
+     * there is no dogfight tradition in this world, only a bigger machine arriving.
+     */
+    LUFTPANZER("Luftpanzer", Faction.REGIME, 950, 300, 260, 3.6f, 7,
+            ArmorClass.LIGHT, Weapon.LUFT_ROCKETS, true, 0,
+            BuildingType.HELIPAD, BuildingType.REFINERY);
 
     private final String displayName;
     private final Faction faction;
@@ -343,6 +367,18 @@ public enum UnitType {
             default:
                 return null;
         }
+    }
+
+    /**
+     * Whether this unit flies.
+     *
+     * <p>The flag buys a different physics, not a different speed: flight is a straight line
+     * over anything, separation only against other aircraft, no cover, no digging, no gas -
+     * that last through {@code isVehicle}, a sealed cockpit being a hull - no hijacking, no
+     * holding ground, and vulnerability only to weapons that say they can reach up.
+     */
+    public boolean isAir() {
+        return this == GYROCOPTER || this == LUFTPANZER;
     }
 
     public float radius() {

@@ -19,8 +19,16 @@ public enum Weapon {
     HOUND_JAWS("Servo Jaws", 16, 1.0f, 15, WeaponClass.MELEE),
     /** Ubersoldat arm cannon. */
     UBER_CANNON("Arm Cannon", 32, 4.2f, 26, WeaponClass.CANNON),
-    /** Flak-turret style base defence. Long reach, no mobility. */
-    TURRET_GUN("Turret Cannon", 26, 6.0f, 22, WeaponClass.CANNON),
+    /**
+     * The flak turret's gun, refitted for the war the name always promised.
+     *
+     * <p>Dual purpose: the same shell that cracks a hull airbursts against a rotor. It has been
+     * the game's generic base defence since Part 1, and Part 3 is where the "Flak" on the
+     * plate stops being flavour. Every ground-facing number is the old turret gun's exactly,
+     * because this commit ships dark: the refit may not move a single golden, and a
+     * half-tile of extra reach did precisely that on the first try.
+     */
+    FLAK_GUN("Flak Cannon", 26, 6.0f, 22, WeaponClass.CANNON),
 
     /** Resistance marksman: one shot, one man, a long wait for the next. */
     HUNTING_RIFLE("Scoped Hunting Rifle", 55, 8.0f, 62, WeaponClass.SNIPER),
@@ -85,7 +93,22 @@ public enum Weapon {
      * <p>Short even by flame standards, because the machine's whole doctrine is that it walks
      * the last stretch. What it reaches, it clears.
      */
-    VERNICHTER("Vernichter Projector", 34, 3.6f, 11, WeaponClass.FLAME, 1.6f);
+    VERNICHTER("Vernichter Projector", 34, 3.6f, 11, WeaponClass.FLAME, 1.6f),
+
+    // New weapons append here and only here: a shell in flight is digested by this enum's
+    // ordinal, so an insertion above this line renumbers rounds the goldens already recorded.
+
+    /** The autogyro's strafing gun: light, fast, and the only air-to-air the Resistance owns. */
+    GYRO_MG("Gyro MG", 9, 4.0f, 7, WeaponClass.SMALL_ARMS),
+
+    /**
+     * The Luftpanzer's rocket rack: unguided, fired shallow, wicked against anything soft.
+     *
+     * <p>Anti-air as well, which is what makes the gunship the Regime's answer to the
+     * Resistance's autogyros - there is no dogfight tradition in this world, only a bigger
+     * machine arriving.
+     */
+    LUFT_ROCKETS("Rocket Rack", 24, 5.0f, 26, WeaponClass.ROCKET, 1.2f);
 
     private final String displayName;
     private final int damage;
@@ -187,6 +210,28 @@ public enum Weapon {
      */
     public int salvo() {
         return salvo;
+    }
+
+    /**
+     * Whether this weapon can engage something in the air.
+     *
+     * <p>A flag rather than a class property, because the line does not follow the classes: a
+     * pintle or nest MG hoses the sky and a rifle does not, both being SMALL_ARMS; the flak
+     * cannon reaches up and the Pak, the same class, cannot elevate. Everything not named here
+     * simply cannot touch an aircraft, which is what makes air a layer rather than a fast
+     * vehicle: melee, flame, gas and shellfire all live on the ground.
+     */
+    public boolean isAntiAir() {
+        switch (this) {
+            case JEEP_MG:
+            case NEST_MG:
+            case FLAK_GUN:
+            case GYRO_MG:
+            case LUFT_ROCKETS:
+                return true;
+            default:
+                return false;
+        }
     }
 
     public int damageAgainst(ArmorClass armor) {

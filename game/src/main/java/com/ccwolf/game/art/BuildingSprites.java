@@ -70,6 +70,9 @@ public final class BuildingSprites {
             case PAK_GUN:
                 pakGun(c, regime, w, h);
                 break;
+            case HELIPAD:
+                helipad(c, regime, w, h);
+                break;
             case FLAK_TURRET:
             default:
                 flakTurret(c, regime, w, h);
@@ -79,6 +82,43 @@ public final class BuildingSprites {
         c.outline(OUTLINE);
         applyDamage(c, damageState, type.ordinal());
         return c;
+    }
+
+    /**
+     * The helipad: a poured slab, a painted ring, and the fuel that makes it a target.
+     *
+     * <p>Deliberately flat - the one structure whose whole roof is its floor. The ring and the
+     * marks are the faction's paint, and the bowser in the corner is what an attacking player
+     * should learn to shoot first.
+     */
+    private static void helipad(PixelCanvas c, boolean regime, int w, int h) {
+        int[] slab = regime ? WolfPalette.CONCRETE : WolfPalette.STONE;
+        int cx = w / 2;
+        int cy = h / 2;
+        // The slab, proud of the ground pad by a lip.
+        c.panel(3, 3, w - 6, h - 6, slab, 2);
+        c.rectOutline(3, 3, w - 6, h - 6, WolfPalette.shade(slab, 0));
+        c.rectOutline(4, 4, w - 8, h - 8, WolfPalette.shade(slab, 4));
+        // Expansion joints.
+        c.hLine(4, w - 5, cy, WolfPalette.shade(slab, 3));
+        c.vLine(cx, 4, h - 5, WolfPalette.shade(slab, 3));
+        // The painted ring and the H, in the faction's field colour.
+        int paint = regime ? WolfPalette.shade(WolfPalette.BLOOD, 2)
+                : WolfPalette.shade(WolfPalette.OLIVE, 1);
+        c.ellipse(cx, cy, 18, 18, paint);
+        c.ellipse(cx, cy, 15, 15, WolfPalette.shade(slab, 2));
+        c.rect(cx - 8, cy - 8, 3, 17, paint);
+        c.rect(cx + 6, cy - 8, 3, 17, paint);
+        c.rect(cx - 5, cy - 1, 11, 3, paint);
+        // Corner lamps.
+        for (int[] corner : new int[][] {{6, 6}, {w - 8, 6}, {6, h - 8}, {w - 8, h - 8}}) {
+            c.rect(corner[0], corner[1], 2, 2, WolfPalette.shade(WolfPalette.BRASS, 0));
+        }
+        // The fuel bowser, tucked on the east edge where fresh airframes roll past it.
+        c.panel(w - 14, cy - 6, 10, 12, WolfPalette.GUNMETAL, 2);
+        c.hLine(w - 14, w - 5, cy - 6, WolfPalette.shade(WolfPalette.BLOOD, 1));
+        c.px(w - 12, cy, WolfPalette.shade(WolfPalette.BRASS, 1));
+        c.line(w - 10, cy + 5, w - 6, cy + 8, WolfPalette.shade(WolfPalette.NIGHT, 1));
     }
 
     // --- shared materials and conventions --------------------------------------------------
