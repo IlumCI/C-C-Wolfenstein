@@ -104,6 +104,9 @@ public final class SkirmishAi {
     private int nextRethinkTick;
     private int massingSince;
     private int nextRaidTick;
+
+    /** The air wing rebuilds on this cooldown, not on a death-refill loop. */
+    private int nextAirTick;
     private int operationTargetStrength;
     private int operationCellX = -1;
     private int operationCellY = -1;
@@ -282,10 +285,39 @@ public final class SkirmishAi {
         if (countBuildings(world, BuildingType.REFINERY) < 2) {
             return BuildingType.REFINERY;
         }
+        // The sky answers the sky: a second and third flak turret exist only once the enemy
+        // actually flies. Counting their living airframes is deterministic and reactive in the
+        // way AA should be - nobody builds a flak belt against an air force that never came.
+        // One extra turret, not a belt: the first turn-on built up to three per side, and
+        // twelve hundred credits of reactive concrete per match was half of what froze the
+        // sweep - defensive spending starving the operations is the artillery era's lesson
+        // wearing a new hat. The standing turret plus one, and the MGs everywhere, is answer
+        // enough for a two-airframe wing.
+        if (countEnemyAircraft(world) > 0
+                && countBuildings(world, BuildingType.FLAK_TURRET) < 2) {
+            return BuildingType.FLAK_TURRET;
+        }
+        // Air is a rich army's tool: nine hundred credits of pad before the first airframe
+        // is spending the operations bar can feel, so a poor economy skips the sky entirely.
+        // Same gate as the second barracks, and for the same reason.
+        if (countBuildings(world, BuildingType.HELIPAD) < 1 && me.credits() > 2500) {
+            return BuildingType.HELIPAD;
+        }
         if (countBuildings(world, BuildingType.BARRACKS) < 2 && me.credits() > 2500) {
             return BuildingType.BARRACKS;
         }
         return null;
+    }
+
+    private int countEnemyAircraft(GameWorld world) {
+        int n = 0;
+        for (int i = 0; i < world.units().size(); i++) {
+            Unit u = world.units().get(i);
+            if (u.ownerId() != playerId && u.isAlive() && u.type().isAir()) {
+                n++;
+            }
+        }
+        return n;
     }
 
     /** Finds a legal spot near the command post for whatever finished building. */
@@ -397,6 +429,34 @@ public final class SkirmishAi {
                 world.enqueueUnit(playerId, pick);
             }
         }
+
+        // The air wing: one airframe, and a lost one is replaced on a two-minute
+        // cooldown rather than the moment it falls. The first turn-on refilled on death, and
+        // the sweep showed what that buys: both economies bled six hundred credits at a time
+        // into the other side's flak, the operations that spending should have funded never
+        // reached their bar, and conclusions fell from twelve in twenty to five. An air force
+        // an AI cannot afford to lose slowly is an air force it should not fly.
+        if (world.tick() >= nextAirTick && me.airQueue().isEmpty()
+                && countAircraft(world) < 1) {
+            UnitType wing = faction == Faction.REGIME ? UnitType.LUFTPANZER
+                    : UnitType.GYROCOPTER;
+            if (world.canProduce(playerId, wing)
+                    && me.credits() > difficulty.creditReserve() + wing.cost()) {
+                world.enqueueUnit(playerId, wing);
+                nextAirTick = world.tick() + 120 * GameWorld.TICKS_PER_SECOND;
+            }
+        }
+    }
+
+    private int countAircraft(GameWorld world) {
+        int n = 0;
+        for (int i = 0; i < world.units().size(); i++) {
+            Unit u = world.units().get(i);
+            if (u.ownerId() == playerId && u.isAlive() && u.type().isAir()) {
+                n++;
+            }
+        }
+        return n;
     }
 
     /**

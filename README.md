@@ -280,6 +280,14 @@ Panzerschreck team 270 (the Resistance could not afford its own operations), the
 holds 560 hit points (at 700 Extermination won five pairings of six), and the Gaswerfer crew
 gained a gun shield (its predecessor kept dying before firing the doctrine's only weapon).
 
-**Part 3 is the air layer**: helicopters, AA weapons, air-only defences. Then, each its own
-part: audio, campaign and mission scripting, more maps, save/load, veterancy and stances,
-multiplayer.
+**Part 3, the air layer, is complete**: flight as a different physics — a straight line over
+anything, touched only by weapons flagged anti-air, holding no ground and keeping no side
+alive on its own. The Resistance flies a salvaged autogyro, the Regime a Luftpanzer, both from
+the new Helipad; the Flak Turret's gun finally does what its name promised. The AI flies a
+deliberately light wing — one airframe, replaced slowly — because the sweeps showed exactly
+what heavier air buys at AI level: both economies bleeding credits into each other's flak
+while the operations that money should fund never launch. Air at the AI's scale is a tool;
+at a player's scale it is whatever the player can afford.
+
+Next, each its own part: audio, campaign and mission scripting, more maps, save/load,
+veterancy and stances, multiplayer.

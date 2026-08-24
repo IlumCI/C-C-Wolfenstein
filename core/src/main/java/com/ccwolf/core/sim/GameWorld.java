@@ -2459,7 +2459,12 @@ public final class GameWorld {
             }
         }
         for (int i = 0; i < units.size(); i++) {
-            if (units.get(i).ownerId() == playerId && units.get(i).isAlive()) {
+            Unit u = units.get(i);
+            // Aircraft do not keep a side alive. Ground armies cannot reach them, so a last
+            // gyro circling an empty map would hold the match open forever - and it mirrors
+            // what the influence field already says: air holds nothing, including the claim
+            // to still be in the war. No pad, no ground, no fuel, no side.
+            if (u.ownerId() == playerId && u.isAlive() && !u.type().isAir()) {
                 return true;
             }
         }
