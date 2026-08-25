@@ -503,6 +503,119 @@ public final class GameSession {
         }
     }
 
+    /**
+     * Selects every one of the player's on-screen units of the same type as the one under the
+     * tap — the double-tap gesture every RTS thumb expects. On-screen on purpose: "all my
+     * riflemen anywhere" would silently strip garrisons three fronts away.
+     *
+     * <p>Falls back to a plain {@link #selectAt} when the tap is not on one of the player's
+     * units, so the gesture can be wired unconditionally.
+     */
+    public void selectAllOfTypeAt(float worldX, float worldY) {
+        Entity hit = entityAt(worldX, worldY);
+        if (hit == null || hit.isBuilding() || !view.isMine(hit)) {
+            selectAt(worldX, worldY);
+            return;
+        }
+        UnitType type = ((Unit) hit).type();
+        clearSelection();
+        int x0 = camera.firstVisibleTileX();
+        int y0 = camera.firstVisibleTileY();
+        int x1 = camera.lastVisibleTileX();
+        int y1 = camera.lastVisibleTileY();
+        for (Unit u : world.units()) {
+            if (u.ownerId() != playerId || u.type() != type) {
+                continue;
+            }
+            if (u.x() < x0 || u.x() > x1 + 1 || u.y() < y0 || u.y() > y1 + 1) {
+                continue;
+            }
+            Squad squad = view.squadOf(u);
+            if (squad == null) {
+                selection.add(Integer.valueOf(u.id()));
+            } else if (!selectedSquads.contains(Integer.valueOf(squad.id()))) {
+                selectSquad(squad);
+            }
+        }
+        showMessage("All " + type.displayName() + " in view");
+    }
+
+    // --- control groups ---------------------------------------------------------------------
+
+    /** Ten remembered selections. Slot 0 exists so the digit keys map without arithmetic. */
+    private final int[][] groupLoneUnits = new int[10][];
+    private final int[][] groupSquads = new int[10][];
+
+    /**
+     * Remembers the current selection under a digit.
+     *
+     * <p>Squads are remembered as squads and loose units as units, so a group survives
+     * reinforcement: recalling it picks up the squad as it is now, replacements included,
+     * rather than the exact men who were alive when the digit was pressed.
+     */
+    public void assignControlGroup(int slot) {
+        if (slot < 0 || slot >= groupLoneUnits.length || selection.isEmpty()) {
+            return;
+        }
+        List<Integer> lone = new ArrayList<Integer>();
+        for (int i = 0; i < selection.size(); i++) {
+            Entity e = world.entity(selection.get(i).intValue());
+            if (e != null && (e.isBuilding() || view.squadOf((Unit) e) == null)) {
+                lone.add(selection.get(i));
+            }
+        }
+        int[] lones = new int[lone.size()];
+        for (int i = 0; i < lones.length; i++) {
+            lones[i] = lone.get(i).intValue();
+        }
+        groupLoneUnits[slot] = lones;
+        groupSquads[slot] = selectedSquadIds();
+        showMessage("Group " + slot + " remembered");
+    }
+
+    /** Re-selects a remembered group; true when anything in it is still alive. */
+    public boolean recallControlGroup(int slot) {
+        if (slot < 0 || slot >= groupLoneUnits.length || groupLoneUnits[slot] == null) {
+            return false;
+        }
+        clearSelection();
+        for (int squadId : groupSquads[slot]) {
+            Squad squad = view.squad(squadId);
+            if (squad != null && !squad.isWipedOut()
+                    && !selectedSquads.contains(Integer.valueOf(squadId))) {
+                selectSquad(squad);
+            }
+        }
+        for (int id : groupLoneUnits[slot]) {
+            Entity e = world.entity(id);
+            if (e != null && e.isAlive()) {
+                selection.add(Integer.valueOf(id));
+            }
+        }
+        return hasSelection();
+    }
+
+    /** Jumps the camera to the middle of the current selection; a no-op with nothing picked. */
+    public void centerCameraOnSelection() {
+        if (selection.isEmpty()) {
+            return;
+        }
+        float sx = 0f;
+        float sy = 0f;
+        int n = 0;
+        for (int i = 0; i < selection.size(); i++) {
+            Entity e = world.entity(selection.get(i).intValue());
+            if (e != null && e.isAlive()) {
+                sx += e.x();
+                sy += e.y();
+                n++;
+            }
+        }
+        if (n > 0) {
+            camera.centerOn(sx / n, sy / n);
+        }
+    }
+
     public Entity entityAt(float worldX, float worldY) {
         for (Unit u : world.units()) {
             if (!view.isDiscovered(u)) {

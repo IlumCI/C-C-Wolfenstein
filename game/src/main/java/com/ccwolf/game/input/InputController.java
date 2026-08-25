@@ -220,10 +220,34 @@ public final class InputController {
         }
     }
 
+    /** Two quick taps in nearly the same place read as one gesture. */
+    private static final long DOUBLE_TAP_MS = 350;
+
+    private long lastTapAtMs;
+    private float lastTapX;
+    private float lastTapY;
+
     private boolean onTap(float x, float y, boolean longPress) {
         Camera camera = session.camera();
         float worldX = camera.worldX(x);
         float worldY = camera.worldY(y);
+
+        // Double-tap on one of the player's own units widens the pick to every on-screen
+        // unit of its type. Restricted to own units on purpose: a nervous double-tap on an
+        // enemy must stay two attack orders, not silently drop the selection.
+        long now = System.currentTimeMillis();
+        boolean doubleTap = !longPress && now - lastTapAtMs < DOUBLE_TAP_MS
+                && Math.abs(x - lastTapX) < 24f * density && Math.abs(y - lastTapY) < 24f * density;
+        lastTapAtMs = now;
+        lastTapX = x;
+        lastTapY = y;
+        if (doubleTap) {
+            com.ccwolf.core.entity.Entity hit = session.entityAt(worldX, worldY);
+            if (hit != null && !hit.isBuilding() && session.view().isMine(hit)) {
+                session.selectAllOfTypeAt(worldX, worldY);
+                return true;
+            }
+        }
 
         // What a tap means depends on the pointer mode and the selection; the session owns
         // that decision so the same rules apply however the tap arrived.

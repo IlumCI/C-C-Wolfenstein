@@ -163,9 +163,16 @@ public final class DesktopMain {
 
         /**
          * Desktop has one cursor, so pinch-to-zoom has no equivalent gesture. The wheel drives
-         * the camera directly instead of pretending to be a second finger.
+         * the camera directly instead of pretending to be a second finger; the right button
+         * grabs the map and drags it.
          */
         private boolean panning;
+        private float panLastX;
+        private float panLastY;
+
+        /** For the double-press of a group digit that jumps the camera to the group. */
+        private int lastGroupKey = -1;
+        private long lastGroupKeyAtMs;
 
         GamePanel(long seed, WorldRenderer renderer, Hud hud) {
             this.seed = seed;
@@ -218,6 +225,8 @@ public final class DesktopMain {
                     }
                     if (SwingUtilities.isRightMouseButton(e)) {
                         panning = true;
+                        panLastX = e.getX();
+                        panLastY = e.getY();
                         return;
                     }
                     input.onPointer(pointer.single(PointerEvent.Action.DOWN, e.getX(), e.getY()));
@@ -225,10 +234,16 @@ public final class DesktopMain {
 
                 @Override
                 public void mouseDragged(MouseEvent e) {
-                    if (session() == null) {
+                    GameSession session = session();
+                    if (session == null) {
                         return;
                     }
                     if (panning) {
+                        // Grab-the-map: the ground follows the cursor. This was a stub for
+                        // an embarrassingly long time - the flag flipped and nothing moved.
+                        session.camera().panByPixels(e.getX() - panLastX, e.getY() - panLastY);
+                        panLastX = e.getX();
+                        panLastY = e.getY();
                         return;
                     }
                     input.onPointer(pointer.single(PointerEvent.Action.MOVE, e.getX(), e.getY()));
@@ -267,6 +282,24 @@ public final class DesktopMain {
                     if (session == null) {
                         return;
                     }
+                    // Control groups: Ctrl+digit remembers the selection, digit recalls it,
+                    // and a quick second press of the same digit jumps the camera to it.
+                    int code = e.getKeyCode();
+                    if (code >= KeyEvent.VK_1 && code <= KeyEvent.VK_9) {
+                        int slot = code - KeyEvent.VK_0;
+                        if (e.isControlDown()) {
+                            session.assignControlGroup(slot);
+                        } else if (session.recallControlGroup(slot)) {
+                            long now = System.currentTimeMillis();
+                            if (slot == lastGroupKey && now - lastGroupKeyAtMs < 450) {
+                                session.centerCameraOnSelection();
+                            }
+                            lastGroupKey = slot;
+                            lastGroupKeyAtMs = now;
+                        }
+                        return;
+                    }
+
                     float step = 64f;
                     switch (e.getKeyCode()) {
                         case KeyEvent.VK_LEFT:
