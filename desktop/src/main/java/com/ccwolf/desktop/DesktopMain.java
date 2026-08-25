@@ -44,6 +44,15 @@ public final class DesktopMain {
     private static final long TARGET_FRAME_MS = 16;
 
     public static void main(String[] args) {
+        // Set before a single AWT class loads, so it takes. On Windows the default Direct3D
+        // pipeline caches the panel and never flushes an offscreen image drawn from a
+        // background thread - the window shows its blank white ground and the game looks dead
+        // while the sound plays on. Linux's X11 pipeline does not have the fault, which is why
+        // it never showed in testing. Turning D3D off routes everything through the software
+        // blitter, which is plenty for a 1280x720 frame and is the same path Linux already used.
+        System.setProperty("sun.java2d.d3d", "false");
+        System.setProperty("sun.java2d.noddraw", "true");
+
         long seed = argLong(args, "--seed", 7L);
         Difficulty difficulty = Difficulty.valueOf(argString(args, "--difficulty", "VETERAN"));
 
@@ -374,17 +383,30 @@ public final class DesktopMain {
                 @Override
                 public void run() {
                     long previous = System.nanoTime();
+                    boolean reportedFault = false;
                     while (true) {
                         long now = System.nanoTime();
-                        // The frontend pumps whichever screen is alive - menu ambience and
-                        // the attract-mode demo need the clock as much as a match does.
-                        synchronized (simLock) {
-                            frontend.update((now - previous) / 1_000_000_000f);
+                        try {
+                            // The frontend pumps whichever screen is alive - menu ambience and
+                            // the attract-mode demo need the clock as much as a match does.
+                            synchronized (simLock) {
+                                frontend.update((now - previous) / 1_000_000_000f);
+                            }
+                            render();
+                            repaint();
+                        } catch (Throwable t) {
+                            // A blank window with no error is the worst failure to diagnose
+                            // from afar: without this, a fault on the render thread kills it
+                            // silently and only the sound thread lives on. Print it once - the
+                            // "show console" launcher keeps it on screen - and keep drawing, so
+                            // a transient does not black the game out for good.
+                            if (!reportedFault) {
+                                reportedFault = true;
+                                System.err.println("[render] fault on the draw thread:");
+                                t.printStackTrace();
+                            }
                         }
                         previous = now;
-
-                        render();
-                        repaint();
 
                         long frameMs = (System.nanoTime() - now) / 1_000_000L;
                         if (frameMs < TARGET_FRAME_MS) {
