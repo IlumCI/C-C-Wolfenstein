@@ -96,6 +96,12 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
                 frontend.abandonMatch();
             }
         });
+        input.setSaveListener(new Runnable() {
+            @Override
+            public void run() {
+                frontend.saveMatch();
+            }
+        });
         if (getWidth() > 0) {
             session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), getHeight());
             int[] spawn = session.world().map().spawnPoint(session.playerId());
@@ -120,6 +126,10 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
         // The surface can die without the activity pausing first; either way, no picture
         // means no sound.
         com.ccwolf.game.audio.GameAudio.pause();
+        // The render thread has been joined, so nothing is mid-tick: the one safe moment on
+        // Android to write the autosave. Losing the surface is how this app ends - the OS
+        // rarely says a cleaner goodbye - so the front persists across instances from here.
+        frontend.saveMatch();
     }
 
     public void pauseGame() {

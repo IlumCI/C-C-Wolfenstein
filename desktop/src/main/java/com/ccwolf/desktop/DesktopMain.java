@@ -8,6 +8,8 @@ import com.ccwolf.audio.javasound.JavaSoundSink;
 import com.ccwolf.game.Frontend;
 import com.ccwolf.game.GameSession;
 import com.ccwolf.game.audio.GameAudio;
+import com.ccwolf.game.save.SaveDir;
+import java.io.File;
 import com.ccwolf.game.input.InputController;
 import com.ccwolf.game.input.PointerEvent;
 import com.ccwolf.game.render.Hud;
@@ -46,6 +48,7 @@ public final class DesktopMain {
         Difficulty difficulty = Difficulty.valueOf(argString(args, "--difficulty", "VETERAN"));
 
         Java2DImages.install();
+        SaveDir.install(new File(System.getProperty("user.home"), ".cc-wolfenstein"));
 
         int headlessFrames = (int) argLong(args, "--headless", 0L);
         if (headlessFrames <= 0) {
@@ -174,6 +177,12 @@ public final class DesktopMain {
         private int lastGroupKey = -1;
         private long lastGroupKeyAtMs;
 
+        /**
+         * Serialises the sim thread against the exit-time autosave, so the shutdown hook
+         * never writes a save while a tick is halfway through mutating the world.
+         */
+        private final Object simLock = new Object();
+
         GamePanel(long seed, WorldRenderer renderer, Hud hud) {
             this.seed = seed;
             this.renderer = renderer;
@@ -204,6 +213,14 @@ public final class DesktopMain {
                     @Override
                     public void run() {
                         frontend.abandonMatch();
+                    }
+                });
+                input.setSaveListener(new Runnable() {
+                    @Override
+                    public void run() {
+                        synchronized (simLock) {
+                            frontend.saveMatch();
+                        }
                     }
                 });
             }
@@ -342,6 +359,17 @@ public final class DesktopMain {
         }
 
         void start() {
+            // Closing the window saves the front on the way out: the war is persistent, so
+            // quitting mid-match is a pause, not a surrender.
+            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    synchronized (simLock) {
+                        frontend.saveMatch();
+                    }
+                }
+            }, "cc-wolfenstein-autosave"));
+
             Thread loop = new Thread(new Runnable() {
                 @Override
                 public void run() {
@@ -350,7 +378,9 @@ public final class DesktopMain {
                         long now = System.nanoTime();
                         // The frontend pumps whichever screen is alive - menu ambience and
                         // the attract-mode demo need the clock as much as a match does.
-                        frontend.update((now - previous) / 1_000_000_000f);
+                        synchronized (simLock) {
+                            frontend.update((now - previous) / 1_000_000_000f);
+                        }
                         previous = now;
 
                         render();

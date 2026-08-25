@@ -25,7 +25,7 @@ import java.util.Random;
 public final class TitleMenu {
 
     /** What a tap on the title screen asked for. */
-    public enum Action { NONE, SKIRMISH, QUIT }
+    public enum Action { NONE, SKIRMISH, CONTINUE, QUIT }
 
     /** Glyph box height in art pixels; widths vary per letter, as blades do. */
     private static final int GLYPH_H = 26;
@@ -45,6 +45,11 @@ public final class TitleMenu {
     private float height;
     private float scale = 1f;
 
+    /** Whether a saved front existed when this screen was built; rows shift to fit. */
+    private final boolean hasSave;
+
+    private float continueTop;
+    private float continueBottom;
     private float skirmishTop;
     private float skirmishBottom;
     private float helpTop;
@@ -59,6 +64,9 @@ public final class TitleMenu {
 
     public TitleMenu(boolean showQuit) {
         this.showQuit = showQuit;
+        // Checked once per visit to the title, not per frame: the menu is rebuilt on every
+        // return here, and a file probe per frame would be sixty stats a second for nothing.
+        this.hasSave = com.ccwolf.game.save.SaveGame.exists();
         this.title = bakeLine("WOLFENSTEIN", true);
         this.subtitle = bakeLine("THE FIRE RISES", true);
     }
@@ -70,7 +78,13 @@ public final class TitleMenu {
         float rowHeight = 26f * scale;
         rowLeft = width * 0.5f - 130f * scale;
         rowRight = width * 0.5f + 130f * scale;
-        skirmishTop = height * 0.62f;
+        float top = height * (hasSave ? 0.58f : 0.62f);
+        if (hasSave) {
+            continueTop = top;
+            continueBottom = top + rowHeight;
+            top = continueBottom + 10f * scale;
+        }
+        skirmishTop = top;
         skirmishBottom = skirmishTop + rowHeight;
         helpTop = skirmishBottom + 10f * scale;
         helpBottom = helpTop + rowHeight;
@@ -109,7 +123,10 @@ public final class TitleMenu {
         float sy = ty + th + 12f * scale;
         surface.drawImage(subtitle, sx, sy, sx + sw, sy + sh, paint);
 
-        drawRow(surface, "SKIRMISH", skirmishTop, skirmishBottom, true);
+        if (hasSave) {
+            drawRow(surface, "CONTINUE THE FRONT", continueTop, continueBottom, true);
+        }
+        drawRow(surface, "SKIRMISH", skirmishTop, skirmishBottom, !hasSave);
         drawRow(surface, "HOW TO PLAY", helpTop, helpBottom, false);
         if (showQuit) {
             drawRow(surface, "QUIT", quitTop, quitBottom, false);
@@ -128,6 +145,9 @@ public final class TitleMenu {
             return Action.NONE;
         }
         if (x >= rowLeft && x <= rowRight) {
+            if (hasSave && y >= continueTop && y <= continueBottom) {
+                return Action.CONTINUE;
+            }
             if (y >= skirmishTop && y <= skirmishBottom) {
                 return Action.SKIRMISH;
             }

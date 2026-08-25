@@ -58,8 +58,15 @@ public final class InputController {
     /** Told when the player abandons the paused match; the shell routes it to the flow. */
     private Runnable abandonListener;
 
+    /** Told when the player saves from the pause screen; the shell routes it to the flow. */
+    private Runnable saveListener;
+
     public void setAbandonListener(Runnable listener) {
         this.abandonListener = listener;
+    }
+
+    public void setSaveListener(Runnable listener) {
+        this.saveListener = listener;
     }
 
     public boolean onPointer(PointerEvent event) {
@@ -75,6 +82,10 @@ public final class InputController {
                 session.setPaused(false);
             } else if (hud.pausedAbandonHit(x, y) && abandonListener != null) {
                 abandonListener.run();
+            } else if (hud.pausedSaveHit(x, y)) {
+                if (saveListener != null) {
+                    saveListener.run();
+                }
             } else if (hud.pausedMuteHit(x, y)) {
                 com.ccwolf.game.audio.GameAudio.setMuted(
                         !com.ccwolf.game.audio.GameAudio.isMuted());

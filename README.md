@@ -328,5 +328,17 @@ screen on the title menu that finally writes the gestures down, a sound toggle o
 screen both platforms can reach, and an outcome screen that itemises the bill — match length,
 losses, kills, uranium hauled.
 
-Next, each its own part: campaign and mission scripting, more maps, save/load, veterancy and
-stances, multiplayer.
+**Part 5, save/load, is complete — and a saved game is its inputs, not a snapshot.** The
+simulation is deterministic, so the save file holds only what made the match (map, sides,
+difficulty, seed) and the log of every command the player was allowed to give, with the tick
+each landed on; loading rebuilds the match and replays the log through the same simulation the
+golden digests police, then checks the arrived-at world against the exact digest recorded at
+save time. The whole war fits in a few kilobytes of readable text. One slot, "the front":
+SAVE THE FRONT on the pause screen, CONTINUE THE FRONT on the title menu, and the game
+autosaves on the way out on both platforms (closing the desktop window, losing the Android
+surface), so quitting mid-match is a pause, not a surrender. A finished match deletes its
+save. Loading a long match replays it faster than real time but not instantly — seconds, not
+minutes — which is the price of a save format that cannot desync from the simulation.
+
+Next, each its own part: campaign and mission scripting, more maps, veterancy and stances,
+multiplayer.

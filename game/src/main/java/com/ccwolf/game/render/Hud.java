@@ -67,6 +67,7 @@ public final class Hud {
 
     /** The paused overlay's choices, centered over the battlefield. */
     private final Rect pausedResume = new Rect();
+    private final Rect pausedSave = new Rect();
     private final Rect pausedAbandon = new Rect();
     private final Rect pausedMute = new Rect();
 
@@ -227,11 +228,14 @@ public final class Hud {
         float bw = 110f * scale;
         float bh = 22f * scale;
         pausedResume.set(cx - bw, cy + 18f * scale, cx + bw, cy + 18f * scale + bh);
-        pausedAbandon.set(cx - bw, pausedResume.bottom + 8f * scale,
+        pausedSave.set(cx - bw, pausedResume.bottom + 8f * scale,
                 cx + bw, pausedResume.bottom + 8f * scale + bh);
+        pausedAbandon.set(cx - bw, pausedSave.bottom + 8f * scale,
+                cx + bw, pausedSave.bottom + 8f * scale + bh);
         pausedMute.set(cx - bw, pausedAbandon.bottom + 8f * scale,
                 cx + bw, pausedAbandon.bottom + 8f * scale + bh);
         drawButton(surface, pausedResume, "RESUME", true, false);
+        drawButton(surface, pausedSave, "SAVE THE FRONT", true, false);
         drawButton(surface, pausedAbandon, "ABANDON THE FIELD", true, true);
         // The one place both platforms can reach the mute: phones have no M key.
         drawButton(surface, pausedMute,
@@ -253,6 +257,11 @@ public final class Hud {
     /** True when a tap landed on the sound toggle. Only meaningful while paused. */
     public boolean pausedMuteHit(float x, float y) {
         return pausedMute.contains(x, y);
+    }
+
+    /** True when a tap landed on SAVE THE FRONT. Only meaningful while paused. */
+    public boolean pausedSaveHit(float x, float y) {
+        return pausedSave.contains(x, y);
     }
 
     /** Riveted plate, so the interface looks like it was bolted together in a workshop. */

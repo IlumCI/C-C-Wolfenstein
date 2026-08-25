@@ -5,6 +5,7 @@ import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.map.MapCatalog;
 import com.ccwolf.game.audio.AudioDirector;
 import com.ccwolf.game.audio.GameAudio;
+import com.ccwolf.game.save.SaveGame;
 import com.ccwolf.game.render.WorldRenderer;
 import com.ccwolf.gfx.Surface;
 import java.util.List;
@@ -127,6 +128,10 @@ public final class Frontend {
                     click();
                     screen = Screen.SETUP;
                     break;
+                case CONTINUE:
+                    click();
+                    continueMatch();
+                    break;
                 case QUIT:
                     return true;
                 default:
@@ -144,8 +149,40 @@ public final class Frontend {
 
     /** Back to the title from a match: pause-abandon, or any tap on the outcome screen. */
     public void abandonMatch() {
+        // A concluded war has nothing left to resume; a walked-away-from one keeps its last
+        // save, so CONTINUE still means something after a rage-quit.
+        if (session != null && session.world().isGameOver()) {
+            SaveGame.delete();
+        }
         session = null;
         enterTitle();
+    }
+
+    /** Writes the running match to the single save slot. */
+    public void saveMatch() {
+        if (session == null || session.world().isGameOver()) {
+            return;
+        }
+        if (SaveGame.write(session)) {
+            session.showMessage("The front is held on disk");
+        } else if (session != null) {
+            session.showMessage("Could not save");
+        }
+    }
+
+    private void continueMatch() {
+        SaveGame.Data data = SaveGame.load();
+        if (data == null) {
+            return;
+        }
+        GameAudio.mixer().stopAll();
+        AudioOut.music().stop();
+        menuAudio = null;
+        demo = null;
+        // Replaying a long match takes real seconds; the tap simply waits. The war is worth it.
+        session = GameSession.restore(data);
+        screen = Screen.MATCH;
+        session.showMessage("The front, as you left it");
     }
 
     // --- transitions ----------------------------------------------------------------------

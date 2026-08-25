@@ -18,8 +18,10 @@ import com.ccwolf.core.entity.Unit;
 import com.ccwolf.core.squad.Formation;
 import com.ccwolf.core.squad.Squad;
 import com.ccwolf.core.entity.UnitType;
+import com.ccwolf.core.diag.StateDigest;
 import com.ccwolf.core.event.GameEvent;
 import com.ccwolf.core.map.MapCatalog;
+import com.ccwolf.game.save.SaveGame;
 import com.ccwolf.core.sim.GameWorld;
 import com.ccwolf.core.sim.Skirmish;
 import java.util.ArrayList;
@@ -131,6 +133,17 @@ public final class GameSession {
 
     private final MatchStats stats = new MatchStats();
 
+    /** The setup, retained verbatim so a save can name it. Null for the title-screen demo. */
+    private String mapName;
+    private Faction faction;
+    private Difficulty difficulty;
+    private final long seed;
+    private Doctrine doctrine;
+    private Doctrine opponentDoctrine;
+
+    /** Every accepted command as "tick playerId codecLine" — the other half of a save. */
+    private final List<String> commandLog = new ArrayList<String>();
+
     private String message = "";
     private long messageUntilMs;
 
@@ -154,6 +167,60 @@ public final class GameSession {
                        Doctrine doctrine, Doctrine opponentDoctrine) {
         this(Skirmish.createVersusAi(MapCatalog.load(mapName), faction, difficulty, seed,
                 doctrine, opponentDoctrine), seed, false);
+        // Retained verbatim: this is the first half of a saved game — the other half is the
+        // command log the bus listener keeps below.
+        this.mapName = mapName;
+        this.faction = faction;
+        this.difficulty = difficulty;
+        this.doctrine = doctrine;
+        this.opponentDoctrine = opponentDoctrine;
+    }
+
+    /**
+     * Rebuilds a saved match by replaying its inputs.
+     *
+     * <p>No world state is deserialized anywhere in this game. The save names the setup and
+     * the accepted commands; this reconstructs the former and re-submits the latter at their
+     * original ticks, and determinism — the property the golden digests exist to defend —
+     * guarantees the same war. The digest recorded at save time is checked on arrival, so a
+     * simulation that has drifted since the save announces itself instead of quietly playing
+     * a subtly different match.
+     */
+    public static GameSession restore(SaveGame.Data data) {
+        GameSession session = new GameSession(data.mapName, data.faction, data.difficulty,
+                data.seed, data.doctrine, data.opponentDoctrine);
+        session.replay(data);
+        return session;
+    }
+
+    private void replay(SaveGame.Data data) {
+        for (int i = 0; i < data.commands.size(); i++) {
+            String[] entry = data.commands.get(i).split(" ", 3);
+            stepTo(Integer.parseInt(entry[0]));
+            // Re-submitting through the bus re-records the log too: a restored session can
+            // itself be saved without ever having noticed it was loaded.
+            commands.submit(Integer.parseInt(entry[1]), PlayerCommand.Codec.decode(entry[2]));
+        }
+        stepTo(data.tick);
+        long arrived = StateDigest.exact(world);
+        if (arrived != data.digest) {
+            System.err.println("[save] replay arrived at a different world (" + arrived
+                    + " vs saved " + data.digest + ") - the simulation has changed since "
+                    + "this save was written");
+        }
+        camera.centerOn(data.cameraX, data.cameraY);
+    }
+
+    /** Replay stepping: the sim runs, the stats count, and nothing draws or sounds. */
+    private void stepTo(int tick) {
+        while (world.tick() < tick && !world.isGameOver()) {
+            skirmish.step();
+            eventScratch.clear();
+            world.drainEvents(eventScratch);
+            for (int i = 0; i < eventScratch.size(); i++) {
+                tally(eventScratch.get(i));
+            }
+        }
     }
 
     /**
@@ -179,6 +246,19 @@ public final class GameSession {
         this.playerId = Math.max(0, skirmish.humanPlayerId());
         this.view = skirmish.viewFor(playerId);
         this.muted = muted;
+        this.seed = seed;
+        if (!muted) {
+            // The demo is never saved; a real match logs everything the world accepts.
+            commands.setListener(new com.ccwolf.core.api.CommandBus.Listener() {
+                @Override
+                public void onAccepted(long tick, int pid, PlayerCommand command) {
+                    synchronized (commandLog) {
+                        commandLog.add(tick + " " + pid + " "
+                                + PlayerCommand.Codec.encode(command));
+                    }
+                }
+            });
+        }
         this.fx = new FxDirector(seed);
         // The mixer is process-wide (the device outlives any one match); the director, like
         // the fx layer, is per-match. Hitscan impact sounds ride the fx layer's invented
@@ -222,6 +302,39 @@ public final class GameSession {
     /** The running cost of the match, for the outcome screen. */
     public MatchStats stats() {
         return stats;
+    }
+
+    // --- what a save needs to know --------------------------------------------------------
+
+    public String mapName() {
+        return mapName;
+    }
+
+    public Faction faction() {
+        return faction;
+    }
+
+    public Difficulty difficulty() {
+        return difficulty;
+    }
+
+    public long seed() {
+        return seed;
+    }
+
+    public Doctrine doctrine() {
+        return doctrine;
+    }
+
+    public Doctrine opponentDoctrine() {
+        return opponentDoctrine;
+    }
+
+    /** A stable copy of the accepted-command log, safe against the shell's own threads. */
+    public List<String> commandLog() {
+        synchronized (commandLog) {
+            return new ArrayList<String>(commandLog);
+        }
     }
 
     /** Muzzle flashes, rounds in flight, blood, fire and everything else you can see. */
@@ -341,24 +454,9 @@ public final class GameSession {
         }
         for (int i = 0; i < eventScratch.size(); i++) {
             GameEvent e = eventScratch.get(i);
+            tally(e);
             switch (e.type()) {
-                case ORE_DELIVERED:
-                    if (e.ownerId() == playerId) {
-                        stats.oreDelivered += e.amount();
-                    }
-                    break;
                 case ENTITY_DESTROYED:
-                    if (e.targetKind() == GameEvent.TargetKind.STRUCTURE) {
-                        if (e.ownerId() == playerId) {
-                            stats.structuresLost++;
-                        } else {
-                            stats.enemyStructuresDestroyed++;
-                        }
-                    } else if (e.ownerId() == playerId) {
-                        stats.unitsLost++;
-                    } else {
-                        stats.enemyUnitsDestroyed++;
-                    }
                     // The fireball, gore and debris belong to the effects layer now; the wreck
                     // is a sprite that sits on the ground, so it stays here.
                     if (e.targetKind() != com.ccwolf.core.event.GameEvent.TargetKind.INFANTRY) {
@@ -398,6 +496,32 @@ public final class GameSession {
                 default:
                     break;
             }
+        }
+    }
+
+    /** Counts one event into the match stats; shared by live play and save replay. */
+    private void tally(GameEvent e) {
+        switch (e.type()) {
+            case ORE_DELIVERED:
+                if (e.ownerId() == playerId) {
+                    stats.oreDelivered += e.amount();
+                }
+                break;
+            case ENTITY_DESTROYED:
+                if (e.targetKind() == GameEvent.TargetKind.STRUCTURE) {
+                    if (e.ownerId() == playerId) {
+                        stats.structuresLost++;
+                    } else {
+                        stats.enemyStructuresDestroyed++;
+                    }
+                } else if (e.ownerId() == playerId) {
+                    stats.unitsLost++;
+                } else {
+                    stats.enemyUnitsDestroyed++;
+                }
+                break;
+            default:
+                break;
         }
     }
 

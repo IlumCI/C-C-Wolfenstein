@@ -10,6 +10,7 @@ import com.ccwolf.android.audio.MediaPlayerMusic;
 import com.ccwolf.android.gfx.AndroidImages;
 import com.ccwolf.audio.AudioOut;
 import com.ccwolf.game.audio.GameAudio;
+import com.ccwolf.game.save.SaveDir;
 
 /**
  * The whole app: one fullscreen, landscape activity hosting the game surface.
@@ -27,6 +28,7 @@ public final class GameActivity extends Activity {
         AndroidImages.install();
         AudioOut.install(new AndroidAudioSink());
         AudioOut.installMusic(new MediaPlayerMusic(this));
+        SaveDir.install(getFilesDir());
 
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
