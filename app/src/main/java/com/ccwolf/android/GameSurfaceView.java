@@ -1,0 +1,264 @@
+package com.ccwolf.android;
+
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.graphics.Canvas;
+import android.view.MotionEvent;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import com.ccwolf.android.gfx.AndroidSurface;
+import com.ccwolf.game.Frontend;
+import com.ccwolf.game.GameSession;
+import com.ccwolf.game.input.InputController;
+import com.ccwolf.game.input.PointerEvent;
+import com.ccwolf.game.render.Hud;
+import com.ccwolf.game.render.WorldRenderer;
+
+/**
+ * The game surface and its render thread.
+ *
+ * <p>The simulation runs at a fixed 20 Hz inside {@link GameSession}; this thread just draws as
+ * often as it can and feeds real elapsed time in, so the game plays at the same speed on a
+ * 60 Hz phone and a 120 Hz one. Which screen is up — title, setup or the match — belongs to
+ * the shared {@link Frontend}; this class only routes touches and paints.
+ */
+public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.Callback {
+
+    private static final long TARGET_FRAME_MS = 16;
+
+    private final Frontend frontend;
+    private final Hud hud = new Hud();
+    private final WorldRenderer renderer = new WorldRenderer();
+    private InputController input;
+
+    /** Bound to each frame's canvas rather than rebuilt, so a frame allocates nothing. */
+    private final AndroidSurface surface = new AndroidSurface();
+
+    /** Refilled from each MotionEvent, for the same reason. */
+    private final PointerEvent pointer = new PointerEvent();
+
+    private RenderThread thread;
+    private final float density;
+
+    public GameSurfaceView(Context context, long seed) {
+        super(context);
+        this.density = context.getResources().getDisplayMetrics().density;
+        // No quit row: Android apps leave by the system's door, not their own.
+        this.frontend = new Frontend(seed, false);
+        getHolder().addCallback(this);
+        setFocusable(true);
+    }
+
+    /** The current match, or null while a menu screen is up. */
+    public GameSession session() {
+        return frontend.screen() == Frontend.Screen.MATCH ? frontend.session() : null;
+    }
+
+    private void applyLayout(int width, int height) {
+        hud.layout(width, height, density);
+        frontend.layout(width, height, density);
+        GameSession session = session();
+        if (session == null) {
+            return;
+        }
+        session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), height);
+        session.camera().setMap(session.world().map());
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        GameSession session = session();
+        if (session == null) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                frontend.tap(event.getX(), event.getY());
+                if (session() != null) {
+                    beginMatch();
+                }
+            }
+            return true;
+        }
+        if (session.world().isGameOver() && event.getActionMasked() == MotionEvent.ACTION_UP) {
+            // Any tap on the outcome screen leads back out to the title.
+            frontend.abandonMatch();
+            return true;
+        }
+        return input.onPointer(translate(event, pointer));
+    }
+
+    /** The setup screen's BEGIN was just tapped: aim the camera and arm the controls. */
+    private void beginMatch() {
+        GameSession session = frontend.session();
+        input = new InputController(session, hud, renderer, density);
+        input.setAbandonListener(new Runnable() {
+            @Override
+            public void run() {
+                frontend.abandonMatch();
+            }
+        });
+        input.setSaveListener(new Runnable() {
+            @Override
+            public void run() {
+                frontend.saveMatch();
+            }
+        });
+        if (getWidth() > 0) {
+            session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), getHeight());
+            int[] spawn = session.world().map().spawnPoint(session.playerId());
+            session.camera().centerOn(spawn[0] + 3f, spawn[1] + 3f);
+        }
+    }
+
+    @Override
+    public void surfaceCreated(SurfaceHolder holder) {
+        thread = new RenderThread(holder);
+        thread.start();
+    }
+
+    @Override
+    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        applyLayout(width, height);
+    }
+
+    @Override
+    public void surfaceDestroyed(SurfaceHolder holder) {
+        stopThread();
+        // The surface can die without the activity pausing first; either way, no picture
+        // means no sound.
+        com.ccwolf.game.audio.GameAudio.pause();
+        // The render thread has been joined, so nothing is mid-tick: the one safe moment on
+        // Android to write the autosave. Losing the surface is how this app ends - the OS
+        // rarely says a cleaner goodbye - so the front persists across instances from here.
+        frontend.saveMatch();
+    }
+
+    public void pauseGame() {
+        GameSession session = session();
+        if (session != null) {
+            session.setPaused(true);
+        }
+    }
+
+    /** From the activity's back button while paused: out of the match, back to the title. */
+    public void abandonMatch() {
+        frontend.abandonMatch();
+    }
+
+    private void stopThread() {
+        RenderThread t = thread;
+        thread = null;
+        if (t != null) {
+            t.finish();
+            boolean retry = true;
+            while (retry) {
+                try {
+                    t.join();
+                    retry = false;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    /**
+     * Copies an Android touch event into the platform-neutral form the gesture logic reads.
+     *
+     * <p>Android reports the whole gesture in one object with an action code that folds in
+     * which pointer changed; the game only needs to know what kind of change it was and where
+     * the fingers are.
+     */
+    private static PointerEvent translate(MotionEvent event, PointerEvent out) {
+        PointerEvent.Action action;
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                action = PointerEvent.Action.DOWN;
+                break;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                action = PointerEvent.Action.POINTER_DOWN;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                action = PointerEvent.Action.MOVE;
+                break;
+            case MotionEvent.ACTION_POINTER_UP:
+                action = PointerEvent.Action.POINTER_UP;
+                break;
+            case MotionEvent.ACTION_UP:
+                action = PointerEvent.Action.UP;
+                break;
+            case MotionEvent.ACTION_CANCEL:
+            default:
+                action = PointerEvent.Action.CANCEL;
+                break;
+        }
+
+        int count = Math.min(event.getPointerCount(), PointerEvent.MAX_POINTERS);
+        out.set(action, count);
+        for (int i = 0; i < count; i++) {
+            out.setPointer(i, event.getX(i), event.getY(i));
+        }
+        return out;
+    }
+
+    /** Draws frames and drives the simulation clock. */
+    private final class RenderThread extends Thread {
+
+        private final SurfaceHolder holder;
+        private volatile boolean running = true;
+
+        RenderThread(SurfaceHolder holder) {
+            super("cc-wolfenstein-render");
+            this.holder = holder;
+        }
+
+        void finish() {
+            running = false;
+        }
+
+        @Override
+        public void run() {
+            long previous = System.nanoTime();
+            while (running) {
+                long now = System.nanoTime();
+                float delta = (now - previous) / 1_000_000_000f;
+                previous = now;
+
+                // The frontend pumps whichever screen is alive - menu ambience and the
+                // attract-mode demo need the clock as much as a match does.
+                frontend.update(delta);
+                GameSession current = session();
+
+                Canvas canvas = null;
+                try {
+                    canvas = holder.lockCanvas();
+                    if (canvas != null) {
+                        synchronized (holder) {
+                            surface.bind(canvas);
+                            surface.clear(0xFF0B0C0A);
+                            if (current == null) {
+                                frontend.draw(surface, renderer, System.currentTimeMillis());
+                            } else {
+                                renderer.draw(surface, current);
+                                hud.draw(surface, current, System.currentTimeMillis());
+                            }
+                        }
+                    }
+                } finally {
+                    if (canvas != null) {
+                        holder.unlockCanvasAndPost(canvas);
+                    }
+                }
+
+                long frameMs = (System.nanoTime() - now) / 1_000_000L;
+                if (frameMs < TARGET_FRAME_MS) {
+                    try {
+                        Thread.sleep(TARGET_FRAME_MS - frameMs);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        running = false;
+                    }
+                }
+            }
+        }
+    }
+}

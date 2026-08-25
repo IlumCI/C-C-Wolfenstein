@@ -1,0 +1,240 @@
+package com.ccwolf.core.combat;
+
+/**
+ * A weapon loadout. Ranges are in tiles, cooldowns in simulation ticks
+ * (see {@code GameWorld.TICKS_PER_SECOND}).
+ */
+public enum Weapon {
+    /** Resistance rifle: cheap, good against infantry, useless against plate. */
+    RIFLE("Kar Rifle", 12, 3.6f, 13, WeaponClass.SMALL_ARMS),
+    /** Regime issue submachine gun. Faster and shorter-ranged than the rifle. */
+    MP_SMG("MP Sturmgewehr", 7, 3.2f, 9, WeaponClass.SMALL_ARMS),
+    /** Shoulder-fired anti-armour rocket. Slow, devastating to vehicles. */
+    PANZERSCHRECK("Panzerschreck", 42, 4.6f, 36, WeaponClass.ROCKET),
+    /** Pintle gun on the scout jeep. */
+    JEEP_MG("Pintle MG", 8, 4.2f, 6, WeaponClass.SMALL_ARMS),
+    /** Main gun of a Panzer the Resistance stole and repainted. */
+    PANZER_CANNON("75mm Cannon", 34, 4.8f, 26, WeaponClass.CANNON),
+    /** The Panzerhund closes and bites. */
+    HOUND_JAWS("Servo Jaws", 16, 1.0f, 15, WeaponClass.MELEE),
+    /** Ubersoldat arm cannon. */
+    UBER_CANNON("Arm Cannon", 32, 4.2f, 26, WeaponClass.CANNON),
+    /**
+     * The flak turret's gun, refitted for the war the name always promised.
+     *
+     * <p>Dual purpose: the same shell that cracks a hull airbursts against a rotor. It has been
+     * the game's generic base defence since Part 1, and Part 3 is where the "Flak" on the
+     * plate stops being flavour. Every ground-facing number is the old turret gun's exactly,
+     * because this commit ships dark: the refit may not move a single golden, and a
+     * half-tile of extra reach did precisely that on the first try.
+     */
+    FLAK_GUN("Flak Cannon", 26, 6.0f, 22, WeaponClass.CANNON),
+
+    /** Resistance marksman: one shot, one man, a long wait for the next. */
+    HUNTING_RIFLE("Scoped Hunting Rifle", 55, 8.0f, 62, WeaponClass.SNIPER),
+
+    /** Regime counter-sniper: slightly further, slightly faster, much more expensive. */
+    SCHARFSCHUTZE_RIFLE("Zielfernrohr Rifle", 58, 8.5f, 56, WeaponClass.SNIPER),
+
+    /** A bundled charge, thrown. The Resistance answer to massed infantry. */
+    GRENADE_BUNDLE("Bundled Charge", 30, 4.2f, 44, WeaponClass.GRENADE, 1.7f),
+
+    /** Flame projector: short reach, and it catches everything standing together. */
+    FLAMMENWERFER("Flammenwerfer", 16, 3.0f, 9, WeaponClass.FLAME, 1.1f),
+
+    /** Sturmpanzer main gun: a heavier shell than anything the Resistance can field. */
+    STURM_CANNON("Sturm Cannon", 46, 5.2f, 34, WeaponClass.CANNON, 0.9f),
+
+    /** Nest gun: cheap, fast, and only dangerous to men on foot. */
+    NEST_MG("Nest MG", 11, 5.5f, 5, WeaponClass.SMALL_ARMS),
+
+    /** Anti-tank gun: devastating to armour, hopeless against a running man. */
+    PAK_GUN("Pak Gun", 44, 6.8f, 33, WeaponClass.CANNON),
+
+    /**
+     * A Regime field piece the Resistance took and never gave back.
+     *
+     * <p>1945, and it shows: one shell at a time, a long wait between them, and a crew who have
+     * to be somewhere else before anyone works out where the shells came from.
+     */
+    FELDKANONE("Stolen Feldkanone", 42, 12f, 110, WeaponClass.ARTILLERY, 2.4f, 6f),
+
+    /**
+     * A rack of tubes that empties itself at a piece of ground.
+     *
+     * <p>Four rounds for one decision, spread across a frontage rather than stacked on a point.
+     * That makes it the wrong weapon for one man and the right one for a line of them — the
+     * first thing in the game that cares about the shape of what it is shooting at.
+     */
+    NEBELWERFER("Nebelwerfer-71", 26, 11f, 150, WeaponClass.ARTILLERY, 2.2f, 5f, 4),
+
+    /**
+     * Whatever the Regime dug up, mounted on a carriage.
+     *
+     * <p>It does not throw anything. Cover is no help, earth is no help, and what it mostly
+     * does is empty a position of men who are still alive. Slow, ruinously expensive, and it
+     * outranges every other thing on the map.
+     */
+    RESONANZKANONE("Resonanzkanone", 30, 15f, 200, WeaponClass.OCCULT, 3.0f, 8f),
+
+    /**
+     * A pressure gun that lobs gas canisters.
+     *
+     * <p>The listed damage is the canister burst and it is nearly nothing; the weapon is the
+     * cloud the shell vents where it lands, and the cloud belongs to {@code GasLayer} rather
+     * than to this table. Shorter-legged than the artillery pieces on purpose: a Gaswerfer has
+     * to stand inside counter-battery range of the line it is gassing.
+     */
+    GASWERFER("Gaswerfer-40", 12, 10.5f, 130, WeaponClass.GAS, 2.0f, 5f),
+
+    /**
+     * The Ausmerzer's projector: a fan of burning fuel at arm's length.
+     *
+     * <p>Short even by flame standards, because the machine's whole doctrine is that it walks
+     * the last stretch. What it reaches, it clears.
+     */
+    VERNICHTER("Vernichter Projector", 34, 3.6f, 11, WeaponClass.FLAME, 1.6f),
+
+    // New weapons append here and only here: a shell in flight is digested by this enum's
+    // ordinal, so an insertion above this line renumbers rounds the goldens already recorded.
+
+    /** The autogyro's strafing gun: light, fast, and the only air-to-air the Resistance owns. */
+    GYRO_MG("Gyro MG", 9, 4.0f, 7, WeaponClass.SMALL_ARMS),
+
+    /**
+     * The Luftpanzer's rocket rack: unguided, fired shallow, wicked against anything soft.
+     *
+     * <p>Anti-air as well, which is what makes the gunship the Regime's answer to the
+     * Resistance's autogyros - there is no dogfight tradition in this world, only a bigger
+     * machine arriving.
+     */
+    LUFT_ROCKETS("Rocket Rack", 24, 5.0f, 26, WeaponClass.ROCKET, 1.2f);
+
+    private final String displayName;
+    private final int damage;
+    private final float range;
+    private final int cooldownTicks;
+    private final WeaponClass weaponClass;
+    private final float blastRadius;
+    private final float minRange;
+    private final int salvo;
+
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass) {
+        this(displayName, damage, range, cooldownTicks, weaponClass, 0f, 0f);
+    }
+
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass, float blastRadius) {
+        this(displayName, damage, range, cooldownTicks, weaponClass, blastRadius, 0f);
+    }
+
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass, float blastRadius, float minRange) {
+        this(displayName, damage, range, cooldownTicks, weaponClass, blastRadius, minRange, 1);
+    }
+
+    Weapon(String displayName, int damage, float range, int cooldownTicks,
+           WeaponClass weaponClass, float blastRadius, float minRange, int salvo) {
+        this.displayName = displayName;
+        this.damage = damage;
+        this.range = range;
+        this.cooldownTicks = cooldownTicks;
+        this.weaponClass = weaponClass;
+        this.blastRadius = blastRadius;
+        this.minRange = minRange;
+        this.salvo = salvo;
+    }
+
+    public String displayName() {
+        return displayName;
+    }
+
+    public int damage() {
+        return damage;
+    }
+
+    /** Maximum firing range, in tiles, measured centre to centre. */
+    public float range() {
+        return range;
+    }
+
+    public int cooldownTicks() {
+        return cooldownTicks;
+    }
+
+    public WeaponClass weaponClass() {
+        return weaponClass;
+    }
+
+    /**
+     * Radius in tiles over which this weapon also hurts everything else, 0 for single-target
+     * weapons. Damage falls off linearly to a quarter at the edge, and never touches the
+     * firer's own side — friendly fire would make the AI unusable and the player miserable.
+     */
+    public float blastRadius() {
+        return blastRadius;
+    }
+
+    public boolean hasBlast() {
+        return blastRadius > 0f;
+    }
+
+    /**
+     * How close is too close, in tiles. Zero for everything that can shoot what it can reach.
+     *
+     * <p>A gun with a dead zone in the middle of its range is a different weapon from a gun
+     * without one, and not only because of the hole: every piece of code in the game reads
+     * "out of range" as "walk closer", so a weapon with a lower bound needs callers that know
+     * to back off instead. See {@code GameWorld.standOffTile}.
+     *
+     * <p>Measured to the target's edge, exactly as maximum range is, which means a wide
+     * structure counts as too close from further out than a man does. That is the right answer
+     * for indirect fire — you cannot depress a howitzer over the wall it is parked against.
+     */
+    public float minRange() {
+        return minRange;
+    }
+
+    /** True if this weapon has a dead zone at all — the cheap test before the expensive one. */
+    public boolean hasMinRange() {
+        return minRange > 0f;
+    }
+
+    /**
+     * How many rounds one pull of the trigger puts in the air. One for everything aimed.
+     *
+     * <p>A salvo is not several shots in quick succession — it is a single decision that lands
+     * across a frontage. That makes it the right answer to a line of men and the wrong answer
+     * to one man, which is a distinction the game did not previously have any way to express.
+     */
+    public int salvo() {
+        return salvo;
+    }
+
+    /**
+     * Whether this weapon can engage something in the air.
+     *
+     * <p>A flag rather than a class property, because the line does not follow the classes: a
+     * pintle or nest MG hoses the sky and a rifle does not, both being SMALL_ARMS; the flak
+     * cannon reaches up and the Pak, the same class, cannot elevate. Everything not named here
+     * simply cannot touch an aircraft, which is what makes air a layer rather than a fast
+     * vehicle: melee, flame, gas and shellfire all live on the ground.
+     */
+    public boolean isAntiAir() {
+        switch (this) {
+            case JEEP_MG:
+            case NEST_MG:
+            case FLAK_GUN:
+            case GYRO_MG:
+            case LUFT_ROCKETS:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public int damageAgainst(ArmorClass armor) {
+        return DamageTable.damage(damage, weaponClass, armor);
+    }
+}

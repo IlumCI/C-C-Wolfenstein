@@ -1,0 +1,17 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.hprof
+
+# The menu-music drop-in slots. The player's own file goes here locally; a licensed
+# recording is not ours to distribute, so these paths never reach the repository.
+/music/
+app/src/main/assets/music/

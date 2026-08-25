@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original mark: a stylised gun sight over a valley, drawn as vectors. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#C8A02A"
+        android:pathData="M54,26a28,28 0,1 0,0.1 0zM54,34a20,20 0,1 1,-0.1 0z" />
+    <path
+        android:fillColor="#C8A02A"
+        android:pathData="M52,18h4v18h-4zM52,72h4v18h-4zM18,52h18v4h-18zM72,52h18v4h-18z" />
+    <path
+        android:fillColor="#8C1F1F"
+        android:pathData="M46,54l8,10 8,-10z" />
+</vector>

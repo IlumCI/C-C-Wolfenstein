@@ -1,0 +1,150 @@
+package com.ccwolf.core.event;
+
+import com.ccwolf.core.combat.WeaponClass;
+
+/**
+ * Something the presentation layer may want to react to — a shot to draw a tracer for, a
+ * kill to play an explosion on, a production line finishing.
+ *
+ * <p>Keeping these as plain data (rather than callbacks) is what lets {@code core} stay free
+ * of any Android dependency: the renderer drains the queue each frame and does as it likes.
+ */
+public final class GameEvent {
+
+    public enum Type {
+        SHOT_FIRED,
+        ENTITY_DESTROYED,
+    /**
+     * A shell has arrived somewhere.
+     *
+     * <p>Distinct from SHOT_FIRED because the two no longer happen together: an indirect round
+     * is fired on one tick and lands seconds later, so the presentation layer needs to be told
+     * about both ends separately. SHOT_FIRED carries the flight time in its amount, so the
+     * effects layer is told how long the round takes instead of guessing.
+     */
+    SHELL_IMPACT,
+        UNIT_TRAINED,
+
+        /** A squad came off the production line as one body. */
+
+        SQUAD_TRAINED,
+
+        /** A squad's morale gave out and it is running. */
+
+        SQUAD_BROKEN,
+
+        /** The last member of a squad was killed. */
+
+        SQUAD_WIPED,
+        /** A broken squad has pulled itself together. */
+        SQUAD_RALLIED,
+        BUILDING_STARTED,
+        BUILDING_COMPLETED,
+        BUILDING_SOLD,
+        SABOTAGED,
+        SABOTAGE_ENDED,
+        HIJACKED,
+        POWER_LOST,
+        POWER_RESTORED,
+        ORE_DELIVERED,
+        UNDER_ATTACK,
+        INSUFFICIENT_FUNDS,
+        PLACEMENT_READY,
+        PLAYER_DEFEATED
+    }
+
+    /** What kind of thing an effect happened to, which decides whether it sprays blood. */
+    public enum TargetKind { NONE, INFANTRY, VEHICLE, STRUCTURE }
+
+    private final Type type;
+    private final int ownerId;
+    private final int entityId;
+    private final float x;
+    private final float y;
+    private final float toX;
+    private final float toY;
+    private final int amount;
+    private final WeaponClass weaponClass;
+    private final TargetKind targetKind;
+
+    public GameEvent(Type type, int ownerId, int entityId, float x, float y, float toX, float toY,
+                     int amount) {
+        this(type, ownerId, entityId, x, y, toX, toY, amount, null, TargetKind.NONE);
+    }
+
+    public GameEvent(Type type, int ownerId, int entityId, float x, float y, float toX, float toY,
+                     int amount, WeaponClass weaponClass, TargetKind targetKind) {
+        this.type = type;
+        this.ownerId = ownerId;
+        this.entityId = entityId;
+        this.x = x;
+        this.y = y;
+        this.toX = toX;
+        this.toY = toY;
+        this.amount = amount;
+        this.weaponClass = weaponClass;
+        this.targetKind = targetKind;
+    }
+
+    public static GameEvent at(Type type, int ownerId, int entityId, float x, float y) {
+        return new GameEvent(type, ownerId, entityId, x, y, x, y, 0);
+    }
+
+    public static GameEvent shot(int ownerId, int shooterId, float fromX, float fromY, float toX,
+                                 float toY, int damage, WeaponClass weaponClass,
+                                 TargetKind targetKind) {
+        return new GameEvent(Type.SHOT_FIRED, ownerId, shooterId, fromX, fromY, toX, toY, damage,
+                weaponClass, targetKind);
+    }
+
+    public static GameEvent destroyed(int ownerId, int entityId, float x, float y,
+                                      TargetKind targetKind) {
+        return new GameEvent(Type.ENTITY_DESTROYED, ownerId, entityId, x, y, x, y, 0, null,
+                targetKind);
+    }
+
+    public Type type() {
+        return type;
+    }
+
+    public int ownerId() {
+        return ownerId;
+    }
+
+    public int entityId() {
+        return entityId;
+    }
+
+    public float x() {
+        return x;
+    }
+
+    public float y() {
+        return y;
+    }
+
+    public float toX() {
+        return toX;
+    }
+
+    public float toY() {
+        return toY;
+    }
+
+    /** Damage dealt, credits delivered, or 0 — depends on the event type. */
+    public int amount() {
+        return amount;
+    }
+
+    /**
+     * What was fired, for effects that differ by weapon. Null for events that are not shots.
+     */
+    public WeaponClass weaponClass() {
+        return weaponClass;
+    }
+
+    /** What was hit — flesh sprays, armour sparks, concrete throws dust. */
+    public TargetKind targetKind() {
+        return targetKind;
+    }
+}
