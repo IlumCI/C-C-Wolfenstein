@@ -37,6 +37,7 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":gfx"))
+    implementation(project(":audio"))
     implementation(project(":game"))
 
     // The rendering and art tests live in :game now and run on a plain JVM through the AWT

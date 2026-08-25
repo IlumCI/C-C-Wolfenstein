@@ -16,4 +16,5 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":game"))
     implementation(project(":gfx-java2d"))
+    implementation(project(":audio-javasound"))
 }

@@ -19,6 +19,8 @@ rootProject.name = "cc-wolfenstein"
 include(":core")
 include(":gfx")
 include(":gfx-java2d")
+include(":audio")
+include(":audio-javasound")
 include(":game")
 include(":desktop")
 

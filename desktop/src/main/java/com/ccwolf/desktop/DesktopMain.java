@@ -2,7 +2,10 @@ package com.ccwolf.desktop;
 
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.entity.Faction;
+import com.ccwolf.audio.AudioOut;
+import com.ccwolf.audio.javasound.JavaSoundSink;
 import com.ccwolf.game.GameSession;
+import com.ccwolf.game.audio.GameAudio;
 import com.ccwolf.game.MatchSetup;
 import com.ccwolf.game.input.InputController;
 import com.ccwolf.game.input.PointerEvent;
@@ -44,6 +47,17 @@ public final class DesktopMain {
         Java2DImages.install();
 
         int headlessFrames = (int) argLong(args, "--headless", 0L);
+        if (headlessFrames <= 0) {
+            // Headless runs are measurements and must stay mute; a windowed run gets sound.
+            // The sink starts lazily on first mixer use, so the setup screen is silent.
+            AudioOut.install(new JavaSoundSink());
+            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    GameAudio.shutdown();
+                }
+            }, "cc-wolfenstein-audio-shutdown"));
+        }
 
         final WorldRenderer renderer = new WorldRenderer();
         final Hud hud = new Hud();
@@ -244,6 +258,9 @@ public final class DesktopMain {
                             break;
                         case KeyEvent.VK_SPACE:
                             session.setPaused(!session.isPaused());
+                            break;
+                        case KeyEvent.VK_M:
+                            GameAudio.setMuted(!GameAudio.isMuted());
                             break;
                         case KeyEvent.VK_F:
                             // Desktop only, and deliberately: the plates are full at two rows,
