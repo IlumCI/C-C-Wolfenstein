@@ -6,6 +6,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import com.ccwolf.android.audio.AndroidAudioSink;
+import com.ccwolf.android.audio.MediaPlayerMusic;
 import com.ccwolf.android.gfx.AndroidImages;
 import com.ccwolf.audio.AudioOut;
 import com.ccwolf.game.audio.GameAudio;
@@ -25,6 +26,7 @@ public final class GameActivity extends Activity {
         // Before anything can bake a sprite, or play a cue.
         AndroidImages.install();
         AudioOut.install(new AndroidAudioSink());
+        AudioOut.installMusic(new MediaPlayerMusic(this));
 
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);

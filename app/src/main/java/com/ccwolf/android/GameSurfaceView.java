@@ -90,6 +90,12 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     private void beginMatch() {
         GameSession session = frontend.session();
         input = new InputController(session, hud, renderer, density);
+        input.setAbandonListener(new Runnable() {
+            @Override
+            public void run() {
+                frontend.abandonMatch();
+            }
+        });
         if (getWidth() > 0) {
             session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), getHeight());
             int[] spawn = session.world().map().spawnPoint(session.playerId());

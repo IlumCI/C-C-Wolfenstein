@@ -11,4 +11,7 @@ tasks.withType<JavaCompile>().configureEach {
 
 dependencies {
     api(project(":audio"))
+    // MP3 decoding for the drop-in menu-music slot. The repo ships no recordings; this is
+    // only the ability to play one the player supplies locally.
+    implementation("javazoom:jlayer:1.0.1")
 }

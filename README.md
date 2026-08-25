@@ -310,5 +310,15 @@ at a player's scale it is whatever the player can afford.
 per platform, every decision on the game side), thirty synthesized cues and no sound files,
 and a director that plays the battle the viewer can see and the storm everyone is under.
 
+**Part 4.5, the front door, is complete**: *Wolfenstein: The Fire Rises* greets you with a
+title screen — original angular blade-stroke lettering under a heat gradient, an attract-mode
+AI-versus-AI demo fighting live behind the menu, rain and lightning over it all — and both
+shells now share one `Frontend` flow: title to setup to match, and back out via the paused
+screen's ABANDON THE FIELD (Esc twice on desktop, back twice on Android) or any tap on the
+outcome screen. Menu music is a drop-in: put your own `menu.mp3` in `music/` (desktop) or
+`app/src/main/assets/music/` (Android, rebuilt in) and the menu loops it; the slots are
+gitignored because a licensed recording is not ours to ship, and an empty slot just means the
+storm plays alone.
+
 Next, each its own part: campaign and mission scripting, more maps, save/load, veterancy and
 stances, multiplayer.

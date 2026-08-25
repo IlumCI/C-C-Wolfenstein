@@ -55,9 +55,29 @@ public final class InputController {
         this.density = Math.max(1f, density);
     }
 
+    /** Told when the player abandons the paused match; the shell routes it to the flow. */
+    private Runnable abandonListener;
+
+    public void setAbandonListener(Runnable listener) {
+        this.abandonListener = listener;
+    }
+
     public boolean onPointer(PointerEvent event) {
         float x = event.x();
         float y = event.y();
+
+        // The paused overlay owns the battlefield while it is up: its two buttons first,
+        // and any other battlefield tap falls through to nothing (the sidebar still works,
+        // so RESUME has its twin in the pause button).
+        if (session.isPaused() && event.action() == PointerEvent.Action.DOWN
+                && !hud.contains(x, y)) {
+            if (hud.pausedResumeHit(x, y)) {
+                session.setPaused(false);
+            } else if (hud.pausedAbandonHit(x, y) && abandonListener != null) {
+                abandonListener.run();
+            }
+            return true;
+        }
 
         switch (event.action()) {
             case DOWN:

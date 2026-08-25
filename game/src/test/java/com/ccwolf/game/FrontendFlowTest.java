@@ -2,6 +2,9 @@ package com.ccwolf.game;
 
 import com.ccwolf.game.audio.GameAudio;
 import com.ccwolf.game.audio.SoundBank;
+import com.ccwolf.game.input.InputController;
+import com.ccwolf.game.input.PointerEvent;
+import com.ccwolf.game.render.Hud;
 import com.ccwolf.game.render.WorldRenderer;
 import java.io.IOException;
 import org.junit.Test;
@@ -94,6 +97,42 @@ public class FrontendFlowTest {
         // TITLE, and nothing (a demo game-over restart included) throws along the way.
         for (int i = 0; i < 1200; i++) {
             frontend.update(0.1f);
+        }
+        assertEquals(Frontend.Screen.TITLE, frontend.screen());
+    }
+
+    @Test
+    public void thePausedOverlayOffersTheWayOut() throws IOException {
+        Frontend frontend = boot();
+        tapSkirmish(frontend);
+        tapBegin(frontend);
+        GameSession session = frontend.session();
+
+        Hud hud = new Hud();
+        hud.layout(W, H, 2f);
+        session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), H);
+        InputController input = new InputController(session, hud, new WorldRenderer(), 2f);
+        input.setAbandonListener(new Runnable() {
+            @Override
+            public void run() {
+                frontend.abandonMatch();
+            }
+        });
+
+        session.setPaused(true);
+        Frame frame = new Frame(W, H);
+        new WorldRenderer().draw(frame.surface(), session);
+        hud.draw(frame.surface(), session, 1000L);
+        frame.save("paused-overlay.png");
+
+        // Drive it like a finger: sweep the battlefield's centre column until the abandon
+        // button fires, proving hit regions and listener agree with what was drawn.
+        PointerEvent pointer = new PointerEvent();
+        float cx = hud.sidebarLeft() / 2f;
+        for (int y = H / 3; y < H && frontend.screen() == Frontend.Screen.MATCH; y += 4) {
+            if (hud.pausedAbandonHit(cx, y)) {
+                input.onPointer(pointer.single(PointerEvent.Action.DOWN, cx, y));
+            }
         }
         assertEquals(Frontend.Screen.TITLE, frontend.screen());
     }

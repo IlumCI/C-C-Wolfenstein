@@ -65,6 +65,10 @@ public final class Hud {
     private final Rect repairButton = new Rect();
     private final Rect pauseButton = new Rect();
 
+    /** The paused overlay's two choices, centered over the battlefield. */
+    private final Rect pausedResume = new Rect();
+    private final Rect pausedAbandon = new Rect();
+
     private Tab tab = Tab.BASE;
     private float left;
     private float width;
@@ -195,6 +199,48 @@ public final class Hud {
         drawSelectionReadout(surface, session);
         drawControls(surface, session);
         drawToast(surface, session, nowMs);
+        drawPausedOverlay(surface, session);
+    }
+
+    /**
+     * The paused screen: the battlefield dimmed under two honest choices. RESUME is the
+     * pause button's twin; ABANDON THE FIELD is the way back to the title, spelled out so
+     * nobody discovers it by accident with an army in play.
+     */
+    private void drawPausedOverlay(Surface surface, GameSession session) {
+        if (!session.isPaused() || session.world().isGameOver()) {
+            return;
+        }
+        paint.setColor(0x8C000000);
+        surface.fillRect(0, 0, left, screenHeight, paint);
+
+        float cx = left / 2f;
+        float cy = screenHeight * 0.4f;
+        paint.setColor(Palette.HUD_TEXT);
+        paint.setTextSize(22f * scale);
+        paint.setBold(true);
+        paint.setAlign(TextAlign.CENTER);
+        surface.drawText("PAUSED", cx, cy, paint);
+        paint.setBold(false);
+
+        float bw = 110f * scale;
+        float bh = 22f * scale;
+        pausedResume.set(cx - bw, cy + 18f * scale, cx + bw, cy + 18f * scale + bh);
+        pausedAbandon.set(cx - bw, pausedResume.bottom + 8f * scale,
+                cx + bw, pausedResume.bottom + 8f * scale + bh);
+        drawButton(surface, pausedResume, "RESUME", true, false);
+        drawButton(surface, pausedAbandon, "ABANDON THE FIELD", true, true);
+        paint.setAlign(TextAlign.LEFT);
+    }
+
+    /** True when a tap landed on the paused overlay's RESUME. Only meaningful while paused. */
+    public boolean pausedResumeHit(float x, float y) {
+        return pausedResume.contains(x, y);
+    }
+
+    /** True when a tap landed on ABANDON THE FIELD. Only meaningful while paused. */
+    public boolean pausedAbandonHit(float x, float y) {
+        return pausedAbandon.contains(x, y);
     }
 
     /** Riveted plate, so the interface looks like it was bolted together in a workshop. */

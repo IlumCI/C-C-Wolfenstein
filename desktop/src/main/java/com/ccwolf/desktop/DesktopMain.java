@@ -3,6 +3,7 @@ package com.ccwolf.desktop;
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.audio.AudioOut;
+import com.ccwolf.audio.javasound.JLayerMusic;
 import com.ccwolf.audio.javasound.JavaSoundSink;
 import com.ccwolf.game.Frontend;
 import com.ccwolf.game.GameSession;
@@ -51,6 +52,7 @@ public final class DesktopMain {
             // Headless runs are measurements and must stay mute; a windowed run gets sound.
             // The sink starts lazily on first mixer use, so the setup screen is silent.
             AudioOut.install(new JavaSoundSink());
+            AudioOut.installMusic(new JLayerMusic());
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
                 @Override
                 public void run() {
@@ -191,6 +193,12 @@ public final class DesktopMain {
                 GameSession session = frontend.session();
                 session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
                 input = new InputController(session, hud, renderer, 2f);
+                input.setAbandonListener(new Runnable() {
+                    @Override
+                    public void run() {
+                        frontend.abandonMatch();
+                    }
+                });
             }
         }
 
@@ -275,6 +283,15 @@ public final class DesktopMain {
                             break;
                         case KeyEvent.VK_SPACE:
                             session.setPaused(!session.isPaused());
+                            break;
+                        case KeyEvent.VK_ESCAPE:
+                            // Esc pauses; Esc again abandons the field. The same ladder the
+                            // Android back button climbs.
+                            if (session.isPaused()) {
+                                frontend.abandonMatch();
+                            } else {
+                                session.setPaused(true);
+                            }
                             break;
                         case KeyEvent.VK_M:
                             GameAudio.setMuted(!GameAudio.isMuted());

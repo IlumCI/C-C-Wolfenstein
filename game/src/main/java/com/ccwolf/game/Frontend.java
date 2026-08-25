@@ -1,5 +1,6 @@
 package com.ccwolf.game;
 
+import com.ccwolf.audio.AudioOut;
 import com.ccwolf.core.entity.Entity;
 import com.ccwolf.core.map.MapCatalog;
 import com.ccwolf.game.audio.AudioDirector;
@@ -154,6 +155,7 @@ public final class Frontend {
         // own director starts fresh beds on its first update. This stopAll is also what
         // keeps serial matches from stacking abandoned ambience loops in the voice pool.
         GameAudio.mixer().stopAll();
+        AudioOut.music().stop();
         menuAudio = null;
         demo = null;
         seed = seed * 6364136223846793005L + 1442695040888963407L;
@@ -170,6 +172,8 @@ public final class Frontend {
         setup = new MatchSetup();
         title = new TitleMenu(showQuit);
         menuAudio = new AudioDirector(seed, GameAudio.mixer());
+        // The drop-in war music, if the player supplied any; the storm plays regardless.
+        AudioOut.music().playLoop();
         if (width > 0) {
             title.layout(width, height, scale);
             setup.layout(width, height, scale);

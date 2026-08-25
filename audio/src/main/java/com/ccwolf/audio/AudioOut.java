@@ -31,7 +31,20 @@ public final class AudioOut {
         }
     };
 
+    /** Plays nothing, truthfully. */
+    private static final MusicSink NO_MUSIC = new MusicSink() {
+        @Override
+        public boolean playLoop() {
+            return false;
+        }
+
+        @Override
+        public void stop() {
+        }
+    };
+
     private static AudioSink sink = SILENT;
+    private static MusicSink music = NO_MUSIC;
 
     private AudioOut() {
     }
@@ -49,5 +62,15 @@ public final class AudioOut {
     /** Never null; silent when nothing was installed. */
     public static AudioSink sink() {
         return sink;
+    }
+
+    /** Called by the platform shell when it can play a drop-in music file. */
+    public static void installMusic(MusicSink musicSink) {
+        music = musicSink == null ? NO_MUSIC : musicSink;
+    }
+
+    /** Never null; a truthful no-op when no backend (or no file) exists. */
+    public static MusicSink music() {
+        return music;
     }
 }
