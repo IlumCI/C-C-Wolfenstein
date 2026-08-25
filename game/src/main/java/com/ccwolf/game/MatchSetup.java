@@ -46,8 +46,10 @@ public final class MatchSetup {
     /** Which ground. Index into {@link #MAP_NAMES}. */
     private int mapIndex;
 
-    private static final String[] MAP_NAMES = {MapCatalog.KREISAU_VALLEY, MapCatalog.FRONTLINE};
-    private static final String[] MAP_LABELS = {"Kreisau Valley  64x64", "Frontline  256x256"};
+    private static final String[] MAP_NAMES = {MapCatalog.KREISAU_VALLEY,
+        MapCatalog.ASCHEFELD, MapCatalog.SCHWARZBRUCK, MapCatalog.FRONTLINE};
+    private static final String[] MAP_LABELS = {"Kreisau Valley  64x64", "Aschefeld  96x96",
+        "Schwarzbruck  128x128", "Frontline  256x256"};
 
     private Faction faction = Faction.RESISTANCE;
     /** Index into the faction's doctrines plus one: zero is "no doctrine". */
@@ -59,7 +61,7 @@ public final class MatchSetup {
     private float height;
     private float scale = 1f;
 
-    private final Option[] maps = {new Option(), new Option()};
+    private final Option[] maps = {new Option(), new Option(), new Option(), new Option()};
     private final Option[] factions = {new Option(), new Option()};
     private final Option[] doctrines = {new Option(), new Option(), new Option(), new Option()};
     private final Option[] difficulties;
@@ -88,14 +90,16 @@ public final class MatchSetup {
         float rowHeight = 24f * density;
         float gap = 6f * density;
 
+        // Four grounds in a two-by-two grid; every other section still fits below because
+        // the finger test sweeps the Begin button and fails the moment it slides off-screen.
         float half = (panelWidth - gap) / 2f;
-        for (int i = 0; i < 2; i++) {
-            maps[i].left = left + i * (half + gap);
+        for (int i = 0; i < maps.length; i++) {
+            maps[i].left = left + (i % 2) * (half + gap);
             maps[i].right = maps[i].left + half;
-            maps[i].top = y;
-            maps[i].bottom = y + rowHeight;
+            maps[i].top = y + (i / 2) * (rowHeight + gap);
+            maps[i].bottom = maps[i].top + rowHeight;
         }
-        y += rowHeight + 18f * density;
+        y += 2 * rowHeight + gap + 18f * density;
 
         for (int i = 0; i < 2; i++) {
             factions[i].left = left + i * (half + gap);

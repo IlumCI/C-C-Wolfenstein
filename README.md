@@ -340,5 +340,17 @@ surface), so quitting mid-match is a pause, not a surrender. A finished match de
 save. Loading a long match replays it faster than real time but not instantly — seconds, not
 minutes — which is the price of a save format that cannot desync from the simulation.
 
-Next, each its own part: campaign and mission scripting, more maps, veterancy and stances,
-multiplayer.
+**Part 6, more maps, is complete**: the rotation grows from two grounds to four, each asking a
+different operational question. *Aschefeld* (96×96) is the open ash plain — no water, almost no
+walls, one rich uranium field dead centre inside a belt of shell craters: the artillery map,
+the flanking map, the shortest matches in the rotation. *Schwarzbruck* (128×128) is the dead
+city — districts over the whole map, two stagnant canals crossing at its heart, eight bridges,
+bases in opposite corners so every advance is a diagonal through streets, and the rich fields
+in fire-cleared plazas off the diagonal so the economy drags both armies sideways. Both are
+generated the Frontline way: a seeded generator whose output was reviewed, tuned and checked
+in as text, byte-pinned to the shipped file by a test, validated by breadth-first search
+before writing, and proven marchable by the real pathfinder under its real node budget. The
+setup screen's GROUND section became a two-by-two grid to hold four maps without pushing
+Begin off a 720-pixel screen.
+
+Next, each its own part: campaign and mission scripting, veterancy and stances, multiplayer.

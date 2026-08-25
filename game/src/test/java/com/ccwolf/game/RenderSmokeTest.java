@@ -179,6 +179,32 @@ public class RenderSmokeTest {
      * river actually on screen. The camera is walked to the middle of the map, because the
      * middle is what the map is about.
      */
+    /** The newer grounds get the same treatment: a review frame each, aimed at their point. */
+    @Test
+    public void drawsAFrameOfTheNewMaps() throws IOException {
+        String[][] shots = {
+            {com.ccwolf.core.map.MapCatalog.SCHWARZBRUCK, "64", "64", "match-schwarzbruck"},
+            {com.ccwolf.core.map.MapCatalog.ASCHEFELD, "48", "44", "match-aschefeld"},
+        };
+        for (String[] shot : shots) {
+            GameSession session = new GameSession(shot[0], Faction.RESISTANCE,
+                    Difficulty.VETERAN, 42L, null, null);
+            Hud hud = new Hud();
+            WorldRenderer renderer = new WorldRenderer();
+            hud.layout(WIDTH, HEIGHT, 2f);
+            session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
+            for (int i = 0; i < 400; i++) {
+                session.update(1f / 20f);
+            }
+            session.world().setFogEnabled(false);
+            session.camera().centerOn(Float.parseFloat(shot[1]), Float.parseFloat(shot[2]));
+
+            Frame frame = render(session, hud, renderer);
+            assertTrue(countDistinctColours(frame) > 40);
+            frame.save(shot[3] + ".png");
+        }
+    }
+
     @Test
     public void drawsAFrameOfTheFrontlineMap() throws IOException {
         GameSession session = new GameSession(com.ccwolf.core.map.MapCatalog.FRONTLINE,
