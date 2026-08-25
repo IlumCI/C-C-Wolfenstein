@@ -4,9 +4,9 @@ import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.entity.Faction;
 import com.ccwolf.audio.AudioOut;
 import com.ccwolf.audio.javasound.JavaSoundSink;
+import com.ccwolf.game.Frontend;
 import com.ccwolf.game.GameSession;
 import com.ccwolf.game.audio.GameAudio;
-import com.ccwolf.game.MatchSetup;
 import com.ccwolf.game.input.InputController;
 import com.ccwolf.game.input.PointerEvent;
 import com.ccwolf.game.render.Hud;
@@ -151,10 +151,9 @@ public final class DesktopMain {
         private final WorldRenderer renderer;
         private final Hud hud;
 
-        /** Null until the setup screen's choices are made; the match exists only after them. */
-        private GameSession session;
+        /** Title, setup and match in one flow; the match exists only past the setup screen. */
+        private final Frontend frontend;
         private InputController input;
-        private final MatchSetup setup = new MatchSetup();
 
         private final BufferedImage frame =
                 new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
@@ -170,27 +169,43 @@ public final class DesktopMain {
             this.seed = seed;
             this.renderer = renderer;
             this.hud = hud;
-            setup.layout(WIDTH, HEIGHT, 2f);
+            frontend = new Frontend(seed, true);
+            frontend.layout(WIDTH, HEIGHT, 2f);
             setPreferredSize(new Dimension(WIDTH, HEIGHT));
             setFocusable(true);
             installListeners();
         }
 
-        private void beginMatch() {
-            session = new GameSession(setup.mapName(), setup.faction(), setup.difficulty(), seed,
-                    setup.doctrine(), null);
-            session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
-            input = new InputController(session, hud, renderer, 2f);
+        /** The current match, or null while a menu screen is up. */
+        private GameSession session() {
+            return frontend.screen() == Frontend.Screen.MATCH ? frontend.session() : null;
+        }
+
+        /** Routes a tap to the flow, and finishes match setup the moment one begins. */
+        private void menuTap(float x, float y) {
+            boolean before = frontend.screen() == Frontend.Screen.MATCH;
+            if (frontend.tap(x, y)) {
+                System.exit(0);
+            }
+            if (!before && frontend.screen() == Frontend.Screen.MATCH) {
+                GameSession session = frontend.session();
+                session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), HEIGHT);
+                input = new InputController(session, hud, renderer, 2f);
+            }
         }
 
         private void installListeners() {
             MouseAdapter mouse = new MouseAdapter() {
                 @Override
                 public void mousePressed(MouseEvent e) {
+                    GameSession session = session();
                     if (session == null) {
-                        if (setup.tap(e.getX(), e.getY())) {
-                            beginMatch();
-                        }
+                        menuTap(e.getX(), e.getY());
+                        return;
+                    }
+                    if (session.world().isGameOver()) {
+                        // Any click on the outcome screen leads back out to the title.
+                        frontend.abandonMatch();
                         return;
                     }
                     if (SwingUtilities.isRightMouseButton(e)) {
@@ -202,7 +217,7 @@ public final class DesktopMain {
 
                 @Override
                 public void mouseDragged(MouseEvent e) {
-                    if (session == null) {
+                    if (session() == null) {
                         return;
                     }
                     if (panning) {
@@ -213,7 +228,7 @@ public final class DesktopMain {
 
                 @Override
                 public void mouseReleased(MouseEvent e) {
-                    if (session == null) {
+                    if (session() == null) {
                         return;
                     }
                     if (SwingUtilities.isRightMouseButton(e)) {
@@ -225,6 +240,7 @@ public final class DesktopMain {
 
                 @Override
                 public void mouseWheelMoved(MouseWheelEvent e) {
+                    GameSession session = session();
                     if (session == null) {
                         return;
                     }
@@ -239,6 +255,7 @@ public final class DesktopMain {
             addKeyListener(new KeyAdapter() {
                 @Override
                 public void keyPressed(KeyEvent e) {
+                    GameSession session = session();
                     if (session == null) {
                         return;
                     }
@@ -281,10 +298,9 @@ public final class DesktopMain {
                     long previous = System.nanoTime();
                     while (true) {
                         long now = System.nanoTime();
-                        GameSession current = session;
-                        if (current != null) {
-                            current.update((now - previous) / 1_000_000_000f);
-                        }
+                        // The frontend pumps whichever screen is alive - menu ambience and
+                        // the attract-mode demo need the clock as much as a match does.
+                        frontend.update((now - previous) / 1_000_000_000f);
                         previous = now;
 
                         render();
@@ -311,9 +327,9 @@ public final class DesktopMain {
             try {
                 Java2DSurface surface = new Java2DSurface(g, WIDTH, HEIGHT);
                 surface.clear(0xFF0B0C0A);
-                GameSession current = session;
+                GameSession current = session();
                 if (current == null) {
-                    setup.draw(surface);
+                    frontend.draw(surface, renderer, System.currentTimeMillis());
                 } else {
                     renderer.draw(surface, current);
                     hud.draw(surface, current, System.currentTimeMillis());

@@ -8,15 +8,13 @@ import android.view.WindowManager;
 import com.ccwolf.android.audio.AndroidAudioSink;
 import com.ccwolf.android.gfx.AndroidImages;
 import com.ccwolf.audio.AudioOut;
-import com.ccwolf.core.ai.Difficulty;
-import com.ccwolf.core.entity.Faction;
 import com.ccwolf.game.audio.GameAudio;
 
 /**
  * The whole app: one fullscreen, landscape activity hosting the game surface.
  *
- * <p>There is no menu yet — launching drops you straight into a skirmish on Kreisau Valley as
- * the Resistance against a Veteran-difficulty Regime opponent.
+ * <p>Launching lands on the title screen — the attract-mode demo fighting behind the name —
+ * and the shared {@link com.ccwolf.game.Frontend} runs everything from there.
  */
 public final class GameActivity extends Activity {
 
@@ -32,10 +30,7 @@ public final class GameActivity extends Activity {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Recruit difficulty by default: the opening minute is the player's only chance to
-        // get a barracks up, and a Veteran opponent is at the gate before that happens.
-        view = new GameSurfaceView(this, Faction.RESISTANCE, Difficulty.RECRUIT,
-                System.currentTimeMillis());
+        view = new GameSurfaceView(this, System.currentTimeMillis());
         setContentView(view);
         goFullscreen();
     }
@@ -62,9 +57,14 @@ public final class GameActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (view != null && !view.session().isPaused()) {
-            view.session().setPaused(true);
-            view.session().showMessage("Paused - back again to quit");
+        // The ladder: fighting -> paused -> title -> out. Each press climbs one rung.
+        if (view != null && view.session() != null) {
+            if (!view.session().isPaused()) {
+                view.session().setPaused(true);
+                view.session().showMessage("Paused - back again to abandon the field");
+            } else {
+                view.abandonMatch();
+            }
             return;
         }
         super.onBackPressed();

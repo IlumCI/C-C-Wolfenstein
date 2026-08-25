@@ -7,27 +7,26 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import com.ccwolf.android.gfx.AndroidSurface;
+import com.ccwolf.game.Frontend;
 import com.ccwolf.game.GameSession;
-import com.ccwolf.game.MatchSetup;
 import com.ccwolf.game.input.InputController;
 import com.ccwolf.game.input.PointerEvent;
 import com.ccwolf.game.render.Hud;
 import com.ccwolf.game.render.WorldRenderer;
-import com.ccwolf.core.ai.Difficulty;
-import com.ccwolf.core.entity.Faction;
 
 /**
  * The game surface and its render thread.
  *
  * <p>The simulation runs at a fixed 20 Hz inside {@link GameSession}; this thread just draws as
  * often as it can and feeds real elapsed time in, so the game plays at the same speed on a
- * 60 Hz phone and a 120 Hz one.
+ * 60 Hz phone and a 120 Hz one. Which screen is up — title, setup or the match — belongs to
+ * the shared {@link Frontend}; this class only routes touches and paints.
  */
 public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.Callback {
 
     private static final long TARGET_FRAME_MS = 16;
 
-    private GameSession session;
+    private final Frontend frontend;
     private final Hud hud = new Hud();
     private final WorldRenderer renderer = new WorldRenderer();
     private InputController input;
@@ -40,67 +39,62 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
 
     private RenderThread thread;
     private final float density;
-    private final Faction faction;
-    private final Difficulty difficulty;
 
-    /** The pre-match screen. The session exists only after its choices are made. */
-    private final MatchSetup setup = new MatchSetup();
-    private long seed;
-
-    public GameSurfaceView(Context context, Faction faction, Difficulty difficulty, long seed) {
+    public GameSurfaceView(Context context, long seed) {
         super(context);
         this.density = context.getResources().getDisplayMetrics().density;
-        this.faction = faction;
-        this.difficulty = difficulty;
-        this.seed = seed;
+        // No quit row: Android apps leave by the system's door, not their own.
+        this.frontend = new Frontend(seed, false);
         getHolder().addCallback(this);
         setFocusable(true);
     }
 
-    private void newSession(Faction faction, Difficulty difficulty, long seed) {
-        session = new GameSession(setup.mapName(), faction, difficulty, seed,
-                setup.doctrine(), null);
-        input = new InputController(session, hud, renderer, density);
-        if (getWidth() > 0) {
-            applyLayout(getWidth(), getHeight());
-        }
-    }
-
+    /** The current match, or null while a menu screen is up. */
     public GameSession session() {
-        return session;
-    }
-
-    /** Starts a fresh match with the same choices, from the end-of-game overlay. */
-    public void restart() {
-        newSession(setup.faction(), setup.difficulty(), System.currentTimeMillis());
+        return frontend.screen() == Frontend.Screen.MATCH ? frontend.session() : null;
     }
 
     private void applyLayout(int width, int height) {
         hud.layout(width, height, density);
+        frontend.layout(width, height, density);
+        GameSession session = session();
         if (session == null) {
             return;
         }
         session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), height);
         session.camera().setMap(session.world().map());
-        int[] spawn = session.world().map().spawnPoint(session.playerId());
-        session.camera().centerOn(spawn[0] + 3f, spawn[1] + 3f);
     }
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        GameSession session = session();
         if (session == null) {
-            if (event.getActionMasked() == MotionEvent.ACTION_UP
-                    && setup.tap(event.getX(), event.getY())) {
-                newSession(setup.faction(), setup.difficulty(), seed);
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                frontend.tap(event.getX(), event.getY());
+                if (session() != null) {
+                    beginMatch();
+                }
             }
             return true;
         }
         if (session.world().isGameOver() && event.getActionMasked() == MotionEvent.ACTION_UP) {
-            restart();
+            // Any tap on the outcome screen leads back out to the title.
+            frontend.abandonMatch();
             return true;
         }
         return input.onPointer(translate(event, pointer));
+    }
+
+    /** The setup screen's BEGIN was just tapped: aim the camera and arm the controls. */
+    private void beginMatch() {
+        GameSession session = frontend.session();
+        input = new InputController(session, hud, renderer, density);
+        if (getWidth() > 0) {
+            session.camera().setViewport(0, 0, (int) hud.sidebarLeft(), getHeight());
+            int[] spawn = session.world().map().spawnPoint(session.playerId());
+            session.camera().centerOn(spawn[0] + 3f, spawn[1] + 3f);
+        }
     }
 
     @Override
@@ -111,7 +105,6 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        setup.layout(width, height, density);
         applyLayout(width, height);
     }
 
@@ -124,7 +117,15 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     }
 
     public void pauseGame() {
-        session.setPaused(true);
+        GameSession session = session();
+        if (session != null) {
+            session.setPaused(true);
+        }
+    }
+
+    /** From the activity's back button while paused: out of the match, back to the title. */
+    public void abandonMatch() {
+        frontend.abandonMatch();
     }
 
     private void stopThread() {
@@ -144,7 +145,6 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
         }
     }
 
-    /** Draws frames and drives the simulation clock. */
     /**
      * Copies an Android touch event into the platform-neutral form the gesture logic reads.
      *
@@ -184,6 +184,7 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
         return out;
     }
 
+    /** Draws frames and drives the simulation clock. */
     private final class RenderThread extends Thread {
 
         private final SurfaceHolder holder;
@@ -206,10 +207,10 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
                 float delta = (now - previous) / 1_000_000_000f;
                 previous = now;
 
-                GameSession current = session;
-                if (current != null) {
-                    current.update(delta);
-                }
+                // The frontend pumps whichever screen is alive - menu ambience and the
+                // attract-mode demo need the clock as much as a match does.
+                frontend.update(delta);
+                GameSession current = session();
 
                 Canvas canvas = null;
                 try {
@@ -219,7 +220,7 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
                             surface.bind(canvas);
                             surface.clear(0xFF0B0C0A);
                             if (current == null) {
-                                setup.draw(surface);
+                                frontend.draw(surface, renderer, System.currentTimeMillis());
                             } else {
                                 renderer.draw(surface, current);
                                 hud.draw(surface, current, System.currentTimeMillis());

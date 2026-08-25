@@ -114,6 +114,9 @@ public final class GameSession {
     private float accumulator;
     private boolean paused;
 
+    /** True for the title-screen demo: no sound, ever — the menu's storm owns the speakers. */
+    private final boolean muted;
+
     private String message = "";
     private long messageUntilMs;
 
@@ -135,18 +138,41 @@ public final class GameSession {
     /** The full setup: which ground, which side, which doctrine, how hard, which dice. */
     public GameSession(String mapName, Faction faction, Difficulty difficulty, long seed,
                        Doctrine doctrine, Doctrine opponentDoctrine) {
-        this.skirmish = Skirmish.createVersusAi(MapCatalog.load(mapName),
-                faction, difficulty, seed, doctrine, opponentDoctrine);
+        this(Skirmish.createVersusAi(MapCatalog.load(mapName), faction, difficulty, seed,
+                doctrine, opponentDoctrine), seed, false);
+    }
+
+    /**
+     * The attract mode: two AIs fighting for whoever is looking at the title screen.
+     *
+     * <p>Muted and fogless on purpose. The demo plays behind the menu, so it must never make a
+     * sound (the menu's own storm owns the speakers) and it should show the battle rather than
+     * a fogged corner of it. Nothing else differs — it is the same simulation the harness
+     * sweeps, which is what makes it an honest demo.
+     */
+    public static GameSession demo(String mapName, long seed) {
+        GameSession demo = new GameSession(Skirmish.createAiVersusAi(MapCatalog.load(mapName),
+                Difficulty.VETERAN, seed), seed, true);
+        demo.world.setFogEnabled(false);
+        return demo;
+    }
+
+    private GameSession(Skirmish skirmish, long seed, boolean muted) {
+        this.skirmish = skirmish;
         this.world = skirmish.world();
         this.commands = skirmish.commands();
-        this.playerId = skirmish.humanPlayerId();
+        // The demo has no human; it borrows the first AI's view (fog is off anyway).
+        this.playerId = Math.max(0, skirmish.humanPlayerId());
         this.view = skirmish.viewFor(playerId);
+        this.muted = muted;
         this.fx = new FxDirector(seed);
         // The mixer is process-wide (the device outlives any one match); the director, like
         // the fx layer, is per-match. Hitscan impact sounds ride the fx layer's invented
         // flights, so the two arrive together.
         this.audio = new AudioDirector(seed, GameAudio.mixer());
-        fx.setImpactListener(audio);
+        if (!muted) {
+            fx.setImpactListener(audio);
+        }
         camera.setMap(world.map());
         int[] spawn = world.map().spawnPoint(playerId);
         camera.centerOn(spawn[0] + 3f, spawn[1] + 3f);
@@ -191,7 +217,10 @@ public final class GameSession {
     public void setPaused(boolean paused) {
         this.paused = paused;
         // Pause dims the sound rather than cutting it: the storm keeps falling, quietly.
-        audio.setDucked(paused);
+        // The duck fader is on the shared mixer, so the mute demo must never touch it.
+        if (!muted) {
+            audio.setDucked(paused);
+        }
     }
 
     public PointerMode pointerMode() {
@@ -264,7 +293,9 @@ public final class GameSession {
         }
         // After the early-out on purpose: a paused sim schedules no shell arrivals, so the
         // pending clocks freeze with it and a whistle never lands before its shell.
-        audio.update(deltaSeconds);
+        if (!muted) {
+            audio.update(deltaSeconds);
+        }
 
         accumulator += Math.min(deltaSeconds, 0.5f);
         int ticks = 0;
@@ -286,7 +317,9 @@ public final class GameSession {
         world.drainEvents(eventScratch);
         // The effects layer takes the whole stream; what is left here is interface reaction.
         fx.consume(eventScratch, playerId);
-        audio.consume(eventScratch, playerId, view, camera);
+        if (!muted) {
+            audio.consume(eventScratch, playerId, view, camera);
+        }
         for (int i = 0; i < eventScratch.size(); i++) {
             GameEvent e = eventScratch.get(i);
             switch (e.type()) {
@@ -665,7 +698,9 @@ public final class GameSession {
     private void addPing(int tileX, int tileY, boolean hostile) {
         effects.add(new Effect(hostile ? Effect.Kind.ATTACK_PING : Effect.Kind.MOVE_PING,
                 tileX + 0.5f, tileY + 0.5f, tileX + 0.5f, tileY + 0.5f, playerId, 0, PING_MS));
-        audio.uiClick();
+        if (!muted) {
+            audio.uiClick();
+        }
     }
 
     /**
