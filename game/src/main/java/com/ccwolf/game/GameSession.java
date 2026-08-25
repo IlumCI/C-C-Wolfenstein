@@ -50,6 +50,18 @@ public final class GameSession {
         BOMBARD
     }
 
+    /**
+     * What the match cost, counted from the event stream as it plays. Render-side arithmetic
+     * only — the outcome screen wants numbers and the simulation is not asked to keep them.
+     */
+    public static final class MatchStats {
+        public int unitsLost;
+        public int structuresLost;
+        public int enemyUnitsDestroyed;
+        public int enemyStructuresDestroyed;
+        public int oreDelivered;
+    }
+
     /** One short-lived thing to draw on top of the world. */
     public static final class Effect {
 
@@ -116,6 +128,8 @@ public final class GameSession {
 
     /** True for the title-screen demo: no sound, ever — the menu's storm owns the speakers. */
     private final boolean muted;
+
+    private final MatchStats stats = new MatchStats();
 
     private String message = "";
     private long messageUntilMs;
@@ -203,6 +217,11 @@ public final class GameSession {
 
     public List<Effect> effects() {
         return effects;
+    }
+
+    /** The running cost of the match, for the outcome screen. */
+    public MatchStats stats() {
+        return stats;
     }
 
     /** Muzzle flashes, rounds in flight, blood, fire and everything else you can see. */
@@ -323,7 +342,23 @@ public final class GameSession {
         for (int i = 0; i < eventScratch.size(); i++) {
             GameEvent e = eventScratch.get(i);
             switch (e.type()) {
+                case ORE_DELIVERED:
+                    if (e.ownerId() == playerId) {
+                        stats.oreDelivered += e.amount();
+                    }
+                    break;
                 case ENTITY_DESTROYED:
+                    if (e.targetKind() == GameEvent.TargetKind.STRUCTURE) {
+                        if (e.ownerId() == playerId) {
+                            stats.structuresLost++;
+                        } else {
+                            stats.enemyStructuresDestroyed++;
+                        }
+                    } else if (e.ownerId() == playerId) {
+                        stats.unitsLost++;
+                    } else {
+                        stats.enemyUnitsDestroyed++;
+                    }
                     // The fireball, gore and debris belong to the effects layer now; the wreck
                     // is a sprite that sits on the ground, so it stays here.
                     if (e.targetKind() != com.ccwolf.core.event.GameEvent.TargetKind.INFANTRY) {

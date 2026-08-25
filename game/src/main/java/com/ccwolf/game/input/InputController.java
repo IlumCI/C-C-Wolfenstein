@@ -75,6 +75,9 @@ public final class InputController {
                 session.setPaused(false);
             } else if (hud.pausedAbandonHit(x, y) && abandonListener != null) {
                 abandonListener.run();
+            } else if (hud.pausedMuteHit(x, y)) {
+                com.ccwolf.game.audio.GameAudio.setMuted(
+                        !com.ccwolf.game.audio.GameAudio.isMuted());
             }
             return true;
         }

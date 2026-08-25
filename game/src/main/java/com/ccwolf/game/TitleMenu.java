@@ -47,10 +47,15 @@ public final class TitleMenu {
 
     private float skirmishTop;
     private float skirmishBottom;
+    private float helpTop;
+    private float helpBottom;
     private float quitTop;
     private float quitBottom;
     private float rowLeft;
     private float rowRight;
+
+    /** When up, the whole screen is the manual and any tap closes it. */
+    private boolean showingHelp;
 
     public TitleMenu(boolean showQuit) {
         this.showQuit = showQuit;
@@ -65,13 +70,15 @@ public final class TitleMenu {
         float rowHeight = 26f * scale;
         rowLeft = width * 0.5f - 130f * scale;
         rowRight = width * 0.5f + 130f * scale;
-        skirmishTop = height * 0.66f;
+        skirmishTop = height * 0.62f;
         skirmishBottom = skirmishTop + rowHeight;
-        quitTop = skirmishBottom + 10f * scale;
+        helpTop = skirmishBottom + 10f * scale;
+        helpBottom = helpTop + rowHeight;
+        quitTop = helpBottom + 10f * scale;
         quitBottom = quitTop + rowHeight;
     }
 
-    /** Everything above the demo: dim, weather, title, rows. */
+    /** Everything above the demo: dim, weather, title, rows — or the manual. */
     public void draw(Surface surface, long nowMs) {
         // The demo is scenery, not the subject: pull it well back into the dark.
         paint.setColor(0x99000000);
@@ -79,6 +86,11 @@ public final class TitleMenu {
 
         drawRain(surface);
         drawLightning(surface, nowMs);
+
+        if (showingHelp) {
+            drawHelp(surface);
+            return;
+        }
 
         // Title block, upper third. The bake is at art scale; draw it up to screen scale.
         float titleScale = Math.min(2f * scale,
@@ -98,6 +110,7 @@ public final class TitleMenu {
         surface.drawImage(subtitle, sx, sy, sx + sw, sy + sh, paint);
 
         drawRow(surface, "SKIRMISH", skirmishTop, skirmishBottom, true);
+        drawRow(surface, "HOW TO PLAY", helpTop, helpBottom, false);
         if (showQuit) {
             drawRow(surface, "QUIT", quitTop, quitBottom, false);
         }
@@ -110,15 +123,81 @@ public final class TitleMenu {
     }
 
     public Action tap(float x, float y) {
+        if (showingHelp) {
+            showingHelp = false;
+            return Action.NONE;
+        }
         if (x >= rowLeft && x <= rowRight) {
             if (y >= skirmishTop && y <= skirmishBottom) {
                 return Action.SKIRMISH;
+            }
+            if (y >= helpTop && y <= helpBottom) {
+                showingHelp = true;
+                return Action.NONE;
             }
             if (showQuit && y >= quitTop && y <= quitBottom) {
                 return Action.QUIT;
             }
         }
         return Action.NONE;
+    }
+
+    /**
+     * The manual, all of it on one screen. Everything here is true on both platforms unless
+     * a line says whose it is — the keys column is the desk's, the thumb column everyone's.
+     */
+    private void drawHelp(Surface surface) {
+        paint.setColor(Palette.HUD_TEXT);
+        paint.setTextSize(16f * scale);
+        paint.setBold(true);
+        paint.setAlign(TextAlign.CENTER);
+        surface.drawText("HOW TO PLAY", width / 2f, height * 0.09f, paint);
+        paint.setBold(false);
+
+        String[] field = {
+            "IN THE FIELD",
+            "Tap a unit to select it; tap a squaddie, take the squad",
+            "Drag on open ground to box-select an army",
+            "Double-tap one of yours: every unit of its type in view",
+            "Tap ground to move; tap an enemy to attack",
+            "Long-press ground: attack-move - advance and engage",
+            "Saboteur or Infiltrator: tap an enemy to do their job",
+            "Select a factory, tap ground: set its rally point",
+            "STOP with a squad selected digs them in",
+            "Guns selected + STOP arms BOMBARD: tap ground to shell it",
+            "Minimap: tap or drag to jump the camera",
+            "Two fingers pan and zoom",
+        };
+        String[] desk = {
+            "AT THE DESK",
+            "Right-drag grabs the map; wheel zooms; arrows pan",
+            "Ctrl+1..9 remembers the selection as a group",
+            "1..9 recalls it; press again to jump the camera there",
+            "Space pauses - Esc pauses, Esc again abandons",
+            "M mutes, F cycles the front-line detail",
+        };
+        drawHelpColumn(surface, field, width * 0.26f);
+        drawHelpColumn(surface, desk, width * 0.74f);
+
+        paint.setColor(Palette.HUD_TEXT_DIM);
+        paint.setTextSize(10f * scale);
+        paint.setAlign(TextAlign.CENTER);
+        surface.drawText("tap anywhere to go back", width / 2f, height * 0.965f, paint);
+    }
+
+    private void drawHelpColumn(Surface surface, String[] lines, float cx) {
+        float y = height * 0.18f;
+        for (int i = 0; i < lines.length; i++) {
+            boolean heading = i == 0;
+            paint.setBold(heading);
+            paint.setColor(heading ? WolfPalette.shade(WolfPalette.BLOOD, 0)
+                    : Palette.HUD_TEXT);
+            paint.setTextSize((heading ? 12f : 10f) * scale);
+            paint.setAlign(TextAlign.CENTER);
+            surface.drawText(lines[i], cx, y, paint);
+            y += (heading ? 28f : 21f) * scale;
+        }
+        paint.setBold(false);
     }
 
     // --- weather ----------------------------------------------------------------------------

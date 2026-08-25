@@ -154,4 +154,23 @@ public class FrontendFlowTest {
         frontend.draw(flash.surface(), renderer, 3_000L);
         flash.save("title-screen-flash.png");
     }
+
+    @Test
+    public void theManualOpensAndCloses() throws IOException {
+        Frontend frontend = boot();
+        WorldRenderer renderer = new WorldRenderer();
+        // The HOW TO PLAY row sits between SKIRMISH and QUIT; hit it directly.
+        float helpY = H * 0.62f + 26f * 2f + 10f * 2f + 5f;
+        frontend.tap(W / 2f, helpY);
+        assertEquals("help must not leave the title screen",
+                Frontend.Screen.TITLE, frontend.screen());
+
+        Frame frame = new Frame(W, H);
+        frontend.draw(frame.surface(), renderer, 5_000L);
+        frame.save("title-help.png");
+
+        // Any tap closes the manual, and the next tap is a menu tap again.
+        frontend.tap(W / 2f, H / 2f);
+        tapSkirmish(frontend);
+    }
 }

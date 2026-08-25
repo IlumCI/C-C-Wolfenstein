@@ -320,5 +320,13 @@ outcome screen. Menu music is a drop-in: put your own `menu.mp3` in `music/` (de
 gitignored because a licensed recording is not ours to ship, and an empty slot just means the
 storm plays alone.
 
+**Part 4.6, the comfort layer, is complete**: desktop right-drag finally pans (it had been a
+stub — the flag flipped and nothing moved), Ctrl+1..9/1..9 control groups that remember squads
+as squads so they survive reinforcement (press a digit twice to jump the camera there),
+double-tap on one of your own units to select every on-screen unit of its type, a HOW TO PLAY
+screen on the title menu that finally writes the gestures down, a sound toggle on the pause
+screen both platforms can reach, and an outcome screen that itemises the bill — match length,
+losses, kills, uranium hauled.
+
 Next, each its own part: campaign and mission scripting, more maps, save/load, veterancy and
 stances, multiplayer.

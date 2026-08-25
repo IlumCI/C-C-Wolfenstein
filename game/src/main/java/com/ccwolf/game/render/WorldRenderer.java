@@ -794,11 +794,29 @@ public final class WorldRenderer {
         surface.drawText(won ? "VALLEY HELD" : "OVERRUN", surface.width() / 2f,
                 surface.height() * 0.45f, text);
 
+        // The bill for the battle. Numbers the player already paid for, finally itemised.
+        GameSession.MatchStats stats = session.stats();
+        long seconds = session.world().tick() / com.ccwolf.core.sim.GameWorld.TICKS_PER_SECOND;
+        String[] lines = {
+            String.format("The fight lasted %d:%02d", seconds / 60, seconds % 60),
+            "Lost: " + stats.unitsLost + " troops, " + stats.structuresLost + " structures",
+            "Destroyed: " + stats.enemyUnitsDestroyed + " troops, "
+                    + stats.enemyStructuresDestroyed + " structures",
+            "Uranium hauled: " + stats.oreDelivered + " credits",
+        };
         text.setBold(false);
         text.setColor(Palette.HUD_TEXT);
-        text.setTextSize(surface.height() * 0.05f);
-        surface.drawText("Tap to start a new skirmish", surface.width() / 2f,
-                surface.height() * 0.58f, text);
+        text.setTextSize(surface.height() * 0.032f);
+        float y = surface.height() * 0.56f;
+        for (String line : lines) {
+            surface.drawText(line, surface.width() / 2f, y, text);
+            y += surface.height() * 0.045f;
+        }
+
+        text.setColor(Palette.HUD_TEXT_DIM);
+        text.setTextSize(surface.height() * 0.038f);
+        surface.drawText("Tap to return to the title", surface.width() / 2f,
+                y + surface.height() * 0.03f, text);
         text.setAlign(TextAlign.LEFT);
     }
 
