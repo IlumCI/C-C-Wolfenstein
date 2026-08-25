@@ -26,10 +26,24 @@ public final class FxDirector {
     /** Hard ceiling on shake, so a big battle never makes the game unplayable. */
     private static final float MAX_SHAKE = 0.55f;
 
+    /**
+     * Someone else who wants to know when a round lands.
+     *
+     * <p>Hitscan damage is resolved by the simulation the instant the trigger is pulled; the
+     * flight the player watches is invented here, and only this layer knows when the invented
+     * round arrives. The audio layer needs that same moment, so rather than inventing a second
+     * flight to disagree with the first, it listens to this one.
+     */
+    public interface ImpactListener {
+        void impact(ProjectileLayer.Kind round, float x, float y, GameEvent.TargetKind hit);
+    }
+
     private final ParticleSystem particles;
     private final DecalLayer decals;
     private final ProjectileLayer projectiles;
     private final Random random;
+
+    private ImpactListener impactListener;
 
     private float shake;
 
@@ -172,8 +186,15 @@ public final class FxDirector {
         shake(0.34f);
     }
 
+    public void setImpactListener(ImpactListener listener) {
+        this.impactListener = listener;
+    }
+
     /** Called by the projectile layer when a round arrives. */
     void onImpact(ProjectileLayer.Kind round, float x, float y, GameEvent.TargetKind hit) {
+        if (impactListener != null) {
+            impactListener.impact(round, x, y, hit);
+        }
         switch (hit) {
             case INFANTRY:
                 // Flesh: a spray, and a stain that stays.

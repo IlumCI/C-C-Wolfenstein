@@ -191,6 +191,23 @@ unit facing, walk frame, structure damage state, terrain variant and effect fram
 once at startup. Infantry are drawn per facing so the helmet stays on top; vehicle hulls are
 drawn once and rotated, because a hull genuinely does rotate.
 
+### The sound pipeline
+
+Sounds are recipes, not files, for the same reasons the sprites are. `WaveCanvas` provides the
+synthesis primitives (noise, gliding partials, envelopes, filters, soft clip, crackle) and
+`SoundBank` bakes every cue from a seeded recipe at first use — weapon reports by voice,
+impacts by material, explosions, a shell whistle timed to the simulation's own flight clock,
+and the storm beds. A 24-voice software `Mixer` does all the mixing in platform-neutral code;
+the platform backends (`:audio-javasound` on desktop, a streaming `AudioTrack` on Android) just
+pull finished PCM, so both platforms hear the identical mix. `AudioDirector` reads the same
+event stream the effects layer reads and obeys three rules: the fog rule (a sound plays only
+where the viewer could see it happen — audio must not be a wallhack), the distance rule (pan
+and level follow the camera, and past a screen and a half nothing is heard), and the restraint
+rule (per-cue cooldowns and voice caps, because two hundred rifles in a tick is one battle,
+not two hundred sounds). Like the effects layer, it is provably inert: delete it and the match
+plays out identically, only silently. The weather bed — rain, wind, a low drone, thunder off to
+one side — runs unconditionally, because it is never a clear day. M mutes on desktop.
+
 ### The world it is set in
 
 Standing art direction, written down because it governs terrain, weather, structures and
@@ -289,5 +306,9 @@ what heavier air buys at AI level: both economies bleeding credits into each oth
 while the operations that money should fund never launch. Air at the AI's scale is a tool;
 at a player's scale it is whatever the player can afford.
 
-Next, each its own part: audio, campaign and mission scripting, more maps, save/load,
-veterancy and stances, multiplayer.
+**Part 4, audio, is complete**: an audio seam built like the graphics seam (a dumb PCM sink
+per platform, every decision on the game side), thirty synthesized cues and no sound files,
+and a director that plays the battle the viewer can see and the storm everyone is under.
+
+Next, each its own part: campaign and mission scripting, more maps, save/load, veterancy and
+stances, multiplayer.

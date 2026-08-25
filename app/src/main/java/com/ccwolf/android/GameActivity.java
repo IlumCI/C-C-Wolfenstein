@@ -5,9 +5,12 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import com.ccwolf.android.audio.AndroidAudioSink;
 import com.ccwolf.android.gfx.AndroidImages;
+import com.ccwolf.audio.AudioOut;
 import com.ccwolf.core.ai.Difficulty;
 import com.ccwolf.core.entity.Faction;
+import com.ccwolf.game.audio.GameAudio;
 
 /**
  * The whole app: one fullscreen, landscape activity hosting the game surface.
@@ -21,8 +24,9 @@ public final class GameActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Before anything can bake a sprite.
+        // Before anything can bake a sprite, or play a cue.
         AndroidImages.install();
+        AudioOut.install(new AndroidAudioSink());
 
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -41,16 +45,19 @@ public final class GameActivity extends Activity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             goFullscreen();
+            GameAudio.resume();
         }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // Losing focus pauses the match rather than letting the AI play on without you.
+        // Losing focus pauses the match rather than letting the AI play on without you —
+        // and stops the speaker: background apps that keep making noise get uninstalled.
         if (view != null) {
             view.pauseGame();
         }
+        GameAudio.pause();
     }
 
     @Override

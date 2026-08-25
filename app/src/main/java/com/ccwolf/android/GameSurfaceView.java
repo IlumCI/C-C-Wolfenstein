@@ -118,6 +118,9 @@ public final class GameSurfaceView extends SurfaceView implements SurfaceHolder.
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
         stopThread();
+        // The surface can die without the activity pausing first; either way, no picture
+        // means no sound.
+        com.ccwolf.game.audio.GameAudio.pause();
     }
 
     public void pauseGame() {
