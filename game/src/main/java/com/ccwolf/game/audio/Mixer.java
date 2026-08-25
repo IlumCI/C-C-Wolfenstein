@@ -37,6 +37,9 @@ public final class Mixer implements AudioSource {
     private float masterGain = 1f;
     private float duckGain = 1f;
 
+    /** Accumulator for render, grown to the largest pull ever asked for; never per-call. */
+    private int[] mixScratch = new int[0];
+
     public Mixer(SoundBank bank) {
         this.bank = bank;
     }
@@ -113,13 +116,21 @@ public final class Mixer implements AudioSource {
     public synchronized int render(short[] out, int frames) {
         int n = frames * 2;
         float master = masterGain * duckGain;
-        // Sum in float, clamp once at the end: 24 voices of shorts overflow 16 bits long
-        // before they overflow a float's honesty.
         for (int i = 0; i < n; i++) {
             out[i] = 0;
         }
         if (master <= 0f) {
             return frames;
+        }
+        // Sum every voice into a wide accumulator and clamp exactly once at the end.
+        // Clamping per voice would distort the mix by an amount that depends on the order
+        // voices happen to occupy their slots — the kind of fault nobody ever traces.
+        if (mixScratch.length < n) {
+            mixScratch = new int[n];
+        }
+        int[] acc = mixScratch;
+        for (int i = 0; i < n; i++) {
+            acc[i] = 0;
         }
         for (int v = 0; v < VOICES; v++) {
             if (!active[v]) {
@@ -143,13 +154,14 @@ public final class Mixer implements AudioSource {
                 }
                 float s = src[idx];
                 int o = f * 2;
-                int left = out[o] + (int) (s * gl);
-                int right = out[o + 1] + (int) (s * gr);
-                out[o] = clamp(left);
-                out[o + 1] = clamp(right);
+                acc[o] += (int) (s * gl);
+                acc[o + 1] += (int) (s * gr);
                 pos += advance;
             }
             cursor[v] = pos;
+        }
+        for (int i = 0; i < n; i++) {
+            out[i] = clamp(acc[i]);
         }
         return frames;
     }
