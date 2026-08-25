@@ -353,4 +353,18 @@ before writing, and proven marchable by the real pathfinder under its real node 
 setup screen's GROUND section became a two-by-two grid to hold four maps without pushing
 Begin off a 720-pixel screen.
 
+**Part 7, Germania, is complete**: the capital itself, 256×256 at roughly twenty metres a
+tile, laid out to the real plan — the Great Hall's sixteen-tile dome on its podium in the
+river basin, the Great Plaza flanked by the Palace and the Chancellery, the five-kilometre
+axis (six tiles of poured highway) running south under the Arch to the South Station, the
+Round Plaza and the east-west axis, the great park west of the axis, superconcrete monolith
+quarters cut by alleys, and old Berlin left as ruins at the edges. Four new terrain classes
+carry it: SUPERCRETE and MARBLE (indestructible, sight-blocking — the state's architecture IS
+the fortification), PAVEMENT (fast, coverless parade slab) and HIGHWAY (the fastest and most
+exposed ground in the game). Operationally the map asks the Germania question: the axis is a
+five-kilometre kill zone, the monolith quarters are slow blind flanks, and the park is the
+soft route with the money in it. Made the generated-map way — seeded, reviewed, byte-pinned,
+BFS-validated, A*-marchable — and the setup screen's GROUND row now cycles, because five maps
+outgrew the grid.
+
 Next, each its own part: campaign and mission scripting, veterancy and stances, multiplayer.

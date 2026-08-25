@@ -47,9 +47,10 @@ public final class MatchSetup {
     private int mapIndex;
 
     private static final String[] MAP_NAMES = {MapCatalog.KREISAU_VALLEY,
-        MapCatalog.ASCHEFELD, MapCatalog.SCHWARZBRUCK, MapCatalog.FRONTLINE};
+        MapCatalog.ASCHEFELD, MapCatalog.SCHWARZBRUCK, MapCatalog.FRONTLINE,
+        MapCatalog.GERMANIA};
     private static final String[] MAP_LABELS = {"Kreisau Valley  64x64", "Aschefeld  96x96",
-        "Schwarzbruck  128x128", "Frontline  256x256"};
+        "Schwarzbruck  128x128", "Frontline  256x256", "Germania  256x256"};
 
     private Faction faction = Faction.RESISTANCE;
     /** Index into the faction's doctrines plus one: zero is "no doctrine". */
@@ -61,7 +62,11 @@ public final class MatchSetup {
     private float height;
     private float scale = 1f;
 
-    private final Option[] maps = {new Option(), new Option(), new Option(), new Option()};
+    /**
+     * One cycling row rather than a grid: at five maps the grid pushed BEGIN off a
+     * 720-pixel screen, and the roster will only grow. Tapping steps through the list.
+     */
+    private final Option mapRow = new Option();
     private final Option[] factions = {new Option(), new Option()};
     private final Option[] doctrines = {new Option(), new Option(), new Option(), new Option()};
     private final Option[] difficulties;
@@ -90,16 +95,12 @@ public final class MatchSetup {
         float rowHeight = 24f * density;
         float gap = 6f * density;
 
-        // Four grounds in a two-by-two grid; every other section still fits below because
-        // the finger test sweeps the Begin button and fails the moment it slides off-screen.
         float half = (panelWidth - gap) / 2f;
-        for (int i = 0; i < maps.length; i++) {
-            maps[i].left = left + (i % 2) * (half + gap);
-            maps[i].right = maps[i].left + half;
-            maps[i].top = y + (i / 2) * (rowHeight + gap);
-            maps[i].bottom = maps[i].top + rowHeight;
-        }
-        y += 2 * rowHeight + gap + 18f * density;
+        mapRow.left = left;
+        mapRow.right = right;
+        mapRow.top = y;
+        mapRow.bottom = y + rowHeight;
+        y += rowHeight + 18f * density;
 
         for (int i = 0; i < 2; i++) {
             factions[i].left = left + i * (half + gap);
@@ -135,11 +136,9 @@ public final class MatchSetup {
 
     /** Handles a tap. Returns true once the player has hit Start. */
     public boolean tap(float x, float y) {
-        for (int i = 0; i < maps.length; i++) {
-            if (maps[i].hit(x, y)) {
-                mapIndex = i;
-                return false;
-            }
+        if (mapRow.hit(x, y)) {
+            mapIndex = (mapIndex + 1) % MAP_NAMES.length;
+            return false;
         }
         for (int i = 0; i < 2; i++) {
             if (factions[i].hit(x, y)) {
@@ -220,10 +219,9 @@ public final class MatchSetup {
         surface.drawText("SKIRMISH", width / 2f, height * 0.09f, paint);
         paint.setBold(false);
 
-        label(surface, "GROUND", maps[0].top);
-        for (int i = 0; i < maps.length; i++) {
-            drawOption(surface, maps[i], MAP_LABELS[i], mapIndex == i, Palette.HUD_TEXT_DIM);
-        }
+        label(surface, "GROUND", mapRow.top);
+        drawOption(surface, mapRow, "‹  " + MAP_LABELS[mapIndex] + "  ›", true,
+                Palette.HUD_TEXT_DIM);
 
         label(surface, "SIDE", factions[0].top);
         drawOption(surface, factions[0], "Kreisau Circle", faction == Faction.RESISTANCE,
