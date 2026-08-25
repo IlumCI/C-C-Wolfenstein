@@ -13,10 +13,23 @@ import com.ccwolf.core.sim.Player;
  */
 public final class CommandBus {
 
+    /**
+     * Told about every command the world accepted, with the tick it landed on.
+     *
+     * <p>This is the save system's tap into the match: a deterministic simulation plus the
+     * accepted-command log IS the saved game. Rejected commands are deliberately not
+     * reported — they changed nothing, so replaying them would only re-ask questions the
+     * world already answered no to.
+     */
+    public interface Listener {
+        void onAccepted(long tick, int playerId, PlayerCommand command);
+    }
+
     private final GameWorld world;
     private CommandResult lastResult = CommandResult.accepted();
     private PlayerCommand lastCommand;
     private int commandCount;
+    private Listener listener;
 
     public CommandBus(GameWorld world) {
         this.world = world;
@@ -35,7 +48,15 @@ public final class CommandBus {
         lastCommand = command;
         lastResult = dispatch(playerId, command);
         commandCount++;
+        if (listener != null && lastResult.isAccepted()) {
+            listener.onAccepted(world.tick(), playerId, command);
+        }
         return lastResult;
+    }
+
+    /** At most one listener; the observation cannot affect the simulation. */
+    public void setListener(Listener listener) {
+        this.listener = listener;
     }
 
     private CommandResult dispatch(int playerId, PlayerCommand command) {

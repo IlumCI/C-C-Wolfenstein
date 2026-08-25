@@ -904,4 +904,215 @@ public abstract class PlayerCommand {
             return "Place at " + tileX + "," + tileY;
         }
     }
+
+    // --- persistence ----------------------------------------------------------------------
+
+    /**
+     * Text round-trip for every command, one line each: the vocabulary of a saved game.
+     *
+     * <p>A save in this game is not a snapshot of the world — it is the match's inputs: the
+     * seed and the player's accepted commands, replayed through the same deterministic
+     * simulation the golden digests police. That makes this codec the entire persistence
+     * format for player agency, which is why it lives here, inside the class whose private
+     * fields it reads: a command cannot gain a field without the person adding it staring at
+     * the codec that must learn it.
+     *
+     * <p>Format: {@code TYPE field field...}, arrays comma-joined ({@code -} when empty),
+     * enums by name. Booleans as 0/1.
+     */
+    public static final class Codec {
+
+        private Codec() {
+        }
+
+        public static String encode(PlayerCommand c) {
+            if (c instanceof SquadMove) {
+                SquadMove m = (SquadMove) c;
+                return "SquadMove " + ints(m.squadIds) + " " + m.tileX + " " + m.tileY;
+            }
+            if (c instanceof SquadAttackMove) {
+                SquadAttackMove m = (SquadAttackMove) c;
+                return "SquadAttackMove " + ints(m.squadIds) + " " + m.tileX + " " + m.tileY;
+            }
+            if (c instanceof SquadAttack) {
+                SquadAttack m = (SquadAttack) c;
+                return "SquadAttack " + ints(m.squadIds) + " " + m.targetId;
+            }
+            if (c instanceof SquadStop) {
+                return "SquadStop " + ints(((SquadStop) c).squadIds);
+            }
+            if (c instanceof SquadEntrench) {
+                SquadEntrench m = (SquadEntrench) c;
+                return "SquadEntrench " + ints(m.squadIds) + " " + m.tileX + " " + m.tileY
+                        + " " + (m.inPlace ? 1 : 0);
+            }
+            if (c instanceof SetFormation) {
+                SetFormation m = (SetFormation) c;
+                return "SetFormation " + ints(m.squadIds) + " " + m.formation.name();
+            }
+            if (c instanceof SplitSquad) {
+                SplitSquad m = (SplitSquad) c;
+                return "SplitSquad " + m.squadId + " " + ints(m.unitIds);
+            }
+            if (c instanceof Reinforce) {
+                return "Reinforce " + ((Reinforce) c).squadId;
+            }
+            if (c instanceof QueueSquad) {
+                return "QueueSquad " + ((QueueSquad) c).type.name();
+            }
+            if (c instanceof Move) {
+                Move m = (Move) c;
+                return "Move " + ints(m.unitIds) + " " + m.tileX + " " + m.tileY + " "
+                        + (m.queued ? 1 : 0);
+            }
+            if (c instanceof Entrench) {
+                Entrench m = (Entrench) c;
+                return "Entrench " + ints(m.unitIds) + " " + m.tileX + " " + m.tileY;
+            }
+            if (c instanceof Bombard) {
+                Bombard m = (Bombard) c;
+                return "Bombard " + ints(m.unitIds) + " " + m.tileX + " " + m.tileY;
+            }
+            if (c instanceof Attack) {
+                Attack m = (Attack) c;
+                return "Attack " + ints(m.unitIds) + " " + m.targetId;
+            }
+            if (c instanceof AttackMove) {
+                AttackMove m = (AttackMove) c;
+                return "AttackMove " + ints(m.unitIds) + " " + m.tileX + " " + m.tileY;
+            }
+            if (c instanceof Harvest) {
+                return "Harvest " + ints(((Harvest) c).unitIds);
+            }
+            if (c instanceof Stop) {
+                return "Stop " + ints(((Stop) c).unitIds);
+            }
+            if (c instanceof Infiltrate) {
+                Infiltrate m = (Infiltrate) c;
+                return "Infiltrate " + ints(m.unitIds) + " " + m.targetId;
+            }
+            if (c instanceof SetRally) {
+                SetRally m = (SetRally) c;
+                return "SetRally " + m.buildingId + " " + m.tileX + " " + m.tileY;
+            }
+            if (c instanceof Sell) {
+                return "Sell " + ((Sell) c).buildingId;
+            }
+            if (c instanceof Repair) {
+                Repair m = (Repair) c;
+                return "Repair " + m.buildingId + " " + (m.on ? 1 : 0);
+            }
+            if (c instanceof SetPrimary) {
+                return "SetPrimary " + ((SetPrimary) c).buildingId;
+            }
+            if (c instanceof QueueUnit) {
+                return "QueueUnit " + ((QueueUnit) c).type.name();
+            }
+            if (c instanceof QueueBuilding) {
+                return "QueueBuilding " + ((QueueBuilding) c).type.name();
+            }
+            if (c instanceof CancelQueue) {
+                return "CancelQueue " + ((CancelQueue) c).line.name();
+            }
+            if (c instanceof PlaceBuilding) {
+                PlaceBuilding m = (PlaceBuilding) c;
+                return "PlaceBuilding " + m.tileX + " " + m.tileY;
+            }
+            throw new IllegalArgumentException("No encoding for " + c.getClass().getName());
+        }
+
+        /** Rebuilds a command from its line; throws on anything malformed. */
+        public static PlayerCommand decode(String line) {
+            String[] t = line.trim().split(" ");
+            switch (t[0]) {
+                case "SquadMove":
+                    return new SquadMove(ids(t[1]), Integer.parseInt(t[2]),
+                            Integer.parseInt(t[3]));
+                case "SquadAttackMove":
+                    return new SquadAttackMove(ids(t[1]), Integer.parseInt(t[2]),
+                            Integer.parseInt(t[3]));
+                case "SquadAttack":
+                    return new SquadAttack(ids(t[1]), Integer.parseInt(t[2]));
+                case "SquadStop":
+                    return new SquadStop(ids(t[1]));
+                case "SquadEntrench":
+                    return "1".equals(t[4]) ? new SquadEntrench(ids(t[1]))
+                            : new SquadEntrench(ids(t[1]), Integer.parseInt(t[2]),
+                                    Integer.parseInt(t[3]));
+                case "SetFormation":
+                    return new SetFormation(ids(t[1]), Formation.valueOf(t[2]));
+                case "SplitSquad":
+                    return new SplitSquad(Integer.parseInt(t[1]), ids(t[2]));
+                case "Reinforce":
+                    return new Reinforce(Integer.parseInt(t[1]));
+                case "QueueSquad":
+                    return new QueueSquad(UnitType.valueOf(t[1]));
+                case "Move":
+                    return new Move(ids(t[1]), Integer.parseInt(t[2]), Integer.parseInt(t[3]),
+                            "1".equals(t[4]));
+                case "Entrench":
+                    return new Entrench(ids(t[1]), Integer.parseInt(t[2]),
+                            Integer.parseInt(t[3]));
+                case "Bombard":
+                    return new Bombard(ids(t[1]), Integer.parseInt(t[2]),
+                            Integer.parseInt(t[3]));
+                case "Attack":
+                    return new Attack(ids(t[1]), Integer.parseInt(t[2]));
+                case "AttackMove":
+                    return new AttackMove(ids(t[1]), Integer.parseInt(t[2]),
+                            Integer.parseInt(t[3]));
+                case "Harvest":
+                    return new Harvest(ids(t[1]));
+                case "Stop":
+                    return new Stop(ids(t[1]));
+                case "Infiltrate":
+                    return new Infiltrate(ids(t[1]), Integer.parseInt(t[2]));
+                case "SetRally":
+                    return new SetRally(Integer.parseInt(t[1]), Integer.parseInt(t[2]),
+                            Integer.parseInt(t[3]));
+                case "Sell":
+                    return new Sell(Integer.parseInt(t[1]));
+                case "Repair":
+                    return new Repair(Integer.parseInt(t[1]), "1".equals(t[2]));
+                case "SetPrimary":
+                    return new SetPrimary(Integer.parseInt(t[1]));
+                case "QueueUnit":
+                    return new QueueUnit(UnitType.valueOf(t[1]));
+                case "QueueBuilding":
+                    return new QueueBuilding(BuildingType.valueOf(t[1]));
+                case "CancelQueue":
+                    return new CancelQueue(Line.valueOf(t[1]));
+                case "PlaceBuilding":
+                    return new PlaceBuilding(Integer.parseInt(t[1]), Integer.parseInt(t[2]));
+                default:
+                    throw new IllegalArgumentException("Unknown command: " + t[0]);
+            }
+        }
+
+        private static String ints(int[] values) {
+            if (values.length == 0) {
+                return "-";
+            }
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < values.length; i++) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                sb.append(values[i]);
+            }
+            return sb.toString();
+        }
+
+        private static int[] ids(String token) {
+            if ("-".equals(token)) {
+                return new int[0];
+            }
+            String[] parts = token.split(",");
+            int[] out = new int[parts.length];
+            for (int i = 0; i < parts.length; i++) {
+                out[i] = Integer.parseInt(parts[i]);
+            }
+            return out;
+        }
+    }
 }
