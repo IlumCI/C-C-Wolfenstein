@@ -18,7 +18,24 @@ public enum Terrain {
     /** Rivers and flooded craters. Impassable to everything in this build. */
     WATER('~', false, Float.POSITIVE_INFINITY),
     /** Ruined masonry, bunker walls, dense forest. Blocks movement and sight lines. */
-    WALL('#', false, Float.POSITIVE_INFINITY);
+    WALL('#', false, Float.POSITIVE_INFINITY),
+
+    // --- the Germania vocabulary, appended so nothing existing renumbers -------------------
+
+    /**
+     * Poured superconcrete: the Regime's monolith construction. A wall the size of a city
+     * block, shutter-marked and stained, and no shell in this game brings one down.
+     */
+    SUPERCRETE('W', false, Float.POSITIVE_INFINITY),
+    /** Monumental dressed stone: dome, arch, palace plinth. Blocks movement and sight. */
+    MARBLE('M', false, Float.POSITIVE_INFINITY),
+    /** Granite slab paving: parade grounds and plazas. Fast to cross, nothing to hide behind. */
+    PAVEMENT('_', true, 0.8f),
+    /**
+     * Poured autobahn. The fastest ground in the game and the most exposed: the grand axis
+     * is a kill zone with lane markings.
+     */
+    HIGHWAY('H', true, 0.55f);
 
     private static final Terrain[] BY_GLYPH = new Terrain[128];
 
@@ -71,7 +88,7 @@ public enum Terrain {
     }
 
     public boolean blocksSight() {
-        return this == WALL;
+        return this == WALL || this == SUPERCRETE || this == MARBLE;
     }
 
     /**

@@ -55,6 +55,18 @@ public final class TerrainSprites {
             case WALL:
                 wall(c, seed);
                 break;
+            case SUPERCRETE:
+                supercrete(c, seed);
+                break;
+            case MARBLE:
+                marble(c, seed);
+                break;
+            case PAVEMENT:
+                pavement(c, seed);
+                break;
+            case HIGHWAY:
+                highway(c, seed);
+                break;
             case ORE:
             case GRASS:
             default:
@@ -742,5 +754,194 @@ public final class TerrainSprites {
             }
         }
         c.speckle(0, 0, TILE, TILE, WolfPalette.shade(WolfPalette.SMOKE, 4), seed + 41, 29);
+    }
+
+    // --- the Germania vocabulary ----------------------------------------------------------
+
+    /**
+     * Poured superconcrete: the Regime's monolith construction, seen from above.
+     *
+     * <p>Everything about it is deliberately inhuman in scale next to the old masonry wall
+     * tile: two panels where the wall has dozens of blocks, shutter-board grain running one
+     * way across each pour, tie-rod holes on a machine grid, and the stains of weather that
+     * was never going to be cleaned off. It must read at minimap distance as "the new city".
+     */
+    private static void supercrete(PixelCanvas c, int seed) {
+        int[] concrete = WolfPalette.CONCRETE;
+
+        c.fill(WolfPalette.shade(concrete, 3));
+
+        int panelW = 64;
+        int panelH = 64;
+        for (int row = 0; row * panelH < TILE; row++) {
+            for (int col = 0; col * panelW < TILE; col++) {
+                int x = col * panelW;
+                int y = row * panelH;
+                int n = row * 13 + col * 7;
+                int shade = 2 + rand(seed, n, 2);
+                c.rect(x, y, panelW - 2, panelH - 2, WolfPalette.shade(concrete, shade));
+
+                // Shutter-board grain: the wood the pour was cast against, one line per board.
+                for (int b = 6; b < panelH - 4; b += 7) {
+                    c.hLine(x + 2, x + panelW - 4, y + b,
+                            WolfPalette.shade(concrete, shade + ((b / 7) & 1)));
+                }
+
+                // Tie-rod holes, on the grid the machine put them on.
+                for (int hy = 12; hy < panelH; hy += 20) {
+                    for (int hx = 12; hx < panelW; hx += 20) {
+                        c.rect(x + hx, y + hy, 3, 3, WolfPalette.shade(concrete, 4));
+                        c.px(x + hx, y + hy, WolfPalette.shade(concrete, 1));
+                    }
+                }
+
+                // Panel joints: deep, dark, continuous.
+                c.hLine(x, x + panelW - 1, y + panelH - 2, WolfPalette.shade(concrete, 4));
+                c.vLine(x + panelW - 2, y, y + panelH - 1, WolfPalette.shade(concrete, 4));
+                c.hLine(x, x + panelW - 3, y, WolfPalette.shade(concrete, 1));
+                c.vLine(x, y, y + panelH - 3, WolfPalette.shade(concrete, 1));
+            }
+        }
+
+        // Water staining: drips running down from the joints, because nothing is maintained.
+        for (int i = 0; i < 9; i++) {
+            int x = rand(seed, 300 + i * 3, TILE - 2);
+            int y = rand(seed, 301 + i * 3, TILE / 2);
+            int len = 10 + rand(seed, 302 + i * 3, 26);
+            c.vLine(x, y, Math.min(TILE - 1, y + len), WolfPalette.shade(WolfPalette.SMOKE, 3));
+        }
+        c.speckle(0, 0, TILE, TILE, WolfPalette.shade(WolfPalette.SMOKE, 4), seed + 17, 41);
+    }
+
+    /**
+     * Monumental dressed stone: the dome, the arch, the palace plinths.
+     *
+     * <p>Pale on purpose — the one bright ground in the game, so the monuments read from any
+     * height as what they are: the only thing in this world its owners ever polished. Huge
+     * ashlar courses, tight joints, faint veining, and soot climbing the lower edge, because
+     * the city around it still burns coal.
+     */
+    private static void marble(PixelCanvas c, int seed) {
+        int[] bone = WolfPalette.BONE;
+
+        c.fill(WolfPalette.shade(bone, 2));
+
+        int courseH = 42;
+        int courseW = 60;
+        for (int row = 0; row * courseH < TILE; row++) {
+            int offset = (row & 1) * (courseW / 2);
+            for (int col = -1; col * courseW < TILE + courseW; col++) {
+                int x = col * courseW + offset;
+                int y = row * courseH;
+                int n = row * 29 + col * 11;
+                int shade = 1 + rand(seed, n, 2);
+                c.rect(x, y, courseW - 2, courseH - 2, WolfPalette.shade(bone, shade));
+                c.hLine(x, x + courseW - 3, y, WolfPalette.shade(bone, 0));
+                c.hLine(x, x + courseW - 2, y + courseH - 2, WolfPalette.shade(bone, 4));
+                c.vLine(x + courseW - 2, y, y + courseH - 2, WolfPalette.shade(bone, 4));
+
+                // Veining: one faint diagonal per course, hand-jittered.
+                int vx = x + 8 + rand(seed, n + 3, courseW - 20);
+                for (int t = 0; t < courseH - 8; t += 2) {
+                    c.px(vx + t / 3 + rand(seed, n + t, 2), y + 4 + t,
+                            WolfPalette.shade(bone, 3));
+                }
+            }
+        }
+
+        // Soot at the south edge of every tile: the monument is pale, the world is not.
+        for (int i = 0; i < 60; i++) {
+            int x = rand(seed, 700 + i * 2, TILE);
+            int y = TILE - 1 - rand(seed, 701 + i * 2, 14);
+            c.px(x, y, WolfPalette.shade(WolfPalette.SMOKE, 3 + (i & 1)));
+        }
+    }
+
+    /**
+     * Granite slab paving: the parade grounds. Clean, flat, joint-perfect — and completely
+     * without cover, which is the tactical sentence this tile writes.
+     */
+    private static void pavement(PixelCanvas c, int seed) {
+        int[] concrete = WolfPalette.CONCRETE;
+
+        c.fill(WolfPalette.shade(concrete, 4));
+
+        int slab = 32;
+        for (int row = 0; row * slab < TILE; row++) {
+            for (int col = 0; col * slab < TILE; col++) {
+                int x = col * slab;
+                int y = row * slab;
+                int n = row * 23 + col * 5;
+                int shade = 2 + rand(seed, n, 2) / 2;
+                c.rect(x, y, slab - 2, slab - 2, WolfPalette.shade(concrete, shade));
+                c.hLine(x, x + slab - 3, y, WolfPalette.shade(concrete, shade - 1));
+                c.vLine(x, y, y + slab - 3, WolfPalette.shade(concrete, shade - 1));
+                // A cracked corner on one slab in eight - marched over, not maintained.
+                if (rand(seed, n + 9, 8) == 0) {
+                    c.px(x + slab - 4, y + slab - 4, WolfPalette.shade(concrete, 4));
+                    c.px(x + slab - 5, y + slab - 3, WolfPalette.shade(concrete, 4));
+                    c.px(x + slab - 3, y + slab - 5, WolfPalette.shade(concrete, 4));
+                }
+            }
+        }
+
+        // Standing rain in shallow sheets, grey on grey: it is never a clear day here either.
+        for (int i = 0; i < 3; i++) {
+            int cx = rand(seed, 900 + i * 3, TILE);
+            int cy = rand(seed, 901 + i * 3, TILE);
+            int rx = 8 + rand(seed, 902 + i * 3, 12);
+            c.ellipse(cx, cy, rx, Math.max(2, rx / 3), WolfPalette.shade(concrete, 4));
+            c.hLine(cx - rx / 2, cx + rx / 2, cy - rx / 3, WolfPalette.shade(concrete, 1));
+        }
+    }
+
+    /**
+     * Poured autobahn: dark aggregate, lane paint half worn away, oil where the convoys sat.
+     *
+     * <p>The dashes run north-south on every tile, so a six-tile-wide avenue reads as six
+     * marked lanes without any tile knowing where in the road it is.
+     */
+    private static void highway(PixelCanvas c, int seed) {
+        int[] metal = WolfPalette.GUNMETAL;
+
+        c.fill(WolfPalette.shade(metal, 3));
+        c.speckle(0, 0, TILE, TILE, WolfPalette.shade(metal, 2), seed + 3, 5);
+        c.speckle(0, 0, TILE, TILE, WolfPalette.shade(metal, 4), seed + 7, 6);
+
+        // Expansion joints across the pour.
+        int jy = 20 + rand(seed, 1, TILE - 40);
+        c.hLine(0, TILE - 1, jy, WolfPalette.shade(metal, 4));
+        c.hLine(0, TILE - 1, jy + 1, WolfPalette.shade(metal, 1));
+
+        // The lane line, dashed, weathered to fragments in places.
+        int x = TILE / 2 - 2;
+        for (int y = 0; y < TILE; y += 26) {
+            if (rand(seed, 100 + y, 5) == 0) {
+                continue;
+            }
+            int len = 12 + rand(seed, 101 + y, 6);
+            for (int d = 0; d < len && y + d < TILE; d++) {
+                if (rand(seed, y * 7 + d, 6) != 0) {
+                    c.rect(x, y + d, 3, 1, WolfPalette.shade(WolfPalette.BONE, 2));
+                }
+            }
+        }
+
+        // Oil and scorch where engines idled.
+        for (int i = 0; i < 4; i++) {
+            int cx = rand(seed, 500 + i * 3, TILE);
+            int cy = rand(seed, 501 + i * 3, TILE);
+            int rx = 5 + rand(seed, 502 + i * 3, 10);
+            c.ellipse(cx, cy, rx, Math.max(2, rx / 2), WolfPalette.shade(metal, 4));
+        }
+        // Tar crack lines, hand-jittered.
+        for (int i = 0; i < 3; i++) {
+            int cx = rand(seed, 800 + i * 5, TILE);
+            int cy = rand(seed, 801 + i * 5, TILE);
+            for (int t = 0; t < 18; t++) {
+                c.px(cx + rand(seed, 802 + i * 5 + t, 3) - 1 + t / 3, cy + t,
+                        WolfPalette.shade(metal, 4));
+            }
+        }
     }
 }

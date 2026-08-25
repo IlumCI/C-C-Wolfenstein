@@ -20,6 +20,11 @@ public final class Palette {
     public static final int RUBBLE = Colors.rgb(72, 68, 58);
     public static final int WATER = Colors.rgb(38, 56, 74);
     public static final int WALL = Colors.rgb(53, 55, 59);
+    /** Germania's grounds: the monolith grey, the monument pale, the parade slab, the road. */
+    public static final int SUPERCRETE = Colors.rgb(90, 92, 98);
+    public static final int MARBLE = Colors.rgb(191, 181, 149);
+    public static final int PAVEMENT = Colors.rgb(112, 114, 120);
+    public static final int HIGHWAY = Colors.rgb(46, 46, 52);
     public static final int ORE = Colors.rgb(92, 190, 62);
     public static final int ORE_RICH = Colors.rgb(143, 232, 106);
 
@@ -69,6 +74,14 @@ public final class Palette {
                 return WATER;
             case WALL:
                 return WALL;
+            case SUPERCRETE:
+                return SUPERCRETE;
+            case MARBLE:
+                return MARBLE;
+            case PAVEMENT:
+                return PAVEMENT;
+            case HIGHWAY:
+                return HIGHWAY;
             case ORE:
                 return ore > 350 ? ORE_RICH : (ore > 0 ? ORE : GRASS);
             case GRASS:
