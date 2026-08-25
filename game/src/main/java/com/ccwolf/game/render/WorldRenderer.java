@@ -133,6 +133,8 @@ public final class WorldRenderer {
 
         // Ground marks go straight onto the terrain, under everything standing on it.
         profiler.begin(RenderProfiler.Pass.DECALS);
+        // The capital's monuments sit on the terrain, under everything that moves.
+        GermaniaDecor.draw(surface, session.mapName(), camera, sprite, false);
         session.fx().drawDecals(surface, camera);
         profiler.end(RenderProfiler.Pass.DECALS);
 
@@ -158,6 +160,8 @@ public final class WorldRenderer {
 
         // Rounds in flight and particles go over the top of everything alive.
         profiler.begin(RenderProfiler.Pass.OVERLAY_FX);
+        // The Arch's roof spans the avenue: whatever drives the axis vanishes beneath it.
+        GermaniaDecor.draw(surface, session.mapName(), camera, sprite, true);
         session.fx().drawOverlay(surface, camera);
         profiler.end(RenderProfiler.Pass.OVERLAY_FX);
 

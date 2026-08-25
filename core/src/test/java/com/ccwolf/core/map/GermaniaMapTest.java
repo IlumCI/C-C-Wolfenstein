@@ -71,8 +71,8 @@ public class GermaniaMapTest {
 
     @Test
     public void theGeneratorReproducesTheShippedFile() throws Exception {
-        GermaniaGenerator generator = new GermaniaGenerator();
-        generator.build();
+        GermaniaPlan generator = new GermaniaPlan();
+        generator.draw();
         generator.validate();
         java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
         generator.write(new java.io.PrintStream(bytes, false, "UTF-8"));

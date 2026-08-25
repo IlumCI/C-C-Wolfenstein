@@ -363,8 +363,12 @@ carry it: SUPERCRETE and MARBLE (indestructible, sight-blocking — the state's 
 the fortification), PAVEMENT (fast, coverless parade slab) and HIGHWAY (the fastest and most
 exposed ground in the game). Operationally the map asks the Germania question: the axis is a
 five-kilometre kill zone, the monolith quarters are slow blind flanks, and the park is the
-soft route with the money in it. Made the generated-map way — seeded, reviewed, byte-pinned,
-BFS-validated, A*-marchable — and the setup screen's GROUND row now cycles, because five maps
-outgrew the grid.
+soft route with the money in it. Hand-drawn, not rolled: GermaniaPlan holds no dice — every block, street, breach and seam is
+placed by coordinate, the file is byte-pinned to the drawing, and its five monuments are not
+floor tiles but MonumentSprites the renderer anchors over their footprints: the Hall's copper
+dome at thirty-two tiles square, the palaces with their courtyards, the station's glazed
+vault, and the Arch drawn as an overhead layer so a convoy on the axis genuinely disappears
+beneath its roof. The setup screen's GROUND row now cycles, because five maps outgrew the
+grid.
 
 Next, each its own part: campaign and mission scripting, veterancy and stances, multiplayer.

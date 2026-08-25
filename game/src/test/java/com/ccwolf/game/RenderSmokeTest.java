@@ -185,8 +185,8 @@ public class RenderSmokeTest {
         String[][] shots = {
             {com.ccwolf.core.map.MapCatalog.SCHWARZBRUCK, "64", "64", "match-schwarzbruck"},
             {com.ccwolf.core.map.MapCatalog.ASCHEFELD, "48", "44", "match-aschefeld"},
-            // The capital's postcard: the Hall, the Great Plaza, the head of the axis.
-            {com.ccwolf.core.map.MapCatalog.GERMANIA, "128", "52", "match-germania"},
+            // The capital's postcard: the dome itself, drawn as the building it is.
+            {com.ccwolf.core.map.MapCatalog.GERMANIA, "128", "34", "match-germania"},
         };
         for (String[] shot : shots) {
             GameSession session = new GameSession(shot[0], Faction.RESISTANCE,

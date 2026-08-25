@@ -102,6 +102,14 @@ public final class WolfPalette {
         0xFFCFFFA8, 0xFF8FE86A, 0xFF5CBE3E, 0xFF357A28, 0xFF1D4418,
     };
 
+    /**
+     * Weathered copper: the dome and the state roofs. Planned bright, installed once,
+     * never polished again — so it is the patina the city actually wears.
+     */
+    public static final int[] PATINA = {
+        0xFF9CBCA4, 0xFF7AA087, 0xFF5F8570, 0xFF476856, 0xFF304A3C,
+    };
+
     /** Fire, muzzle flash, explosion core. */
     public static final int[] FIRE = {
         0xFFFFF0B0, 0xFFFFD24A, 0xFFF09428, 0xFFC4451E, 0xFF7A2410,
